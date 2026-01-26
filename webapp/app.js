@@ -6,22 +6,30 @@ const state = {
 };
 
 function initUser() {
+  console.log('=== Инициализация пользователя ===');
+  console.log('Telegram WebApp доступен:', !!tg);
+  
   // Получаем userId из Telegram WebApp
   if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
     state.userId = tg.initDataUnsafe.user.id;
+    console.log('✅ User ID из Telegram:', state.userId);
+    console.log('Данные пользователя:', tg.initDataUnsafe.user);
   } else {
     // Fallback для тестирования (в продакшене это не должно происходить)
-    console.warn("Telegram WebApp не инициализирован, используем тестовый userId");
+    console.warn("⚠️ Telegram WebApp не инициализирован, используем тестовый userId");
+    if (tg) {
+      console.warn('initDataUnsafe:', tg.initDataUnsafe);
+    }
     state.userId = 1;
   }
 
   // Определяем базовый URL API
   const loc = window.location;
-  // Убираем /webapp или /index.html из пути, оставляем только домен
-  const pathParts = loc.pathname.split('/').filter(p => p && p !== 'webapp' && p !== 'index.html');
   state.baseUrl = `${loc.protocol}//${loc.host}`;
   
-  console.log('Initialized with userId:', state.userId, 'baseUrl:', state.baseUrl);
+  console.log('📍 Текущий URL:', loc.href);
+  console.log('📍 Base URL для API:', state.baseUrl);
+  console.log('✅ Инициализация завершена');
 }
 
 function $(selector) {
@@ -43,15 +51,32 @@ function switchTab(tabName) {
 
 async function fetchJSON(url, options = {}) {
   try {
-    const res = await fetch(url, options);
+    console.log(`📡 Запрос: ${options.method || 'GET'} ${url}`);
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+    
+    console.log(`📥 Ответ: ${res.status} ${res.statusText}`);
+    
     if (!res.ok) {
       const errorText = await res.text();
-      console.error('API Error:', res.status, errorText);
-      throw new Error(`Request failed: ${res.status} ${errorText}`);
+      console.error('❌ API Error:', res.status, res.statusText, errorText);
+      throw new Error(`Request failed: ${res.status} ${res.statusText} - ${errorText}`);
     }
-    return res.json();
+    
+    const data = await res.json();
+    console.log(`✅ Успешно получены данные:`, data);
+    return data;
   } catch (e) {
-    console.error('Fetch error:', e);
+    if (e.name === 'TypeError' && e.message.includes('fetch')) {
+      console.error('❌ Сетевая ошибка - сервер недоступен:', e.message);
+      throw new Error('Failed to fetch - сервер недоступен. Проверьте, что веб-сервер запущен.');
+    }
+    console.error('❌ Fetch error:', e);
     throw e;
   }
 }
@@ -250,28 +275,38 @@ async function loadAll() {
   
   if (!uid) {
     console.error('userId не установлен');
-    if (tg) tg.showAlert("Ошибка: не удалось определить пользователя");
+    const errorMsg = "Ошибка: не удалось определить пользователя. Убедитесь, что вы открыли приложение через Telegram.";
+    console.error(errorMsg);
+    if (tg) {
+      tg.showAlert(errorMsg);
+    }
     return;
   }
   
+  console.log('=== Начало загрузки данных ===');
+  console.log('User ID:', uid);
+  console.log('Base URL:', base);
+  
   try {
-    console.log('Загрузка данных для пользователя:', uid);
+    // Проверяем доступность API
+    const testUrl = `${base}/api/user/${uid}/missions`;
+    console.log('Тестируем URL:', testUrl);
     
     const [missions, goals, habits, analytics] = await Promise.all([
       fetchJSON(`${base}/api/user/${uid}/missions`).catch(e => {
-        console.error('Ошибка загрузки миссий:', e);
+        console.error('❌ Ошибка загрузки миссий:', e.message, e);
         return [];
       }),
       fetchJSON(`${base}/api/user/${uid}/goals`).catch(e => {
-        console.error('Ошибка загрузки целей:', e);
+        console.error('❌ Ошибка загрузки целей:', e.message, e);
         return [];
       }),
       fetchJSON(`${base}/api/user/${uid}/habits`).catch(e => {
-        console.error('Ошибка загрузки привычек:', e);
+        console.error('❌ Ошибка загрузки привычек:', e.message, e);
         return [];
       }),
       fetchJSON(`${base}/api/user/${uid}/analytics`).catch(e => {
-        console.error('Ошибка загрузки аналитики:', e);
+        console.error('❌ Ошибка загрузки аналитики:', e.message, e);
         return {
           missions: { total: 0, completed: 0, avg_progress: 0 },
           goals: { total: 0, completed: 0, completion_rate: 0 },
@@ -279,6 +314,12 @@ async function loadAll() {
         };
       }),
     ]);
+    
+    console.log('✅ Данные получены:');
+    console.log('  Миссии:', missions?.length || 0);
+    console.log('  Цели:', goals?.length || 0);
+    console.log('  Привычки:', habits?.length || 0);
+    console.log('  Аналитика:', analytics);
     
     // Обрабатываем пустые данные
     renderMissions(Array.isArray(missions) ? missions : []);
@@ -290,9 +331,11 @@ async function loadAll() {
       habits: { total: 0, total_completions: 0 }
     });
     
-    console.log('Данные успешно загружены');
+    console.log('✅ Данные успешно отображены');
   } catch (e) {
-    console.error('Критическая ошибка загрузки данных:', e);
+    console.error('❌ Критическая ошибка загрузки данных:', e);
+    console.error('Stack:', e.stack);
+    
     // Показываем пустые списки вместо ошибки
     renderMissions([]);
     renderGoals([]);
@@ -303,14 +346,25 @@ async function loadAll() {
       habits: { total: 0, total_completions: 0 }
     });
     
-    // Показываем ошибку только если это критическая проблема
-    if (e.message && !e.message.includes('404') && !e.message.includes('empty')) {
-      const errorMsg = "Не удалось загрузить данные. Попробуйте обновить страницу.";
-      if (tg) {
-        tg.showAlert(errorMsg);
+    // Определяем тип ошибки
+    let errorMsg = "Ошибка при загрузке данных.";
+    if (e.message) {
+      if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+        errorMsg = "Не удалось подключиться к серверу. Убедитесь, что веб-сервер запущен и доступен.";
+      } else if (e.message.includes('404')) {
+        errorMsg = "API endpoint не найден. Проверьте настройки сервера.";
+      } else if (e.message.includes('500')) {
+        errorMsg = "Ошибка на сервере. Проверьте логи веб-сервера.";
       } else {
-        console.error(errorMsg);
+        errorMsg = `Ошибка: ${e.message}`;
       }
+    }
+    
+    console.error('Показываем ошибку пользователю:', errorMsg);
+    if (tg) {
+      tg.showAlert(errorMsg);
+    } else {
+      alert(errorMsg);
     }
   }
 }
