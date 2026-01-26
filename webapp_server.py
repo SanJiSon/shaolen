@@ -120,7 +120,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 """
 
 
-@app.get("/api/user/{user_id}/missions")
+@app.get("/api/user/{user_id}/missions", response_model=None)
 async def api_get_missions(user_id: int):
     """Получение миссий пользователя"""
     try:
@@ -143,10 +143,10 @@ async def api_get_missions(user_id: int):
                     clean_mission[key] = str(value)
             result.append(clean_mission)
         
-        return result
+        return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Ошибка получения миссий для пользователя {user_id}: {e}", exc_info=True)
-        return []
+        return JSONResponse(content=[])
 
 
 @app.post("/api/missions")
@@ -159,12 +159,28 @@ async def api_add_mission(payload: MissionCreate):
     return mission
 
 
-@app.get("/api/mission/{mission_id}/subgoals")
+@app.get("/api/mission/{mission_id}/subgoals", response_model=None)
 async def api_get_subgoals(mission_id: int):
-    return await db.get_subgoals(mission_id)
+    try:
+        subgoals = await db.get_subgoals(mission_id)
+        result = []
+        for subgoal in (subgoals or []):
+            clean_subgoal = {}
+            for key, value in subgoal.items():
+                if value is None:
+                    clean_subgoal[key] = None
+                elif isinstance(value, (int, float, bool, str)):
+                    clean_subgoal[key] = value
+                else:
+                    clean_subgoal[key] = str(value)
+            result.append(clean_subgoal)
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"Ошибка получения подцелей для миссии {mission_id}: {e}", exc_info=True)
+        return JSONResponse(content=[])
 
 
-@app.get("/api/user/{user_id}/goals")
+@app.get("/api/user/{user_id}/goals", response_model=None)
 async def api_get_goals(user_id: int):
     """Получение целей пользователя"""
     try:
@@ -187,10 +203,10 @@ async def api_get_goals(user_id: int):
                     clean_goal[key] = str(value)
             result.append(clean_goal)
         
-        return result
+        return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Ошибка получения целей для пользователя {user_id}: {e}", exc_info=True)
-        return []
+        return JSONResponse(content=[])
 
 
 @app.post("/api/goals")
@@ -212,7 +228,7 @@ async def api_add_goal(payload: GoalCreate):
     raise HTTPException(status_code=404, detail="Goal not found after insert")
 
 
-@app.get("/api/user/{user_id}/habits")
+@app.get("/api/user/{user_id}/habits", response_model=None)
 async def api_get_habits(user_id: int):
     """Получение привычек пользователя с текущими счетчиками"""
     try:
@@ -238,10 +254,10 @@ async def api_get_habits(user_id: int):
                     clean_habit[key] = str(value)
             result.append(clean_habit)
         
-        return result
+        return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Ошибка получения привычек для пользователя {user_id}: {e}", exc_info=True)
-        return []
+        return JSONResponse(content=[])
 
 
 @app.post("/api/habits")
@@ -279,7 +295,7 @@ async def api_decrement_habit(habit_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/user/{user_id}/analytics")
+@app.get("/api/user/{user_id}/analytics", response_model=None)
 async def api_get_analytics(user_id: int):
     """Получение аналитики пользователя"""
     try:
@@ -307,14 +323,15 @@ async def api_get_analytics(user_id: int):
         }
         
         logger.info(f"Аналитика получена: {result}")
-        return result
+        return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Ошибка получения аналитики для пользователя {user_id}: {e}", exc_info=True)
-        return {
+        error_result = {
             "missions": {"total": 0, "completed": 0, "avg_progress": 0.0},
             "goals": {"total": 0, "completed": 0, "completion_rate": 0.0},
             "habits": {"total": 0, "total_completions": 0}
         }
+        return JSONResponse(content=error_result)
 
 
 if __name__ == "__main__":
