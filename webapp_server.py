@@ -1,9 +1,10 @@
 import os
 import asyncio
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+# from fastapi.staticfiles import StaticFiles  # Не нужен, если используешь Nginx
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -13,10 +14,28 @@ from database import Database
 
 load_dotenv()
 
-app = FastAPI(title="Goals WebApp API")
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 db = Database()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        await db.init_db()
+        logger.info(f"База данных инициализирована: {db.db_path}")
+    except Exception as e:
+        logger.error(f"Ошибка инициализации базы данных: {e}")
+        raise
+    yield
+    # Shutdown (если нужно)
+
+app = FastAPI(title="Goals WebApp API", lifespan=lifespan)
 
 
 class MissionCreate(BaseModel):
@@ -39,14 +58,7 @@ class HabitCreate(BaseModel):
     description: Optional[str] = ""
 
 
-@app.on_event("startup")
-async def on_startup():
-    try:
-        await db.init_db()
-        logger.info(f"База данных инициализирована: {db.db_path}")
-    except Exception as e:
-        logger.error(f"Ошибка инициализации базы данных: {e}")
-        raise
+# Инициализация БД теперь в lifespan выше
 
 
 # Middleware для автоматического создания пользователя
@@ -82,49 +94,58 @@ app.add_middleware(
 )
 
 
-# Статика — сама веб‑страница Telegram WebApp
+# Примечание: Если используешь Nginx для статики, эта часть не нужна
+# Nginx отдает HTML/CSS/JS, а FastAPI только обрабатывает API запросы
+# 
+# Если статика отдается через Nginx, можно закомментировать блок ниже
+# и оставить только API endpoints
+
+# Статика — опционально, если не используешь Nginx
+# Раскомментируй, если нужна отдача статики через FastAPI
+"""
 static_dir = os.path.join(os.path.dirname(__file__), "webapp")
 os.makedirs(static_dir, exist_ok=True)
 
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 
-# Корневой роут для index.html (Telegram WebApp должен открывать полный URL)
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Корневой роут - отдаем index.html"""
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse(content="<h1>WebApp not found</h1>", status_code=404)
 
-@app.get("/index.html", response_class=HTMLResponse)
-async def index_html():
-    """Прямой доступ к index.html"""
-    index_path = os.path.join(static_dir, "index.html")
-    if os.path.exists(index_path):
-        with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return HTMLResponse(content="<h1>WebApp not found</h1>", status_code=404)
-
-# Монтируем статику для CSS, JS и других файлов
-# Используем отдельный роут для статики, чтобы не конфликтовать с корневым
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-# Также монтируем на /webapp для обратной совместимости
-app.mount("/webapp", StaticFiles(directory=static_dir, html=True), name="webapp")
+"""
 
 
 @app.get("/api/user/{user_id}/missions")
 async def api_get_missions(user_id: int):
     """Получение миссий пользователя"""
     try:
+        logger.info(f"Запрос миссий для пользователя {user_id}")
         # Убеждаемся, что пользователь существует
         await db.add_user(user_id, None)
         missions = await db.get_missions(user_id, include_completed=True)
-        return missions if missions else []
+        logger.info(f"Найдено миссий: {len(missions) if missions else 0}")
+        
+        # Преобразуем данные для JSON (убираем None, конвертируем типы)
+        result = []
+        for mission in (missions or []):
+            clean_mission = {}
+            for key, value in mission.items():
+                if value is None:
+                    clean_mission[key] = None
+                elif isinstance(value, (int, float, bool, str)):
+                    clean_mission[key] = value
+                else:
+                    clean_mission[key] = str(value)
+            result.append(clean_mission)
+        
+        return result
     except Exception as e:
-        logger.error(f"Ошибка получения миссий для пользователя {user_id}: {e}")
+        logger.error(f"Ошибка получения миссий для пользователя {user_id}: {e}", exc_info=True)
         return []
 
 
@@ -146,10 +167,30 @@ async def api_get_subgoals(mission_id: int):
 @app.get("/api/user/{user_id}/goals")
 async def api_get_goals(user_id: int):
     """Получение целей пользователя"""
-    # Убеждаемся, что пользователь существует
-    await db.add_user(user_id, None)
-    goals = await db.get_goals(user_id, include_completed=True)
-    return goals if goals else []
+    try:
+        logger.info(f"Запрос целей для пользователя {user_id}")
+        # Убеждаемся, что пользователь существует
+        await db.add_user(user_id, None)
+        goals = await db.get_goals(user_id, include_completed=True)
+        logger.info(f"Найдено целей: {len(goals) if goals else 0}")
+        
+        # Преобразуем данные для JSON
+        result = []
+        for goal in (goals or []):
+            clean_goal = {}
+            for key, value in goal.items():
+                if value is None:
+                    clean_goal[key] = None
+                elif isinstance(value, (int, float, bool, str)):
+                    clean_goal[key] = value
+                else:
+                    clean_goal[key] = str(value)
+            result.append(clean_goal)
+        
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка получения целей для пользователя {user_id}: {e}", exc_info=True)
+        return []
 
 
 @app.post("/api/goals")
@@ -175,16 +216,31 @@ async def api_add_goal(payload: GoalCreate):
 async def api_get_habits(user_id: int):
     """Получение привычек пользователя с текущими счетчиками"""
     try:
+        logger.info(f"Запрос привычек для пользователя {user_id}")
         # Убеждаемся, что пользователь существует
         await db.add_user(user_id, None)
         habits = await db.get_habits(user_id, active_only=False)
-        # Преобразуем today_count в обычное число
-        for habit in habits:
-            if 'today_count' in habit:
-                habit['today_count'] = habit['today_count'] or 0
-        return habits if habits else []
+        logger.info(f"Найдено привычек: {len(habits) if habits else 0}")
+        
+        # Преобразуем данные для JSON
+        result = []
+        for habit in (habits or []):
+            clean_habit = {}
+            for key, value in habit.items():
+                if key == 'today_count':
+                    # Убеждаемся, что счетчик - это число
+                    clean_habit[key] = int(value) if value is not None else 0
+                elif value is None:
+                    clean_habit[key] = None
+                elif isinstance(value, (int, float, bool, str)):
+                    clean_habit[key] = value
+                else:
+                    clean_habit[key] = str(value)
+            result.append(clean_habit)
+        
+        return result
     except Exception as e:
-        logger.error(f"Ошибка получения привычек для пользователя {user_id}: {e}")
+        logger.error(f"Ошибка получения привычек для пользователя {user_id}: {e}", exc_info=True)
         return []
 
 
@@ -227,29 +283,46 @@ async def api_decrement_habit(habit_id: int):
 async def api_get_analytics(user_id: int):
     """Получение аналитики пользователя"""
     try:
+        logger.info(f"Запрос аналитики для пользователя {user_id}")
         # Убеждаемся, что пользователь существует
         await db.add_user(user_id, None)
         analytics = await db.get_user_analytics(user_id, days=30)
-        return analytics
+        
+        # Преобразуем все числа в float для JSON
+        result = {
+            "missions": {
+                "total": int(analytics.get("missions", {}).get("total", 0)),
+                "completed": int(analytics.get("missions", {}).get("completed", 0)),
+                "avg_progress": float(analytics.get("missions", {}).get("avg_progress", 0))
+            },
+            "goals": {
+                "total": int(analytics.get("goals", {}).get("total", 0)),
+                "completed": int(analytics.get("goals", {}).get("completed", 0)),
+                "completion_rate": float(analytics.get("goals", {}).get("completion_rate", 0))
+            },
+            "habits": {
+                "total": int(analytics.get("habits", {}).get("total", 0)),
+                "total_completions": int(analytics.get("habits", {}).get("total_completions", 0))
+            }
+        }
+        
+        logger.info(f"Аналитика получена: {result}")
+        return result
     except Exception as e:
-        logger.error(f"Ошибка получения аналитики для пользователя {user_id}: {e}")
+        logger.error(f"Ошибка получения аналитики для пользователя {user_id}: {e}", exc_info=True)
         return {
-            "missions": {"total": 0, "completed": 0, "avg_progress": 0},
-            "goals": {"total": 0, "completed": 0, "completion_rate": 0},
+            "missions": {"total": 0, "completed": 0, "avg_progress": 0.0},
+            "goals": {"total": 0, "completed": 0, "completion_rate": 0.0},
             "habits": {"total": 0, "total_completions": 0}
         }
 
 
 if __name__ == "__main__":
     import uvicorn
-    
-    # Настройка логирования
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
 
     port = int(os.getenv("WEBAPP_PORT", "8000"))
-    logger.info(f"Запуск веб-сервера на порту {port}")
+    logger.info(f"Запуск API сервера на порту {port}")
+    logger.info("Примечание: Статика должна отдаваться через Nginx")
+    logger.info("API endpoints доступны по адресу: http://0.0.0.0:{}/api/".format(port))
     uvicorn.run("webapp_server:app", host="0.0.0.0", port=port, reload=True)
 
