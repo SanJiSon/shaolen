@@ -40,6 +40,13 @@ function $all(selector) {
   return Array.from(document.querySelectorAll(selector));
 }
 
+function escapeHtml(text) {
+  if (text == null) return '';
+  const div = document.createElement('div');
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+
 function switchTab(tabName) {
   $all(".tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === tabName);
@@ -61,26 +68,24 @@ async function fetchJSON(url, options = {}) {
     });
     
     console.log(`📥 Ответ: ${res.status} ${res.statusText}`);
-    console.log(`📥 Content-Type: ${res.headers.get('content-type')}`);
+    const contentType = res.headers.get('content-type') || '';
+    console.log(`📥 Content-Type: ${contentType}`);
+    
+    // Читаем текст только ОДИН раз
+    const text = await res.text();
+    console.log(`📄 Сырой ответ (первые 200 символов):`, text.substring(0, 200));
     
     if (!res.ok) {
-      const errorText = await res.text();
-      console.error('❌ API Error:', res.status, res.statusText, errorText);
-      throw new Error(`Request failed: ${res.status} ${res.statusText} - ${errorText}`);
+      console.error('❌ API Error:', res.status, res.statusText, text.substring(0, 200));
+      throw new Error(`Request failed: ${res.status} ${res.statusText}`);
     }
     
     // Проверяем, что ответ действительно JSON
-    const contentType = res.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await res.text();
+    if (!contentType.includes('application/json')) {
       console.error('❌ Ответ не является JSON. Content-Type:', contentType);
       console.error('❌ Тело ответа:', text.substring(0, 200));
       throw new Error(`Server returned non-JSON response. Content-Type: ${contentType}`);
     }
-    
-    // Пытаемся получить текст сначала для отладки
-    const text = await res.text();
-    console.log(`📄 Сырой ответ (первые 200 символов):`, text.substring(0, 200));
     
     if (!text || text.trim() === '') {
       console.warn('⚠️ Пустой ответ от сервера');
@@ -93,7 +98,7 @@ async function fetchJSON(url, options = {}) {
       data = JSON.parse(text);
     } catch (parseError) {
       console.error('❌ Ошибка парсинга JSON:', parseError);
-      console.error('❌ Проблемный текст:', text);
+      console.error('❌ Проблемный текст (полный):', text);
       throw new Error(`Invalid JSON response: ${parseError.message}`);
     }
     
@@ -153,16 +158,19 @@ function renderMissions(missions) {
     const done = m.is_completed ? "Завершена" : "В процессе";
     const card = document.createElement("div");
     card.className = "card";
+    const title = escapeHtml(m.title || '');
+    const description = escapeHtml(m.description || "Без описания");
+    const createdAt = m.created_at ? String(m.created_at).slice(0, 10) : '';
     card.innerHTML = `
       <div class="card-header">
-        <div class="card-title">${m.title}</div>
+        <div class="card-title">${title}</div>
         <span class="badge">${done}</span>
       </div>
       <div class="card-description">
-        ${m.description || "Без описания"}
+        ${description}
       </div>
       <div class="card-meta">
-        <span>Создана: ${String(m.created_at).slice(0, 10)}</span>
+        <span>Создана: ${createdAt}</span>
       </div>
     `;
     root.appendChild(card);
@@ -184,17 +192,20 @@ function renderGoals(goals) {
       g.priority === 3 ? "🔥 Высокий" : g.priority === 2 ? "⭐ Средний" : "📌 Низкий";
     const card = document.createElement("div");
     card.className = "card";
+    const title = escapeHtml(g.title || '');
+    const description = escapeHtml(g.description || "Без описания");
+    const deadline = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
     card.innerHTML = `
       <div class="card-header">
-        <div class="card-title">${g.title}</div>
+        <div class="card-title">${title}</div>
         <span class="badge">${priority}</span>
       </div>
       <div class="card-description">
-        ${g.description || "Без описания"}
+        ${description}
       </div>
       <div class="card-meta">
         <span>${done}</span>
-        <span>${g.deadline ? "Дедлайн: " + g.deadline.slice(0, 10) : ""}</span>
+        <span>${deadline}</span>
       </div>
     `;
     root.appendChild(card);
@@ -212,28 +223,33 @@ function renderHabits(habits) {
   
   habits.forEach((h) => {
     const count = h.today_count || 0;
+    const habitId = parseInt(h.id) || 0;
     const card = document.createElement("div");
     card.className = "card habit-card";
+    const title = escapeHtml(h.title || '');
+    const description = escapeHtml(h.description || "Без описания");
+    const createdAt = h.created_at ? String(h.created_at).slice(0, 10) : '';
+    const isActive = h.is_active ? "Активна" : "Отключена";
     card.innerHTML = `
       <div class="habit-card-content">
         <div class="habit-controls">
-          <button class="habit-btn habit-btn-minus" data-habit-id="${h.id}" data-action="decrement">−</button>
+          <button class="habit-btn habit-btn-minus" data-habit-id="${habitId}" data-action="decrement">−</button>
           <div class="habit-counter">
             <span class="habit-count-number">${count}</span>
             <span class="habit-count-label">раз</span>
           </div>
-          <button class="habit-btn habit-btn-plus" data-habit-id="${h.id}" data-action="increment">+</button>
+          <button class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
         </div>
         <div class="habit-info">
           <div class="card-header">
-            <div class="card-title">${h.title}</div>
-            <span class="badge">${h.is_active ? "Активна" : "Отключена"}</span>
+            <div class="card-title">${title}</div>
+            <span class="badge">${isActive}</span>
           </div>
           <div class="card-description">
-            ${h.description || "Без описания"}
+            ${description}
           </div>
           <div class="card-meta">
-            <span>Создана: ${String(h.created_at).slice(0, 10)}</span>
+            <span>Создана: ${createdAt}</span>
           </div>
         </div>
       </div>
@@ -274,29 +290,36 @@ function renderHabits(habits) {
 
 function renderAnalytics(data) {
   const root = $("#analytics-view");
+  
+  // Безопасное преобразование чисел
+  const missionsTotal = parseInt(data?.missions?.total || 0);
+  const missionsCompleted = parseInt(data?.missions?.completed || 0);
+  const missionsProgress = parseFloat(data?.missions?.avg_progress || 0);
+  
+  const goalsTotal = parseInt(data?.goals?.total || 0);
+  const goalsCompleted = parseInt(data?.goals?.completed || 0);
+  const goalsRate = parseFloat(data?.goals?.completion_rate || 0);
+  
+  const habitsTotal = parseInt(data?.habits?.total || 0);
+  const habitsCompletions = parseInt(data?.habits?.total_completions || 0);
+  
   root.innerHTML = `
     <div class="metric-group">
       <h4>Миссии</h4>
-      <div class="metric-row"><span>Всего</span><span>${data.missions.total}</span></div>
-      <div class="metric-row"><span>Завершено</span><span>${data.missions.completed}</span></div>
-      <div class="metric-row"><span>Средний прогресс</span><span>${data.missions.avg_progress.toFixed(
-        1
-      )}%</span></div>
+      <div class="metric-row"><span>Всего</span><span>${missionsTotal}</span></div>
+      <div class="metric-row"><span>Завершено</span><span>${missionsCompleted}</span></div>
+      <div class="metric-row"><span>Средний прогресс</span><span>${missionsProgress.toFixed(1)}%</span></div>
     </div>
     <div class="metric-group">
       <h4>Цели</h4>
-      <div class="metric-row"><span>Всего</span><span>${data.goals.total}</span></div>
-      <div class="metric-row"><span>Завершено</span><span>${data.goals.completed}</span></div>
-      <div class="metric-row"><span>Выполнение</span><span>${data.goals.completion_rate.toFixed(
-        1
-      )}%</span></div>
+      <div class="metric-row"><span>Всего</span><span>${goalsTotal}</span></div>
+      <div class="metric-row"><span>Завершено</span><span>${goalsCompleted}</span></div>
+      <div class="metric-row"><span>Выполнение</span><span>${goalsRate.toFixed(1)}%</span></div>
     </div>
     <div class="metric-group">
       <h4>Привычки</h4>
-      <div class="metric-row"><span>Активных</span><span>${data.habits.total}</span></div>
-      <div class="metric-row"><span>Выполнений</span><span>${
-        data.habits.total_completions
-      }</span></div>
+      <div class="metric-row"><span>Активных</span><span>${habitsTotal}</span></div>
+      <div class="metric-row"><span>Выполнений</span><span>${habitsCompletions}</span></div>
     </div>
   `;
 }
