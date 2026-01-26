@@ -86,6 +86,12 @@ function openDialog({ title, extraHtml = "", onSave }) {
 function renderMissions(missions) {
   const root = $("#missions-list");
   root.innerHTML = "";
+  
+  if (!missions || missions.length === 0) {
+    root.innerHTML = '<div class="empty-state">У вас пока нет миссий. Добавьте первую миссию!</div>';
+    return;
+  }
+  
   missions.forEach((m) => {
     const done = m.is_completed ? "Завершена" : "В процессе";
     const card = document.createElement("div");
@@ -109,6 +115,12 @@ function renderMissions(missions) {
 function renderGoals(goals) {
   const root = $("#goals-list");
   root.innerHTML = "";
+  
+  if (!goals || goals.length === 0) {
+    root.innerHTML = '<div class="empty-state">У вас пока нет целей. Добавьте первую цель!</div>';
+    return;
+  }
+  
   goals.forEach((g) => {
     const done = g.is_completed ? "Завершена" : "В процессе";
     const priority =
@@ -135,22 +147,71 @@ function renderGoals(goals) {
 function renderHabits(habits) {
   const root = $("#habits-list");
   root.innerHTML = "";
+  
+  if (!habits || habits.length === 0) {
+    root.innerHTML = '<div class="empty-state">У вас пока нет привычек. Добавьте первую привычку!</div>';
+    return;
+  }
+  
   habits.forEach((h) => {
+    const count = h.today_count || 0;
     const card = document.createElement("div");
-    card.className = "card";
+    card.className = "card habit-card";
     card.innerHTML = `
-      <div class="card-header">
-        <div class="card-title">${h.title}</div>
-        <span class="badge">${h.is_active ? "Активна" : "Отключена"}</span>
-      </div>
-      <div class="card-description">
-        ${h.description || "Без описания"}
-      </div>
-      <div class="card-meta">
-        <span>Создана: ${String(h.created_at).slice(0, 10)}</span>
+      <div class="habit-card-content">
+        <div class="habit-controls">
+          <button class="habit-btn habit-btn-minus" data-habit-id="${h.id}" data-action="decrement">−</button>
+          <div class="habit-counter">
+            <span class="habit-count-number">${count}</span>
+            <span class="habit-count-label">раз</span>
+          </div>
+          <button class="habit-btn habit-btn-plus" data-habit-id="${h.id}" data-action="increment">+</button>
+        </div>
+        <div class="habit-info">
+          <div class="card-header">
+            <div class="card-title">${h.title}</div>
+            <span class="badge">${h.is_active ? "Активна" : "Отключена"}</span>
+          </div>
+          <div class="card-description">
+            ${h.description || "Без описания"}
+          </div>
+          <div class="card-meta">
+            <span>Создана: ${String(h.created_at).slice(0, 10)}</span>
+          </div>
+        </div>
       </div>
     `;
     root.appendChild(card);
+  });
+  
+  // Добавляем обработчики для кнопок + и -
+  root.querySelectorAll('.habit-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const habitId = parseInt(btn.dataset.habitId);
+      const action = btn.dataset.action;
+      
+      try {
+        const endpoint = action === 'increment' 
+          ? `${state.baseUrl}/api/habits/${habitId}/increment`
+          : `${state.baseUrl}/api/habits/${habitId}/decrement`;
+        
+        const result = await fetchJSON(endpoint, { method: 'POST' });
+        
+        // Обновляем счетчик в UI
+        const counter = btn.closest('.habit-card').querySelector('.habit-count-number');
+        if (counter) {
+          counter.textContent = result.count || 0;
+        }
+        
+        // Обновляем все данные для синхронизации
+        await loadAll();
+      } catch (error) {
+        console.error('Ошибка обновления счетчика:', error);
+        if (tg) {
+          tg.showAlert('Ошибка при обновлении счетчика');
+        }
+      }
+    });
   });
 }
 
@@ -194,31 +255,62 @@ async function loadAll() {
   }
   
   try {
-    // Показываем индикатор загрузки
-    const loadingMsg = tg ? tg.showAlert("Загрузка данных...") : null;
+    console.log('Загрузка данных для пользователя:', uid);
     
     const [missions, goals, habits, analytics] = await Promise.all([
-      fetchJSON(`${base}/api/user/${uid}/missions`),
-      fetchJSON(`${base}/api/user/${uid}/goals`),
-      fetchJSON(`${base}/api/user/${uid}/habits`),
-      fetchJSON(`${base}/api/user/${uid}/analytics`),
+      fetchJSON(`${base}/api/user/${uid}/missions`).catch(e => {
+        console.error('Ошибка загрузки миссий:', e);
+        return [];
+      }),
+      fetchJSON(`${base}/api/user/${uid}/goals`).catch(e => {
+        console.error('Ошибка загрузки целей:', e);
+        return [];
+      }),
+      fetchJSON(`${base}/api/user/${uid}/habits`).catch(e => {
+        console.error('Ошибка загрузки привычек:', e);
+        return [];
+      }),
+      fetchJSON(`${base}/api/user/${uid}/analytics`).catch(e => {
+        console.error('Ошибка загрузки аналитики:', e);
+        return {
+          missions: { total: 0, completed: 0, avg_progress: 0 },
+          goals: { total: 0, completed: 0, completion_rate: 0 },
+          habits: { total: 0, total_completions: 0 }
+        };
+      }),
     ]);
     
-    renderMissions(missions);
-    renderGoals(goals);
-    renderHabits(habits);
-    renderAnalytics(analytics);
+    // Обрабатываем пустые данные
+    renderMissions(Array.isArray(missions) ? missions : []);
+    renderGoals(Array.isArray(goals) ? goals : []);
+    renderHabits(Array.isArray(habits) ? habits : []);
+    renderAnalytics(analytics || {
+      missions: { total: 0, completed: 0, avg_progress: 0 },
+      goals: { total: 0, completed: 0, completion_rate: 0 },
+      habits: { total: 0, total_completions: 0 }
+    });
     
-    if (tg && loadingMsg) {
-      tg.close(); // Закрываем alert если он был показан
-    }
+    console.log('Данные успешно загружены');
   } catch (e) {
-    console.error('Ошибка загрузки данных:', e);
-    const errorMsg = e.message || "Ошибка при загрузке данных";
-    if (tg) {
-      tg.showAlert(errorMsg);
-    } else {
-      alert(errorMsg);
+    console.error('Критическая ошибка загрузки данных:', e);
+    // Показываем пустые списки вместо ошибки
+    renderMissions([]);
+    renderGoals([]);
+    renderHabits([]);
+    renderAnalytics({
+      missions: { total: 0, completed: 0, avg_progress: 0 },
+      goals: { total: 0, completed: 0, completion_rate: 0 },
+      habits: { total: 0, total_completions: 0 }
+    });
+    
+    // Показываем ошибку только если это критическая проблема
+    if (e.message && !e.message.includes('404') && !e.message.includes('empty')) {
+      const errorMsg = "Не удалось загрузить данные. Попробуйте обновить страницу.";
+      if (tg) {
+        tg.showAlert(errorMsg);
+      } else {
+        console.error(errorMsg);
+      }
     }
   }
 }

@@ -156,6 +156,97 @@ body {
   border: 1px solid rgba(55, 65, 81, 0.8);
 }
 
+.habit-card {
+  padding: 12px;
+}
+
+.habit-card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.habit-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.habit-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.habit-btn-plus {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.habit-btn-plus:active {
+  transform: scale(0.9);
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.2);
+}
+
+.habit-btn-minus {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+.habit-btn-minus:active {
+  transform: scale(0.9);
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.2);
+}
+
+.habit-counter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 50px;
+  padding: 4px 8px;
+  background: var(--accent-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.habit-count-number {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.habit-count-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.habit-info {
+  flex: 1;
+  min-width: 0;
+}
+
+[data-theme="light"] .habit-counter {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -257,6 +348,13 @@ body {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 @media (min-width: 768px) {
