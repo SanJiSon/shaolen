@@ -1,0 +1,255 @@
+:root {
+  --bg: #0f172a;
+  --bg-elevated: #111827;
+  --accent: #6366f1;
+  --accent-soft: rgba(99, 102, 241, 0.15);
+  --text: #f9fafb;
+  --muted: #9ca3af;
+  --danger: #f97373;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 999px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    sans-serif;
+  background: radial-gradient(circle at top, #1d2537 0, #020617 55%);
+  color: var(--text);
+}
+
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px 14px 28px;
+}
+
+.app-header {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.app-header h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+  backdrop-filter: blur(16px);
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.tab.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.tab-content {
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: var(--radius-lg);
+  padding: 14px 12px 18px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.9);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.primary-btn,
+.secondary-btn {
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: white;
+}
+
+.primary-btn:active {
+  transform: scale(0.97);
+}
+
+.secondary-btn {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: var(--muted);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  border-radius: var(--radius-md);
+  padding: 10px 10px 9px;
+  background: radial-gradient(circle at top left, #1f2937 0, #020617 65%);
+  border: 1px solid rgba(55, 65, 81, 0.8);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: var(--muted);
+}
+
+.card-description {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.card-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.analytics {
+  font-size: 13px;
+  color: var(--muted);
+  display: grid;
+  gap: 10px;
+}
+
+.metric-group h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.backdrop.hidden {
+  display: none;
+}
+
+.dialog {
+  width: min(420px, 100% - 32px);
+  background: #020617;
+  border-radius: var(--radius-lg);
+  padding: 16px 14px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.dialog h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.input {
+  width: 100%;
+  background: #020617;
+  border-radius: 12px;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  padding: 8px 9px;
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 8px;
+  resize: vertical;
+}
+
+.input::placeholder {
+  color: #4b5563;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@media (min-width: 768px) {
+  .tab-content {
+    padding: 18px 18px 22px;
+  }
+
+  .panel-header h2 {
+    font-size: 20px;
+  }
+}
+

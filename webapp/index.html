@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Goals WebApp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <h1>Твои цели</h1>
+        <p class="subtitle">Миссии, цели, привычки и аналитика в одном месте</p>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="missions">Миссии</button>
+        <button class="tab" data-tab="goals">Цели</button>
+        <button class="tab" data-tab="habits">Привычки</button>
+        <button class="tab" data-tab="analytics">Аналитика</button>
+      </nav>
+
+      <main class="tab-content">
+        <section id="tab-missions" class="tab-panel active">
+          <div class="panel-header">
+            <h2>Миссии</h2>
+            <button id="add-mission-btn" class="primary-btn">➕ Добавить миссию</button>
+          </div>
+          <div id="missions-list" class="cards"></div>
+        </section>
+
+        <section id="tab-goals" class="tab-panel">
+          <div class="panel-header">
+            <h2>Цели</h2>
+            <button id="add-goal-btn" class="primary-btn">➕ Добавить цель</button>
+          </div>
+          <div id="goals-list" class="cards"></div>
+        </section>
+
+        <section id="tab-habits" class="tab-panel">
+          <div class="panel-header">
+            <h2>Привычки</h2>
+            <button id="add-habit-btn" class="primary-btn">➕ Добавить привычку</button>
+          </div>
+          <div id="habits-list" class="cards"></div>
+        </section>
+
+        <section id="tab-analytics" class="tab-panel">
+          <div class="panel-header">
+            <h2>Аналитика</h2>
+          </div>
+          <div id="analytics-view" class="analytics"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="dialog-backdrop" class="backdrop hidden">
+      <div class="dialog">
+        <h3 id="dialog-title"></h3>
+        <input id="dialog-title-input" class="input" placeholder="Название" />
+        <textarea
+          id="dialog-description-input"
+          class="input"
+          placeholder="Описание (необязательно)"
+        ></textarea>
+        <div id="dialog-extra"></div>
+        <div class="dialog-actions">
+          <button id="dialog-cancel" class="secondary-btn">Отмена</button>
+          <button id="dialog-save" class="primary-btn">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+
