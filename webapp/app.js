@@ -61,6 +61,7 @@ async function fetchJSON(url, options = {}) {
     });
     
     console.log(`📥 Ответ: ${res.status} ${res.statusText}`);
+    console.log(`📥 Content-Type: ${res.headers.get('content-type')}`);
     
     if (!res.ok) {
       const errorText = await res.text();
@@ -68,13 +69,44 @@ async function fetchJSON(url, options = {}) {
       throw new Error(`Request failed: ${res.status} ${res.statusText} - ${errorText}`);
     }
     
-    const data = await res.json();
+    // Проверяем, что ответ действительно JSON
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await res.text();
+      console.error('❌ Ответ не является JSON. Content-Type:', contentType);
+      console.error('❌ Тело ответа:', text.substring(0, 200));
+      throw new Error(`Server returned non-JSON response. Content-Type: ${contentType}`);
+    }
+    
+    // Пытаемся получить текст сначала для отладки
+    const text = await res.text();
+    console.log(`📄 Сырой ответ (первые 200 символов):`, text.substring(0, 200));
+    
+    if (!text || text.trim() === '') {
+      console.warn('⚠️ Пустой ответ от сервера');
+      return null;
+    }
+    
+    // Парсим JSON
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error('❌ Ошибка парсинга JSON:', parseError);
+      console.error('❌ Проблемный текст:', text);
+      throw new Error(`Invalid JSON response: ${parseError.message}`);
+    }
+    
     console.log(`✅ Успешно получены данные:`, data);
     return data;
   } catch (e) {
     if (e.name === 'TypeError' && e.message.includes('fetch')) {
       console.error('❌ Сетевая ошибка - сервер недоступен:', e.message);
       throw new Error('Failed to fetch - сервер недоступен. Проверьте, что веб-сервер запущен.');
+    }
+    if (e.name === 'SyntaxError') {
+      console.error('❌ Ошибка синтаксиса JSON:', e.message);
+      throw new Error(`JSON parse error: ${e.message}`);
     }
     console.error('❌ Fetch error:', e);
     throw e;
