@@ -1,26 +1,27 @@
 const tg = window.Telegram?.WebApp;
 
-if (tg) {
-  tg.expand();
-  tg.ready();
-}
-
 const state = {
   userId: null,
-  baseUrl: "", // заполнится ниже
+  baseUrl: "",
 };
 
 function initUser() {
-  if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) {
-    // для локального теста можно задать userId вручную
-    state.userId = 1;
-  } else {
+  // Получаем userId из Telegram WebApp
+  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
     state.userId = tg.initDataUnsafe.user.id;
+  } else {
+    // Fallback для тестирования (в продакшене это не должно происходить)
+    console.warn("Telegram WebApp не инициализирован, используем тестовый userId");
+    state.userId = 1;
   }
 
-  // Определяем базовый URL API (относительно размещения index.html)
+  // Определяем базовый URL API
   const loc = window.location;
+  // Убираем /webapp или /index.html из пути, оставляем только домен
+  const pathParts = loc.pathname.split('/').filter(p => p && p !== 'webapp' && p !== 'index.html');
   state.baseUrl = `${loc.protocol}//${loc.host}`;
+  
+  console.log('Initialized with userId:', state.userId, 'baseUrl:', state.baseUrl);
 }
 
 function $(selector) {
@@ -41,9 +42,18 @@ function switchTab(tabName) {
 }
 
 async function fetchJSON(url, options = {}) {
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error("Request failed");
-  return res.json();
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('API Error:', res.status, errorText);
+      throw new Error(`Request failed: ${res.status} ${errorText}`);
+    }
+    return res.json();
+  } catch (e) {
+    console.error('Fetch error:', e);
+    throw e;
+  }
 }
 
 function openDialog({ title, extraHtml = "", onSave }) {
@@ -176,20 +186,40 @@ function renderAnalytics(data) {
 async function loadAll() {
   const uid = state.userId;
   const base = state.baseUrl;
+  
+  if (!uid) {
+    console.error('userId не установлен');
+    if (tg) tg.showAlert("Ошибка: не удалось определить пользователя");
+    return;
+  }
+  
   try {
+    // Показываем индикатор загрузки
+    const loadingMsg = tg ? tg.showAlert("Загрузка данных...") : null;
+    
     const [missions, goals, habits, analytics] = await Promise.all([
       fetchJSON(`${base}/api/user/${uid}/missions`),
       fetchJSON(`${base}/api/user/${uid}/goals`),
       fetchJSON(`${base}/api/user/${uid}/habits`),
       fetchJSON(`${base}/api/user/${uid}/analytics`),
     ]);
+    
     renderMissions(missions);
     renderGoals(goals);
     renderHabits(habits);
     renderAnalytics(analytics);
+    
+    if (tg && loadingMsg) {
+      tg.close(); // Закрываем alert если он был показан
+    }
   } catch (e) {
-    console.error(e);
-    if (tg) tg.showAlert("Ошибка при загрузке данных");
+    console.error('Ошибка загрузки данных:', e);
+    const errorMsg = e.message || "Ошибка при загрузке данных";
+    if (tg) {
+      tg.showAlert(errorMsg);
+    } else {
+      alert(errorMsg);
+    }
   }
 }
 

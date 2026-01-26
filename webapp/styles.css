@@ -11,6 +11,17 @@
   --radius-sm: 999px;
 }
 
+/* Светлая тема */
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-elevated: #f9fafb;
+  --accent: #6366f1;
+  --accent-soft: rgba(99, 102, 241, 0.1);
+  --text: #111827;
+  --muted: #6b7280;
+  --danger: #ef4444;
+}
+
 *,
 *::before,
 *::after {
@@ -23,6 +34,11 @@ body {
     sans-serif;
   background: radial-gradient(circle at top, #1d2537 0, #020617 55%);
   color: var(--text);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+[data-theme="light"] body {
+  background: radial-gradient(circle at top, #f3f4f6 0, #ffffff 55%);
 }
 
 #app {
