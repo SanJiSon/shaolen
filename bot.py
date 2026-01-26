@@ -901,6 +901,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+async def post_init(application: Application) -> None:
+    """Инициализация базы данных при запуске приложения"""
+    await db.init_db()
+    logger.info("База данных инициализирована")
+
+
 def main():
     """Главная функция запуска бота"""
     # Получение токена из переменных окружения
@@ -910,11 +916,7 @@ def main():
         return
     
     # Создание приложения
-    application = Application.builder().token(token).build()
-    
-    # Инициализация базы данных
-    import asyncio
-    asyncio.run(db.init_db())
+    application = Application.builder().token(token).post_init(post_init).build()
     
     # ConversationHandler для добавления элементов
     conv_handler = ConversationHandler(
