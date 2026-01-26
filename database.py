@@ -84,10 +84,17 @@ class Database:
                     habit_id INTEGER NOT NULL,
                     date DATE NOT NULL,
                     completed INTEGER DEFAULT 1,
+                    count INTEGER DEFAULT 0,
                     FOREIGN KEY (habit_id) REFERENCES habits(id),
                     UNIQUE(habit_id, date)
                 )
             """)
+            
+            # Добавляем колонку count если её нет (для существующих БД)
+            try:
+                await db.execute("ALTER TABLE habit_records ADD COLUMN count INTEGER DEFAULT 0")
+            except:
+                pass  # Колонка уже существует
 
             # Таблица аналитики
             await db.execute("""
@@ -257,14 +264,23 @@ class Database:
             return cursor.lastrowid
 
     async def get_habits(self, user_id: int, active_only: bool = True) -> List[Dict]:
-        """Получение всех привычек пользователя"""
+        """Получение всех привычек пользователя с текущим счетчиком на сегодня"""
+        from datetime import date
+        today = date.today().isoformat()
+        
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            query = "SELECT * FROM habits WHERE user_id = ?"
+            query = """
+                SELECT h.*, 
+                       COALESCE(hr.count, 0) as today_count
+                FROM habits h
+                LEFT JOIN habit_records hr ON h.id = hr.habit_id AND hr.date = ?
+                WHERE h.user_id = ?
+            """
             if active_only:
-                query += " AND is_active = 1"
-            query += " ORDER BY created_at DESC"
-            async with db.execute(query, (user_id,)) as cursor:
+                query += " AND h.is_active = 1"
+            query += " ORDER BY h.created_at DESC"
+            async with db.execute(query, (today, user_id)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
 
@@ -309,6 +325,66 @@ class Database:
                     "completed_days": completed,
                     "completion_rate": (completed / total * 100) if total > 0 else 0
                 }
+
+    async def increment_habit_count(self, habit_id: int, date: str = None) -> int:
+        """Увеличивает счетчик привычки на 1 для указанной даты (по умолчанию сегодня)"""
+        from datetime import date as dt_date
+        if date is None:
+            date = dt_date.today().isoformat()
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            # Проверяем существующую запись
+            async with db.execute(
+                "SELECT count FROM habit_records WHERE habit_id = ? AND date = ?",
+                (habit_id, date)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    new_count = (row[0] or 0) + 1
+                    await db.execute(
+                        "UPDATE habit_records SET count = ? WHERE habit_id = ? AND date = ?",
+                        (new_count, habit_id, date)
+                    )
+                else:
+                    new_count = 1
+                    await db.execute(
+                        "INSERT INTO habit_records (habit_id, date, count, completed) VALUES (?, ?, 1, 1)",
+                        (habit_id, date)
+                    )
+            await db.commit()
+            return new_count
+
+    async def decrement_habit_count(self, habit_id: int, date: str = None) -> int:
+        """Уменьшает счетчик привычки на 1 для указанной даты (по умолчанию сегодня)"""
+        from datetime import date as dt_date
+        if date is None:
+            date = dt_date.today().isoformat()
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            # Проверяем существующую запись
+            async with db.execute(
+                "SELECT count FROM habit_records WHERE habit_id = ? AND date = ?",
+                (habit_id, date)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row and row[0] and row[0] > 0:
+                    new_count = row[0] - 1
+                    if new_count > 0:
+                        await db.execute(
+                            "UPDATE habit_records SET count = ? WHERE habit_id = ? AND date = ?",
+                            (new_count, habit_id, date)
+                        )
+                    else:
+                        # Удаляем запись если счетчик стал 0
+                        await db.execute(
+                            "DELETE FROM habit_records WHERE habit_id = ? AND date = ?",
+                            (habit_id, date)
+                        )
+                        new_count = 0
+                else:
+                    new_count = 0
+            await db.commit()
+            return new_count
 
     async def delete_habit(self, habit_id: int):
         """Удаление привычки"""
