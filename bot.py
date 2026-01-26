@@ -50,14 +50,25 @@ def get_main_menu() -> ReplyKeyboardMarkup:
     """
     keyboard = []
     if WEBAPP_URL:
+        # Убеждаемся, что URL заканчивается правильно (без слеша или с /index.html)
+        webapp_url = WEBAPP_URL.rstrip('/')
+        # Можно использовать корневой путь, так как сервер отдает index.html по /
+        # Или явно указать /index.html если нужно
+        if not webapp_url.endswith('/index.html'):
+            # Используем корневой путь - сервер отдаст index.html
+            webapp_url = webapp_url
+        
+        logger.info(f"WebApp URL: {webapp_url}")
         keyboard.append(
             [
                 KeyboardButton(
                     "🚀 Открыть веб‑приложение",
-                    web_app=WebAppInfo(url=WEBAPP_URL),
+                    web_app=WebAppInfo(url=webapp_url),
                 )
             ]
         )
+    else:
+        logger.warning("WEBAPP_URL не установлен в .env файле!")
     keyboard.append([KeyboardButton("ℹ️ Помощь")])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
