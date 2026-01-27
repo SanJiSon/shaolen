@@ -74,7 +74,9 @@ async function fetchJSON(url, options = {}) {
   try {
     var headers = { 'Content-Type': 'application/json' };
     if (options.headers) Object.assign(headers, options.headers);
-    if (url.indexOf("/api/user/") !== -1 && tg && tg.initData) headers['X-Telegram-Init-Data'] = tg.initData;
+    if ((url.indexOf("/api/user/") !== -1 || url.indexOf("/api/me") !== -1) && tg && tg.initData) {
+      headers["X-Telegram-Init-Data"] = tg.initData;
+    }
     console.log(`📡 Запрос: ${options.method || 'GET'} ${url}`);
     const res = await fetch(url, {
       ...options,
@@ -530,16 +532,31 @@ function renderProfile() {
 }
 
 async function loadAll() {
-  const uid = state.userId;
-  const base = state.baseUrl;
-  
-  if (!uid) {
-    console.error('userId не установлен');
-    const errorMsg = "Ошибка: не удалось определить пользователя. Убедитесь, что вы открыли приложение через Telegram.";
-    console.error(errorMsg);
-    if (tg) {
-      tg.showAlert(errorMsg);
+  var base = state.baseUrl;
+
+  // Если userId не задан, но есть initData — пробуем получить пользователя через /api/me
+  // (на части устройств/клиентов tg.initDataUnsafe.user приходит пустым, хотя приложение открыто из Telegram)
+  if (!state.userId && tg && tg.initData) {
+    try {
+      var me = await fetchJSON(state.baseUrl + "/api/me", {
+        headers: { "X-Telegram-Init-Data": tg.initData },
+      });
+      if (me && me.user_id != null) {
+        state.userId = me.user_id;
+        console.log("✅ User ID получен через /api/me:", state.userId);
+      }
+    } catch (e) {
+      console.warn("Не удалось получить пользователя через /api/me:", e);
     }
+  }
+
+  var uid = state.userId;
+  if (!uid) {
+    console.error("userId не установлен");
+    var errorMsg =
+      "Ошибка: не удалось определить пользователя. Убедитесь, что вы открыли приложение через Telegram.";
+    console.error(errorMsg);
+    if (tg) tg.showAlert(errorMsg);
     return;
   }
   
