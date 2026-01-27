@@ -3,8 +3,8 @@ const tg = window.Telegram?.WebApp;
 const state = {
   userId: null,
   baseUrl: "",
-  cache: { missions: [], goals: [], habits: [], analytics: null, profile: null },
-  seeded: false,
+  cache: { missions: [], goals: [], habits: [], analytics: null, profile: null, subgoalsByMission: {} },
+  analyticsPeriod: "month",
 };
 
 function initUser() {
@@ -297,62 +297,71 @@ function setupSwipeDelete(container) {
 }
 
 function renderMissions(missions) {
-  const root = $("#missions-list");
+  var root = $("#missions-list");
   root.innerHTML = "";
-  
+
   if (!missions || missions.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет миссий.<br>Нажмите <strong>«+ Добавить»</strong> или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет миссий.<br>Нажмите <strong>«+ Добавить»</strong></div>';
     return;
   }
-  
-  missions.forEach((m) => {
-    const done = m.is_completed ? "Завершена" : "В процессе";
-    const card = document.createElement("div");
-    card.className = "card";
-    const title = escapeHtml(m.title || '');
-    const description = escapeHtml(m.description || "Без описания");
-    const createdAt = m.created_at ? String(m.created_at).slice(0, 10) : '';
-    card.innerHTML = `
-      <div class="card-header">
-        <div class="card-title">${title}</div>
-        <span class="badge">${done}</span>
-      </div>
-      <div class="card-description">${description}</div>
-      <div class="card-meta"><span>Создана: ${createdAt}</span></div>
-    `;
+
+  var subgoalsByMission = state.cache.subgoalsByMission || {};
+  missions.forEach(function(m) {
+    var done = m.is_completed ? "Завершена" : "В процессе";
+    var card = document.createElement("div");
+    card.className = "card card-mission";
+    var title = escapeHtml(m.title || "");
+    var description = escapeHtml(m.description || "Без описания");
+    var createdAt = m.created_at ? String(m.created_at).slice(0, 10) : "";
+    var deadline = m.deadline ? String(m.deadline).slice(0, 10) : "";
+    var subs = subgoalsByMission[m.id] || [];
+    var subsHtml = subs.map(function(s) {
+      var doneClass = s.is_completed ? " subgoal-done" : "";
+      return "<div class=\"subgoal-row" + doneClass + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label></div>";
+    }).join("");
+    card.innerHTML =
+      "<div class=\"card-header card-header-with-cb\">" +
+      "<label class=\"mission-done-cb-wrap\"><input type=\"checkbox\" class=\"mission-done-cb\" data-id=\"" + m.id + "\" " + (m.is_completed ? "checked" : "") + " /></label>" +
+      "<div class=\"card-title\">" + title + "</div>" +
+      "<span class=\"badge\">" + done + "</span>" +
+      "</div>" +
+      "<div class=\"card-description\">" + description + "</div>" +
+      "<div class=\"card-meta\"><span>Создана: " + createdAt + "</span>" + (deadline ? "<span>Окончание: " + deadline + "</span>" : "") + "</div>" +
+      (subs.length || true ? "<div class=\"card-subgoals\"><div class=\"subgoals-title\">Подцели</div><div class=\"subgoals-list\">" + subsHtml + "</div><button type=\"button\" class=\"link-btn add-subgoal-btn\" data-mission-id=\"" + m.id + "\">＋ Подцель</button></div>" : "") +
+      "";
     card.dataset.editId = String(m.id);
-  card.dataset.editType = "mission";
-  root.appendChild(wrapSwipeDelete(card, "mission", m.id));
+    card.dataset.editType = "mission";
+    root.appendChild(wrapSwipeDelete(card, "mission", m.id));
   });
   setupSwipeDelete(root);
 }
 
 function renderGoals(goals) {
-  const root = $("#goals-list");
+  var root = $("#goals-list");
   root.innerHTML = "";
-  
+
   if (!goals || goals.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет целей.<br>Нажмите <strong>«+ Добавить»</strong> или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет целей.<br>Нажмите <strong>«+ Добавить»</strong></div>';
     return;
   }
-  
-  goals.forEach((g) => {
-    const done = g.is_completed ? "Завершена" : "В процессе";
-    const priority =
-      g.priority === 3 ? "🔥 Высокий" : g.priority === 2 ? "⭐ Средний" : "📌 Низкий";
-    const card = document.createElement("div");
-    card.className = "card";
-    const title = escapeHtml(g.title || '');
-    const description = escapeHtml(g.description || "Без описания");
-    const deadline = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
-    card.innerHTML = `
-      <div class="card-header">
-        <div class="card-title">${title}</div>
-        <span class="badge">${priority}</span>
-      </div>
-      <div class="card-description">${description}</div>
-      <div class="card-meta"><span>${done}</span><span>${deadline}</span></div>
-    `;
+
+  goals.forEach(function(g) {
+    var done = g.is_completed ? "Завершена" : "В процессе";
+    var priority = g.priority === 3 ? "🔥 Высокий" : g.priority === 2 ? "⭐ Средний" : "📌 Низкий";
+    var card = document.createElement("div");
+    card.className = "card card-goal";
+    var title = escapeHtml(g.title || "");
+    var description = escapeHtml(g.description || "Без описания");
+    var dl = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
+    card.innerHTML =
+      "<div class=\"card-header card-header-with-cb\">" +
+      "<label class=\"goal-done-cb-wrap\"><input type=\"checkbox\" class=\"goal-done-cb\" data-id=\"" + g.id + "\" " + (g.is_completed ? "checked" : "") + " /></label>" +
+      "<div class=\"card-title\">" + title + "</div>" +
+      "<span class=\"badge\">" + priority + "</span>" +
+      "</div>" +
+      "<div class=\"card-description\">" + description + "</div>" +
+      "<div class=\"card-meta\"><span>" + done + "</span><span>" + dl + "</span></div>" +
+      "";
     root.appendChild(wrapSwipeDelete(card, "goal", g.id));
   });
   setupSwipeDelete(root);
@@ -363,7 +372,7 @@ function renderHabits(habits) {
   root.innerHTML = "";
   
   if (!habits || habits.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет привычек.<br>Нажмите <strong>«+ Добавить»</strong> или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет привычек.<br>Нажмите <strong>«+ Добавить»</strong></div>';
     return;
   }
   
@@ -419,62 +428,58 @@ function renderHabits(habits) {
 }
 
 function renderAnalytics(data) {
-  const root = $("#analytics-view");
+  var root = $("#analytics-view");
   if (!root) return;
-  
-  const missionsTotal = parseInt(data?.missions?.total || 0);
-  const missionsCompleted = parseInt(data?.missions?.completed || 0);
-  const missionsProgress = parseFloat(data?.missions?.avg_progress || 0);
-  const goalsTotal = parseInt(data?.goals?.total || 0);
-  const goalsCompleted = parseInt(data?.goals?.completed || 0);
-  const goalsRate = parseFloat(data?.goals?.completion_rate || 0);
-  const habitsTotal = parseInt(data?.habits?.total || 0);
-  const habitsCompletions = parseInt(data?.habits?.total_completions || 0);
-  const streak = parseInt(data?.habits?.streak || 0);
-  const chart = data?.habit_chart || { labels: [], values: [] };
-  const labels = Array.isArray(chart.labels) ? chart.labels : [];
-  const values = Array.isArray(chart.values) ? chart.values : [];
-  const maxVal = values.length ? Math.max(1, ...values) : 1;
-  
-  let chartHtml = "";
+
+  var period = data && data.period ? data.period : (state.analyticsPeriod || "month");
+  state.analyticsPeriod = period;
+  var missionsTotal = parseInt(data?.missions?.total || 0);
+  var missionsCompleted = parseInt(data?.missions?.completed || 0);
+  var missionsProgress = parseFloat(data?.missions?.avg_progress || 0);
+  var goalsTotal = parseInt(data?.goals?.total || 0);
+  var goalsCompleted = parseInt(data?.goals?.completed || 0);
+  var goalsRate = parseFloat(data?.goals?.completion_rate || 0);
+  var habitsTotal = parseInt(data?.habits?.total || 0);
+  var habitsCompletions = parseInt(data?.habits?.total_completions || 0);
+  var streak = parseInt(data?.habits?.streak || 0);
+  var chart = data?.habit_chart || { labels: [], values: [] };
+  var labels = Array.isArray(chart.labels) ? chart.labels : [];
+  var values = Array.isArray(chart.values) ? chart.values : [];
+  var maxVal = values.length ? Math.max(1, Math.max.apply(null, values)) : 1;
+
+  var periodTabsHtml = "<div class=\"analytics-period-tabs\">" +
+    "<button type=\"button\" class=\"analytics-period-btn" + (period === "week" ? " active" : "") + "\" data-period=\"week\">Неделя</button>" +
+    "<button type=\"button\" class=\"analytics-period-btn" + (period === "month" ? " active" : "") + "\" data-period=\"month\">Месяц</button>" +
+    "<button type=\"button\" class=\"analytics-period-btn" + (period === "all" ? " active" : "") + "\" data-period=\"all\">Всё</button>" +
+    "</div>";
+  var chartHtml = "<div class=\"analytics-chart-wrap\"><div class=\"analytics-chart-title\">Выполнения привычек по дням</div>" + periodTabsHtml;
   if (labels.length) {
-    chartHtml = `
-      <div class="analytics-chart-wrap">
-        <div class="analytics-chart-title">Выполнения привычек по дням</div>
-        <div class="analytics-chart">
-          ${labels.map((l, i) => {
-            const v = values[i] || 0;
-            const h = Math.round((v / maxVal) * 100);
-            const short = (l + "").slice(-5);
-            return `<div class="analytics-chart-bar-wrap"><div class="analytics-chart-bar" style="height:${h}%"></div><span class="analytics-chart-label">${escapeHtml(short)}</span></div>`;
-          }).join("")}
-        </div>
-      </div>
-    `;
+    chartHtml += "<div class=\"analytics-chart\">" +
+      labels.map(function(l, i) {
+        var v = values[i] || 0;
+        var h = Math.round((v / maxVal) * 100);
+        var short = (l + "").slice(-5);
+        return "<div class=\"analytics-chart-bar-wrap\"><div class=\"analytics-chart-bar\" style=\"height:" + h + "%\"></div><span class=\"analytics-chart-label\">" + escapeHtml(short) + "</span></div>";
+      }).join("") +
+      "</div>";
   }
-  
-  root.innerHTML = `
-    ${streak > 0 ? `<div class="streak-badge">🔥 Серия: ${streak} дн.</div>` : ""}
-    ${chartHtml}
-    <div class="metric-group">
-      <h4>Миссии</h4>
-      <div class="metric-row"><span>Всего</span><span>${missionsTotal}</span></div>
-      <div class="metric-row"><span>Завершено</span><span>${missionsCompleted}</span></div>
-      <div class="metric-row"><span>Средний прогресс</span><span>${missionsProgress.toFixed(1)}%</span></div>
-    </div>
-    <div class="metric-group">
-      <h4>Цели</h4>
-      <div class="metric-row"><span>Всего</span><span>${goalsTotal}</span></div>
-      <div class="metric-row"><span>Завершено</span><span>${goalsCompleted}</span></div>
-      <div class="metric-row"><span>Выполнение</span><span>${goalsRate.toFixed(1)}%</span></div>
-    </div>
-    <div class="metric-group">
-      <h4>Привычки</h4>
-      <div class="metric-row"><span>Активных</span><span>${habitsTotal}</span></div>
-      <div class="metric-row"><span>Выполнений (30 дн.)</span><span>${habitsCompletions}</span></div>
-      <div class="metric-row"><span>Серия</span><span>${streak} дн.</span></div>
-    </div>
-  `;
+  chartHtml += "</div>";
+
+  root.innerHTML =
+    (streak > 0 ? "<div class=\"streak-badge\">🔥 Серия: " + streak + " дн.</div>" : "") +
+    chartHtml +
+    "<div class=\"metric-group\"><h4>Миссии</h4>" +
+    "<div class=\"metric-row\"><span>Всего</span><span>" + missionsTotal + "</span></div>" +
+    "<div class=\"metric-row\"><span>Завершено</span><span>" + missionsCompleted + "</span></div>" +
+    "<div class=\"metric-row\"><span>Средний прогресс</span><span>" + missionsProgress.toFixed(1) + "%</span></div></div>" +
+    "<div class=\"metric-group\"><h4>Цели</h4>" +
+    "<div class=\"metric-row\"><span>Всего</span><span>" + goalsTotal + "</span></div>" +
+    "<div class=\"metric-row\"><span>Завершено</span><span>" + goalsCompleted + "</span></div>" +
+    "<div class=\"metric-row\"><span>Выполнение</span><span>" + goalsRate.toFixed(1) + "%</span></div></div>" +
+    "<div class=\"metric-group\"><h4>Привычки</h4>" +
+    "<div class=\"metric-row\"><span>Активных</span><span>" + habitsTotal + "</span></div>" +
+    "<div class=\"metric-row\"><span>Выполнений</span><span>" + habitsCompletions + "</span></div>" +
+    "<div class=\"metric-row\"><span>Серия</span><span>" + streak + " дн.</span></div></div>";
 }
 
 function renderProfile() {
@@ -508,7 +513,6 @@ function renderProfile() {
       <div class="profile-stat-row"><span>Целей</span><span>${goalsTotal}</span></div>
       <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
     </div>
-    <button type="button" class="primary-btn seed-btn js-seed-examples">Загрузить примеры миссий, целей и привычек</button>
   `;
   var saveBtn = root.querySelector(".profile-save-name-btn");
   var inputEl = root.querySelector("#profile-display-name-input");
@@ -615,15 +619,6 @@ async function loadAll() {
   }
   
   try {
-    if (!state.seeded) {
-      try {
-        await fetchJSON(base + "/api/user/" + uid + "/seed", { method: "POST" });
-        console.log("Seed выполнен успешно");
-      } catch (e) {
-        console.warn("Seed запрос не удался:", e);
-      }
-      state.seeded = true;
-    }
     var profileFallback = {
       first_name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || "",
       last_name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.last_name) || "",
@@ -634,10 +629,10 @@ async function loadAll() {
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
-      fetchJSON(base + "/api/user/" + uid + "/analytics").catch(e => {
+      fetchJSON(base + "/api/user/" + uid + "/analytics?period=" + (state.analyticsPeriod || "month")).catch(e => {
         if (e && e.status === 401) throw e;
         console.error("❌ Аналитика:", e.message);
-        return { missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
+        return { period: "month", missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
       }),
       fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; })
     ]);
@@ -663,6 +658,14 @@ async function loadAll() {
     state.cache.habits = habitsList;
     state.cache.analytics = analyticsData;
     state.cache.profile = (profile && typeof profile === "object") ? profile : profileFallback;
+
+    state.cache.subgoalsByMission = {};
+    if (missionsList.length) {
+      var subs = await Promise.all(missionsList.map(function(m) {
+        return fetchJSON(base + "/api/mission/" + m.id + "/subgoals").then(function(r) { return Array.isArray(r) ? r : []; }).catch(function() { return []; });
+      }));
+      missionsList.forEach(function(m, i) { state.cache.subgoalsByMission[m.id] = subs[i] || []; });
+    }
 
     renderMissions(missionsList);
     renderGoals(goalsList);
@@ -728,20 +731,67 @@ function bindEvents() {
     btn.addEventListener("click", function() { switchTab(btn.dataset.tab); });
   });
 
+  document.body.addEventListener("change", async function(e) {
+    var cb = e.target;
+    if (cb.classList && cb.classList.contains("mission-done-cb") && cb.checked) {
+      e.preventDefault();
+      try {
+        await fetchJSON(state.baseUrl + "/api/missions/" + cb.dataset.id + "/complete", { method: "POST" });
+        await loadAll();
+      } catch (err) { if (tg) tg.showAlert("Ошибка"); }
+      return;
+    }
+    if (cb.classList && cb.classList.contains("goal-done-cb") && cb.checked) {
+      e.preventDefault();
+      try {
+        await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/complete", { method: "POST" });
+        await loadAll();
+      } catch (err) { if (tg) tg.showAlert("Ошибка"); }
+      return;
+    }
+    if (cb.classList && cb.classList.contains("subgoal-done-cb") && cb.checked) {
+      e.preventDefault();
+      try {
+        await fetchJSON(state.baseUrl + "/api/subgoals/" + cb.dataset.id + "/complete", { method: "POST" });
+        await loadAll();
+      } catch (err) { if (tg) tg.showAlert("Ошибка"); }
+      return;
+    }
+  });
+
   document.body.addEventListener("click", async function(e) {
-    if (e.target.closest(".js-seed-examples")) {
-    e.preventDefault();
-    try {
-      await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/seed", { method: "POST" });
-      await loadAll();
-      if (tg) tg.showAlert("Примеры загружены");
-    } catch (err) {
-      if (tg) tg.showAlert("Ошибка загрузки примеров");
+    var periodBtn = e.target.closest(".analytics-period-btn");
+    if (periodBtn) {
+      e.preventDefault();
+      state.analyticsPeriod = periodBtn.dataset.period || "month";
+      var base = state.baseUrl, uid = state.userId;
+      if (!uid) return;
+      try {
+        var ax = await fetchJSON(base + "/api/user/" + uid + "/analytics?period=" + state.analyticsPeriod);
+        state.cache.analytics = ax;
+        renderAnalytics(ax);
+        $all(".analytics-period-btn").forEach(function(b) { b.classList.toggle("active", b.dataset.period === state.analyticsPeriod); });
+      } catch (err) { if (tg) tg.showAlert("Ошибка загрузки аналитики"); }
+      return;
     }
-    return;
+    var addBtn = e.target.closest(".add-subgoal-btn");
+    if (addBtn) {
+      e.preventDefault();
+      var mid = addBtn.dataset.missionId;
+      if (!mid) return;
+      openDialog({
+        title: "Подцель",
+        initialValues: { title: "", description: "" },
+        onSave: async function(p) {
+          await fetchJSON(state.baseUrl + "/api/missions/" + mid + "/subgoals", { method: "POST", body: JSON.stringify({ title: p.title, description: p.description || "" }) });
+          await loadAll();
+        }
+      });
+      return;
     }
+
     var content = e.target.closest(".swipe-row-content");
-    if (content && !e.target.closest(".habit-btn, .swipe-delete-btn")) {
+    if (content && !e.target.closest(".habit-btn, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .add-subgoal-btn")) {
       var row = e.target.closest(".swipe-row");
       if (row) {
         var type = row.dataset.type, id = row.dataset.id;
@@ -755,11 +805,15 @@ function bindEvents() {
             e.stopPropagation();
             if (tg && tg.MainButton) tg.MainButton.hide();
             if (type === "mission") {
+              var missionExtra = "<label>Дата окончания</label><input id=\"deadline-input\" class=\"input\" type=\"date\" />";
               openDialog({
                 title: "Редактировать миссию",
-                initialValues: { title: item.title || "", description: item.description || "" },
+                extraHtml: missionExtra,
+                initialValues: { title: item.title || "", description: item.description || "", deadline: item.deadline ? String(item.deadline).slice(0, 10) : "" },
                 onSave: async function(p) {
-                  await fetchJSON(state.baseUrl + "/api/missions/" + id, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description }) });
+                  var dlEl = document.getElementById("deadline-input");
+                  var dlVal = (dlEl && dlEl.value) ? dlEl.value : null;
+                  await fetchJSON(state.baseUrl + "/api/missions/" + id, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description, deadline: dlVal || null }) });
                   await loadAll();
                 }
               });
@@ -802,13 +856,18 @@ function bindEvents() {
     if (tg && tg.MainButton) tg.MainButton.hide();
     if (!state.userId) await ensureUserId();
     if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
+    var missionAddExtra = "<label>Дата окончания</label><input id=\"deadline-input\" class=\"input\" type=\"date\" />";
     openDialog({
       title: "Новая миссия",
-      onSave: async ({ title, description }) => {
-        await fetchJSON(`${state.baseUrl}/api/missions`, {
+      extraHtml: missionAddExtra,
+      initialValues: { title: "", description: "", deadline: "" },
+      onSave: async function(p) {
+        var dlEl = document.getElementById("deadline-input");
+        var dlVal = (dlEl && dlEl.value) ? dlEl.value : null;
+        await fetchJSON(state.baseUrl + "/api/missions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: state.userId, title, description }),
+          body: JSON.stringify({ user_id: state.userId, title: p.title, description: p.description || "", deadline: dlVal }),
         });
         await loadAll();
       },
