@@ -134,6 +134,7 @@ function openDialog({ title, extraHtml = "", onSave }) {
   var descInput = $("#dialog-description-input");
   var extraEl = $("#dialog-extra");
   var backdrop = $("#dialog-backdrop");
+  var form = $("#dialog-form");
   if (titleEl) titleEl.textContent = title || "";
   if (titleInput) titleInput.value = "";
   if (descInput) descInput.value = "";
@@ -143,12 +144,18 @@ function openDialog({ title, extraHtml = "", onSave }) {
   function cancel(ev) {
     if (ev) { ev.preventDefault(); ev.stopPropagation(); }
     if (backdrop) backdrop.classList.add("hidden");
+    if (form) form.onsubmit = null;
   }
 
   var cb = $("#dialog-cancel");
   var sb = $("#dialog-save");
   function doSave(ev) {
     if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    if (!onSave) {
+      console.error("openDialog: onSave не передан");
+      if (tg) tg.showAlert("Ошибка: действие сохранения не задано.");
+      return;
+    }
     var t = (titleInput && titleInput.value ? titleInput.value : "").trim();
     var d = (descInput && descInput.value ? descInput.value : "").trim();
     if (!t) {
@@ -159,6 +166,7 @@ function openDialog({ title, extraHtml = "", onSave }) {
     var done = function() {
       if (backdrop) backdrop.classList.add("hidden");
       if (sb) { sb.disabled = false; sb.textContent = "Сохранить"; }
+      if (form) form.onsubmit = null;
     };
     var fail = function(err) {
       console.error("Ошибка сохранения:", err);
@@ -173,12 +181,16 @@ function openDialog({ title, extraHtml = "", onSave }) {
     }
   }
   if (cb) cb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); cancel(ev); };
+  if (form) {
+    form.onsubmit = function(ev) { ev.preventDefault(); ev.stopPropagation(); doSave(ev); return false; };
+  }
   if (sb) sb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); doSave(ev); };
   if (backdrop) {
     backdrop.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); if (ev.target === backdrop) cancel(ev); };
   }
   var dialogEl = backdrop && backdrop.querySelector(".dialog");
   if (dialogEl) dialogEl.onclick = function(ev) { ev.stopPropagation(); };
+  setTimeout(function() { if (titleInput) titleInput.focus(); }, 50);
 }
 
 // --- render ---
@@ -504,10 +516,14 @@ async function loadAll() {
   
   try {
     if (!state.seeded) {
-      state.seeded = true;
       try {
-        await fetch(base + "/api/user/" + uid + "/seed", { method: "POST" });
-      } catch (_) {}
+        var seedRes = await fetch(base + "/api/user/" + uid + "/seed", { method: "POST", headers: { "Content-Type": "application/json" } });
+        if (!seedRes.ok) console.warn("Seed ответ:", seedRes.status, await seedRes.text().catch(function() { return ""; }));
+        else console.log("Seed выполнен успешно");
+      } catch (e) {
+        console.warn("Seed запрос не удался:", e);
+      }
+      state.seeded = true;
     }
     const [missions, goals, habits, analytics] = await Promise.all([
       fetchJSON(`${base}/api/user/${uid}/missions`).catch(e => {
@@ -692,6 +708,7 @@ function bindEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  console.log("WebApp v3 — один список, форма диалога, seed при первом входе");
   initUser();
   bindEvents();
   await loadAll();
