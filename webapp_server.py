@@ -69,14 +69,12 @@ async def log_requests(request: Request, call_next):
     method = request.method
     logger.info(f"📥 {method} {path} - IP: {request.client.host if request.client else 'unknown'}")
     
-    # Создает пользователя автоматически при первом обращении к API
-    if path.startswith("/api/user/") and method == "GET":
+    # Создает пользователя автоматически при первом обращении к API (GET или POST, например /seed)
+    if path.startswith("/api/user/") and method in ("GET", "POST"):
         try:
-            # Извлекаем user_id из пути
             parts = path.split("/")
             if len(parts) >= 4:
                 user_id = int(parts[3])
-                # Создаем пользователя если его нет
                 await db.add_user(user_id, None)
                 logger.info(f"✅ Пользователь {user_id} создан/проверен")
         except (ValueError, IndexError) as e:
@@ -159,14 +157,27 @@ async def api_get_missions(user_id: int):
         return JSONResponse(content=[])
 
 
+def _row_to_json(obj):
+    """Приводит строку БД/словарь к JSON-сериализуемому виду."""
+    if obj is None:
+        return None
+    d = dict(obj) if hasattr(obj, "keys") else obj
+    out = {}
+    for k, v in d.items():
+        if hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    return out
+
+
 @app.post("/api/missions")
 async def api_add_mission(payload: MissionCreate):
     """Добавление миссии"""
-    # Убеждаемся, что пользователь существует
     await db.add_user(payload.user_id, None)
     mission_id = await db.add_mission(payload.user_id, payload.title, payload.description or "")
     mission = await db.get_mission(mission_id)
-    return mission
+    return JSONResponse(content=_row_to_json(mission) or {})
 
 
 @app.get("/api/mission/{mission_id}/subgoals", response_model=None)
@@ -222,7 +233,6 @@ async def api_get_goals(user_id: int):
 @app.post("/api/goals")
 async def api_add_goal(payload: GoalCreate):
     """Добавление цели"""
-    # Убеждаемся, что пользователь существует
     await db.add_user(payload.user_id, None)
     goal_id = await db.add_goal(
         payload.user_id,
@@ -234,7 +244,7 @@ async def api_add_goal(payload: GoalCreate):
     goals = await db.get_goals(payload.user_id, include_completed=True)
     for g in goals:
         if g["id"] == goal_id:
-            return g
+            return JSONResponse(content=_row_to_json(g))
     raise HTTPException(status_code=404, detail="Goal not found after insert")
 
 
@@ -273,13 +283,12 @@ async def api_get_habits(user_id: int):
 @app.post("/api/habits")
 async def api_add_habit(payload: HabitCreate):
     """Добавление привычки"""
-    # Убеждаемся, что пользователь существует
     await db.add_user(payload.user_id, None)
     habit_id = await db.add_habit(payload.user_id, payload.title, payload.description or "")
     habits = await db.get_habits(payload.user_id, active_only=False)
     for h in habits:
         if h["id"] == habit_id:
-            return h
+            return JSONResponse(content=_row_to_json(h))
     raise HTTPException(status_code=404, detail="Habit not found after insert")
 
 
