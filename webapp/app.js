@@ -145,6 +145,8 @@ function openDialog({ title, extraHtml = "", onSave }) {
     if (backdrop) backdrop.classList.add("hidden");
   }
 
+  var cb = $("#dialog-cancel");
+  var sb = $("#dialog-save");
   function doSave(ev) {
     if (ev) { ev.preventDefault(); ev.stopPropagation(); }
     var t = (titleInput && titleInput.value ? titleInput.value : "").trim();
@@ -153,19 +155,30 @@ function openDialog({ title, extraHtml = "", onSave }) {
       if (tg) tg.showAlert("Введите название");
       return;
     }
-    var done = function() { if (backdrop) backdrop.classList.add("hidden"); };
+    if (sb) { sb.disabled = true; sb.textContent = "Сохранение…"; }
+    var done = function() {
+      if (backdrop) backdrop.classList.add("hidden");
+      if (sb) { sb.disabled = false; sb.textContent = "Сохранить"; }
+    };
     var fail = function(err) {
       console.error("Ошибка сохранения:", err);
       if (tg) tg.showAlert("Не удалось сохранить. Проверьте подключение.");
+      if (sb) { sb.disabled = false; sb.textContent = "Сохранить"; }
     };
-    Promise.resolve(onSave({ title: t, description: d })).then(done).catch(fail);
+    try {
+      var p = onSave({ title: t, description: d });
+      (p && typeof p.then === "function" ? p : Promise.resolve()).then(done).catch(fail);
+    } catch (e) {
+      fail(e);
+    }
   }
-
-  var cb = $("#dialog-cancel");
-  var sb = $("#dialog-save");
   if (cb) cb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); cancel(ev); };
   if (sb) sb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); doSave(ev); };
-  if (backdrop) backdrop.onclick = function(ev) { if (ev.target === backdrop) cancel(ev); };
+  if (backdrop) {
+    backdrop.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); if (ev.target === backdrop) cancel(ev); };
+  }
+  var dialogEl = backdrop && backdrop.querySelector(".dialog");
+  if (dialogEl) dialogEl.onclick = function(ev) { ev.stopPropagation(); };
 }
 
 // --- render ---
@@ -490,6 +503,12 @@ async function loadAll() {
   }
   
   try {
+    if (!state.seeded) {
+      state.seeded = true;
+      try {
+        await fetch(base + "/api/user/" + uid + "/seed", { method: "POST" });
+      } catch (_) {}
+    }
     const [missions, goals, habits, analytics] = await Promise.all([
       fetchJSON(`${base}/api/user/${uid}/missions`).catch(e => {
         console.error('❌ Ошибка загрузки миссий:', e.message, e);
@@ -541,16 +560,6 @@ async function loadAll() {
     renderHabits(habitsList);
     renderAnalytics(analyticsData);
     renderProfile();
-    
-    // Если всё пусто — в фоне загружаем примеры и перезапрашиваем (без блокировки UI)
-    if (!state.seeded && missionsList.length === 0 && goalsList.length === 0 && habitsList.length === 0) {
-      state.seeded = true;
-      fetchJSON(`${base}/api/user/${uid}/seed`, { method: "POST" })
-        .then(function () { return loadAll(); })
-        .catch(function () {
-          if (tg) tg.showAlert("Не удалось загрузить примеры. Нажмите «Загрузить примеры» вручную.");
-        });
-    }
     
     console.log('✅ Данные успешно отображены');
   } catch (e) {

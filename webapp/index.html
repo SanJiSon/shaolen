@@ -10,80 +10,63 @@
   </head>
   <body>
     <script>
-      // Инициализация Telegram WebApp ДО загрузки основного скрипта
+      // Инициализация Telegram WebApp и принудительное скрытие MainButton
       (function() {
-        const tg = window.Telegram?.WebApp;
+        var tg = window.Telegram && window.Telegram.WebApp;
         if (tg) {
           tg.ready();
           tg.expand();
-          if (tg.MainButton) tg.MainButton.hide();
-          
+          function hideMain() {
+            try { if (tg.MainButton) tg.MainButton.hide(); } catch(e) {}
+          }
+          hideMain();
+          var t = 0, id = setInterval(function() { hideMain(); t++; if (t > 50) clearInterval(id); }, 300);
+          document.addEventListener('touchstart', hideMain, true);
+          document.addEventListener('click', hideMain, true);
           var theme = tg.colorScheme || 'dark';
           document.documentElement.setAttribute('data-theme', theme);
           tg.onEvent('themeChanged', function() {
             document.documentElement.setAttribute('data-theme', tg.colorScheme || 'dark');
           });
-          if (tg.backgroundColor) {
-            document.body.style.backgroundColor = tg.backgroundColor;
-          }
-          if (tg.headerColor) {
-            document.documentElement.style.setProperty('--tg-theme-header-bg-color', tg.headerColor);
-          }
+          if (tg.backgroundColor) document.body.style.backgroundColor = tg.backgroundColor;
+          if (tg.headerColor) document.documentElement.style.setProperty('--tg-theme-header-bg-color', tg.headerColor);
         }
       })();
     </script>
     <div id="app">
       <header class="app-header">
         <h1>Твои цели</h1>
-        <p class="subtitle">Один список: миссии, цели, привычки</p>
       </header>
 
       <main class="one-list">
-        <section class="list-section">
-          <div class="list-section-head">
-            <h2>Миссии</h2>
-            <button type="button" id="add-mission-btn" class="icon-add" title="Добавить миссию">+</button>
-          </div>
+        <div class="list-block">
+          <div class="list-head"><span class="list-head-title">Миссии</span><button type="button" id="add-mission-btn" class="btn-plus" aria-label="Добавить миссию">+</button></div>
           <div id="missions-list" class="cards"></div>
-        </section>
-
-        <section class="list-section">
-          <div class="list-section-head">
-            <h2>Цели</h2>
-            <button type="button" id="add-goal-btn" class="icon-add" title="Добавить цель">+</button>
-          </div>
+        </div>
+        <div class="list-block">
+          <div class="list-head"><span class="list-head-title">Цели</span><button type="button" id="add-goal-btn" class="btn-plus" aria-label="Добавить цель">+</button></div>
           <div id="goals-list" class="cards"></div>
-        </section>
-
-        <section class="list-section">
-          <div class="list-section-head">
-            <h2>Привычки</h2>
-            <button type="button" id="add-habit-btn" class="icon-add" title="Добавить привычку">+</button>
-          </div>
+        </div>
+        <div class="list-block">
+          <div class="list-head"><span class="list-head-title">Привычки</span><button type="button" id="add-habit-btn" class="btn-plus" aria-label="Добавить привычку">+</button></div>
           <div id="habits-list" class="cards"></div>
-        </section>
-
-        <section class="list-section">
-          <h2>Аналитика</h2>
+        </div>
+        <div class="list-block list-block-small">
+          <div class="list-head"><span class="list-head-title">Аналитика</span></div>
           <div id="analytics-view" class="analytics"></div>
-        </section>
-
-        <section class="list-section">
-          <h2>Профиль</h2>
+        </div>
+        <div class="list-block list-block-small">
+          <div class="list-head"><span class="list-head-title">Профиль</span></div>
           <div id="profile-view" class="profile-view"></div>
-        </section>
+        </div>
       </main>
     </div>
 
-    <div id="dialog-backdrop" class="backdrop hidden" onclick="event.stopPropagation();">
-      <div class="dialog" onclick="event.stopPropagation();">
+    <div id="dialog-backdrop" class="backdrop hidden">
+      <div class="dialog">
         <h3 id="dialog-title"></h3>
-        <input id="dialog-title-input" class="input" placeholder="Название" />
-        <textarea
-          id="dialog-description-input"
-          class="input"
-          placeholder="Описание (необязательно)"
-        ></textarea>
+        <input id="dialog-title-input" class="input" placeholder="Название" autocomplete="off" />
+        <textarea id="dialog-description-input" class="input" placeholder="Описание (необязательно)" autocomplete="off"></textarea>
         <div id="dialog-extra"></div>
         <div class="dialog-actions">
           <button type="button" id="dialog-cancel" class="secondary-btn">Отмена</button>

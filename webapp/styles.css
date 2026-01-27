@@ -96,39 +96,48 @@ body {
   min-width: 0;
 }
 
-/* Один общий список без вкладок */
+/* Один общий список: заголовок и + в одной строке, без отдельного блока снизу */
 .one-list {
   background: rgba(15, 23, 42, 0.9);
   border-radius: var(--radius-lg);
-  padding: 14px 12px 18px;
+  padding: 12px 10px 16px;
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.9);
 }
 
-.list-section {
-  margin-bottom: 20px;
+.list-block {
+  margin-bottom: 14px;
 }
 
-.list-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.list-block-small {
   margin-bottom: 10px;
 }
 
-.list-section-head h2 {
-  margin: 0;
-  font-size: 18px;
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 2px 0;
 }
 
+.list-head-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.btn-plus,
 .icon-add {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
   border-radius: 50%;
   border: none;
   background: linear-gradient(135deg, #6366f1, #a855f7);
   color: white;
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -136,11 +145,17 @@ body {
   justify-content: center;
   flex-shrink: 0;
   transition: transform 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
 
+.btn-plus:active,
 .icon-add:active {
   transform: scale(0.92);
 }
+
+.list-section { margin-bottom: 14px; }
+.list-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.list-section-head h2 { margin: 0; font-size: 16px; }
 
 .tab-content {
   background: rgba(15, 23, 42, 0.9);
