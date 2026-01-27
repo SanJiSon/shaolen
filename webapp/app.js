@@ -25,9 +25,19 @@ function initUser() {
 
   // Определяем базовый URL API
   const loc = window.location;
+  // Используем текущий origin (протокол + хост) для API
   state.baseUrl = `${loc.protocol}//${loc.host}`;
   
+  // Если есть порт, включаем его
+  if (loc.port && loc.port !== '80' && loc.port !== '443') {
+    state.baseUrl = `${loc.protocol}//${loc.hostname}:${loc.port}`;
+  }
+  
   console.log('📍 Текущий URL:', loc.href);
+  console.log('📍 Protocol:', loc.protocol);
+  console.log('📍 Host:', loc.host);
+  console.log('📍 Hostname:', loc.hostname);
+  console.log('📍 Port:', loc.port);
   console.log('📍 Base URL для API:', state.baseUrl);
   console.log('✅ Инициализация завершена');
 }
@@ -341,12 +351,30 @@ async function loadAll() {
   console.log('=== Начало загрузки данных ===');
   console.log('User ID:', uid);
   console.log('Base URL:', base);
+  console.log('URL проверки API:', base + '/api/health');
+  console.log('URL миссий:', base + '/api/user/' + uid + '/missions');
+  
+  // Сначала проверяем доступность API через /api/health
+  try {
+    const healthRes = await fetch(base + '/api/health', { method: 'GET' });
+    const healthOk = healthRes.ok && (healthRes.headers.get('content-type') || '').includes('application/json');
+    console.log('🔍 /api/health:', healthRes.status, healthOk ? 'OK' : 'FAIL');
+    if (!healthOk) {
+      const text = await healthRes.text();
+      console.error('🔍 Ответ /api/health не JSON:', text.substring(0, 150));
+      if (tg) {
+        tg.showAlert('Сервер API недоступен. Проверьте, что Nginx проксирует /api/ на порт 8000. См. NGINX_SETUP.md');
+      }
+    }
+  } catch (healthErr) {
+    console.error('🔍 /api/health недоступен:', healthErr);
+    if (tg) {
+      tg.showAlert('Не удалось подключиться к API по адресу: ' + base + '/api/ — проверьте настройку Nginx (прокси /api/ на порт 8000).');
+    }
+    return;
+  }
   
   try {
-    // Проверяем доступность API
-    const testUrl = `${base}/api/user/${uid}/missions`;
-    console.log('Тестируем URL:', testUrl);
-    
     const [missions, goals, habits, analytics] = await Promise.all([
       fetchJSON(`${base}/api/user/${uid}/missions`).catch(e => {
         console.error('❌ Ошибка загрузки миссий:', e.message, e);
