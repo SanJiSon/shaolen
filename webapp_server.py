@@ -1,10 +1,11 @@
 import os
-import asyncio
-from contextlib import asynccontextmanager
+import json
+import hmac
+import hashlib
+from urllib.parse import unquote
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.staticfiles import StaticFiles  # Не нужен, если используешь Nginx
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -13,6 +14,36 @@ import logging
 from database import Database
 
 load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+
+
+def validate_telegram_init_data(init_data: str) -> Optional[dict]:
+    """Проверяет подпись Telegram WebApp initData и возвращает данные (в т.ч. user) или None."""
+    if not init_data or not BOT_TOKEN:
+        return None
+    data = {}
+    hash_val = ""
+    for part in init_data.split("&"):
+        if "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        if k == "hash":
+            hash_val = v
+            continue
+        data[k] = unquote(v)
+    if not hash_val or "user" not in data:
+        return None
+    check_str = "\n".join(f"{k}={data[k]}" for k in sorted(data.keys()))
+    secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    expected = hmac.new(secret, check_str.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, hash_val):
+        return None
+    try:
+        data["_user"] = json.loads(data["user"])
+    except Exception:
+        return None
+    return data
 
 # Настройка логирования
 logging.basicConfig(
@@ -58,28 +89,66 @@ class HabitCreate(BaseModel):
     description: Optional[str] = ""
 
 
+class MissionUpdate(BaseModel):
+    title: str
+    description: Optional[str] = ""
+
+
+class GoalUpdate(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    deadline: Optional[str] = None
+    priority: int = 1
+
+
+class HabitUpdate(BaseModel):
+    title: str
+    description: Optional[str] = ""
+
+
 # Инициализация БД теперь в lifespan выше
 
 
-# Middleware для логирования всех запросов
+# Middleware: проверка Telegram initData для /api/user/... и привязка к реальному user_id
+@app.middleware("http")
+async def check_telegram_user(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/user/"):
+        raw = request.headers.get("X-Telegram-Init-Data", "").strip()
+        parsed = validate_telegram_init_data(raw)
+        if not parsed:
+            logger.warning(f"⛔ Нет или неверный X-Telegram-Init-Data для {path}")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Откройте приложение из Telegram. Данные пользователя не прошли проверку."},
+            )
+        u = parsed.get("_user") or {}
+        tg_user_id = u.get("id")
+        if tg_user_id is None:
+            return JSONResponse(status_code=401, content={"detail": "В initData нет пользователя."})
+        try:
+            path_user_id = int(path.split("/")[3])
+        except (IndexError, ValueError):
+            path_user_id = None
+        if path_user_id is not None and int(tg_user_id) != path_user_id:
+            logger.warning(f"⛔ user_id в пути ({path_user_id}) не совпадает с Telegram ({tg_user_id})")
+            return JSONResponse(status_code=403, content={"detail": "Доступ запрещён для этого пользователя."})
+        await db.add_user(
+            int(tg_user_id),
+            username=u.get("username"),
+            first_name=u.get("first_name"),
+            last_name=u.get("last_name"),
+        )
+        request.state.telegram_user_id = int(tg_user_id)
+    response = await call_next(request)
+    return response
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Логирует все входящие запросы"""
     path = request.url.path
     method = request.method
     logger.info(f"📥 {method} {path} - IP: {request.client.host if request.client else 'unknown'}")
-    
-    # Создает пользователя автоматически при первом обращении к API (GET или POST, например /seed)
-    if path.startswith("/api/user/") and method in ("GET", "POST"):
-        try:
-            parts = path.split("/")
-            if len(parts) >= 4:
-                user_id = int(parts[3])
-                await db.add_user(user_id, None)
-                logger.info(f"✅ Пользователь {user_id} создан/проверен")
-        except (ValueError, IndexError) as e:
-            logger.warning(f"⚠️ Не удалось извлечь user_id из пути {path}: {e}")
-    
     response = await call_next(request)
     logger.info(f"📤 {method} {path} - Status: {response.status_code}")
     return response
@@ -130,11 +199,9 @@ async def api_health():
 
 @app.get("/api/user/{user_id}/missions", response_model=None)
 async def api_get_missions(user_id: int):
-    """Получение миссий пользователя"""
+    """Получение миссий пользователя (user_id проверен через initData в middleware)."""
     try:
         logger.info(f"Запрос миссий для пользователя {user_id}")
-        # Убеждаемся, что пользователь существует
-        await db.add_user(user_id, None)
         missions = await db.get_missions(user_id, include_completed=True)
         logger.info(f"Найдено миссий: {len(missions) if missions else 0}")
         
@@ -180,6 +247,14 @@ async def api_add_mission(payload: MissionCreate):
     return JSONResponse(content=_row_to_json(mission) or {})
 
 
+@app.put("/api/missions/{mission_id}")
+async def api_update_mission(mission_id: int, payload: MissionUpdate):
+    """Редактирование миссии"""
+    await db.update_mission(mission_id, payload.title, payload.description or "")
+    mission = await db.get_mission(mission_id)
+    return JSONResponse(content=_row_to_json(mission) or {})
+
+
 @app.get("/api/mission/{mission_id}/subgoals", response_model=None)
 async def api_get_subgoals(mission_id: int):
     try:
@@ -203,11 +278,9 @@ async def api_get_subgoals(mission_id: int):
 
 @app.get("/api/user/{user_id}/goals", response_model=None)
 async def api_get_goals(user_id: int):
-    """Получение целей пользователя"""
+    """Получение целей пользователя (user_id проверен через initData в middleware)."""
     try:
         logger.info(f"Запрос целей для пользователя {user_id}")
-        # Убеждаемся, что пользователь существует
-        await db.add_user(user_id, None)
         goals = await db.get_goals(user_id, include_completed=True)
         logger.info(f"Найдено целей: {len(goals) if goals else 0}")
         
@@ -248,13 +321,21 @@ async def api_add_goal(payload: GoalCreate):
     raise HTTPException(status_code=404, detail="Goal not found after insert")
 
 
+@app.put("/api/goals/{goal_id}")
+async def api_update_goal(goal_id: int, payload: GoalUpdate):
+    """Редактирование цели"""
+    await db.update_goal(goal_id, payload.title, payload.description or "", payload.deadline, payload.priority)
+    goal = await db.get_goal(goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return JSONResponse(content=_row_to_json(goal))
+
+
 @app.get("/api/user/{user_id}/habits", response_model=None)
 async def api_get_habits(user_id: int):
-    """Получение привычек пользователя с текущими счетчиками"""
+    """Получение привычек пользователя (user_id проверен через initData в middleware)."""
     try:
         logger.info(f"Запрос привычек для пользователя {user_id}")
-        # Убеждаемся, что пользователь существует
-        await db.add_user(user_id, None)
         habits = await db.get_habits(user_id, active_only=False)
         logger.info(f"Найдено привычек: {len(habits) if habits else 0}")
         
@@ -290,6 +371,16 @@ async def api_add_habit(payload: HabitCreate):
         if h["id"] == habit_id:
             return JSONResponse(content=_row_to_json(h))
     raise HTTPException(status_code=404, detail="Habit not found after insert")
+
+
+@app.put("/api/habits/{habit_id}")
+async def api_update_habit(habit_id: int, payload: HabitUpdate):
+    """Редактирование привычки"""
+    await db.update_habit(habit_id, payload.title, payload.description or "")
+    habit = await db.get_habit(habit_id)
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    return JSONResponse(content=_row_to_json(habit))
 
 
 @app.post("/api/habits/{habit_id}/increment")
@@ -347,10 +438,46 @@ async def api_delete_habit(habit_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+
+
+@app.get("/api/user/{user_id}/profile", response_model=None)
+async def api_get_profile(user_id: int):
+    """Профиль пользователя: имя, отображаемое имя, статистика."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    out = {
+        "user_id": user.get("user_id"),
+        "username": user.get("username") or "",
+        "first_name": user.get("first_name") or "",
+        "last_name": user.get("last_name") or "",
+        "display_name": user.get("display_name") or "",
+    }
+    return JSONResponse(content=out)
+
+
+@app.put("/api/user/{user_id}/profile")
+async def api_update_profile(user_id: int, payload: ProfileUpdate):
+    """Сохранить отображаемое имя."""
+    await db.update_user_display_name(user_id, payload.display_name)
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    out = {
+        "user_id": user.get("user_id"),
+        "username": user.get("username"),
+        "first_name": user.get("first_name") or "",
+        "last_name": user.get("last_name") or "",
+        "display_name": (user.get("display_name") or "").strip() or "",
+    }
+    return JSONResponse(content=out)
+
+
 @app.post("/api/user/{user_id}/seed")
 async def api_seed_user(user_id: int):
     """Добавить примеры миссий, целей и привычек, если у пользователя ещё пусто"""
-    await db.add_user(user_id, None)
     await db.seed_user_examples(user_id)
     return JSONResponse(content={"ok": True, "message": "Примеры добавлены или уже были"})
 
@@ -360,8 +487,6 @@ async def api_get_analytics(user_id: int):
     """Получение аналитики пользователя"""
     try:
         logger.info(f"Запрос аналитики для пользователя {user_id}")
-        # Убеждаемся, что пользователь существует
-        await db.add_user(user_id, None)
         analytics = await db.get_user_analytics(user_id, days=30)
         chart_data = await db.get_habit_completions_by_date(user_id, days=30)
         habit_streak = await db.get_habit_streak(user_id)

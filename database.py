@@ -16,9 +16,17 @@ class Database:
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY,
                     username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    display_name TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            for col in ("first_name", "last_name", "display_name"):
+                try:
+                    await db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
+                except Exception:
+                    pass
 
             # Таблица миссий
             await db.execute("""
@@ -112,13 +120,43 @@ class Database:
 
             await db.commit()
 
-    async def add_user(self, user_id: int, username: Optional[str] = None):
-        """Добавление пользователя"""
+    async def add_user(
+        self,
+        user_id: int,
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+    ):
+        """Добавление или обновление пользователя."""
+        un = username or ""
+        fn = first_name or ""
+        ln = last_name or ""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)",
-                (user_id, username)
+                """INSERT INTO users (user_id, username, first_name, last_name)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                     username = excluded.username,
+                     first_name = CASE WHEN trim(excluded.first_name) != '' THEN excluded.first_name ELSE users.first_name END,
+                     last_name = CASE WHEN trim(excluded.last_name) != '' THEN excluded.last_name ELSE users.last_name END
+                """,
+                (user_id, un, fn, ln),
             )
+            await db.commit()
+
+    async def get_user(self, user_id: int) -> Optional[Dict]:
+        """Получение пользователя по ID."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as c:
+                row = await c.fetchone()
+                return dict(row) if row else None
+
+    async def update_user_display_name(self, user_id: int, display_name: Optional[str]) -> None:
+        """Обновить отображаемое имя пользователя."""
+        dn = (display_name or "").strip() or None
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE users SET display_name = ? WHERE user_id = ?", (dn, user_id))
             await db.commit()
 
     # === МИССИИ ===
@@ -160,6 +198,16 @@ class Database:
                 (datetime.now(), mission_id)
             )
             await db.commit()
+
+    async def update_mission(self, mission_id: int, title: str, description: str = "") -> bool:
+        """Обновление миссии"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE missions SET title = ?, description = ? WHERE id = ?",
+                (title, description or "", mission_id)
+            )
+            await db.commit()
+            return True
 
     async def delete_mission(self, mission_id: int):
         """Удаление миссии"""
@@ -237,6 +285,14 @@ class Database:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
 
+    async def get_goal(self, goal_id: int) -> Optional[Dict]:
+        """Получение цели по ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM goals WHERE id = ?", (goal_id,)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
     async def complete_goal(self, goal_id: int):
         """Завершение цели"""
         async with aiosqlite.connect(self.db_path) as db:
@@ -245,6 +301,18 @@ class Database:
                 (datetime.now(), goal_id)
             )
             await db.commit()
+
+    async def update_goal(self, goal_id: int, title: str, description: str = "",
+                         deadline: Optional[str] = None, priority: int = 1) -> bool:
+        """Обновление цели"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?
+                   WHERE id = ?""",
+                (title, description or "", deadline, priority, goal_id)
+            )
+            await db.commit()
+            return True
 
     async def delete_goal(self, goal_id: int):
         """Удаление цели"""
@@ -262,6 +330,24 @@ class Database:
             )
             await db.commit()
             return cursor.lastrowid
+
+    async def update_habit(self, habit_id: int, title: str, description: str = "") -> bool:
+        """Обновление привычки"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE habits SET title = ?, description = ? WHERE id = ?",
+                (title, description or "", habit_id)
+            )
+            await db.commit()
+            return True
+
+    async def get_habit(self, habit_id: int) -> Optional[Dict]:
+        """Получение привычки по ID (без today_count)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM habits WHERE id = ?", (habit_id,)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
 
     async def get_habits(self, user_id: int, active_only: bool = True) -> List[Dict]:
         """Получение всех привычек пользователя с текущим счетчиком на сегодня"""
