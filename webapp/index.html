@@ -48,13 +48,14 @@
         <button class="tab" data-tab="goals">Цели</button>
         <button class="tab" data-tab="habits">Привычки</button>
         <button class="tab" data-tab="analytics">Аналитика</button>
+        <button class="tab tab-profile" data-tab="profile">Профиль</button>
       </nav>
 
       <main class="tab-content">
         <section id="tab-missions" class="tab-panel active">
           <div class="panel-header">
             <h2>Миссии</h2>
-            <button id="add-mission-btn" class="primary-btn">➕ Добавить миссию</button>
+            <button id="add-mission-btn" class="primary-btn add-btn">➕ Добавить миссию</button>
           </div>
           <div id="missions-list" class="cards"></div>
         </section>
@@ -62,7 +63,7 @@
         <section id="tab-goals" class="tab-panel">
           <div class="panel-header">
             <h2>Цели</h2>
-            <button id="add-goal-btn" class="primary-btn">➕ Добавить цель</button>
+            <button id="add-goal-btn" class="primary-btn add-btn">➕ Добавить цель</button>
           </div>
           <div id="goals-list" class="cards"></div>
         </section>
@@ -70,7 +71,7 @@
         <section id="tab-habits" class="tab-panel">
           <div class="panel-header">
             <h2>Привычки</h2>
-            <button id="add-habit-btn" class="primary-btn">➕ Добавить привычку</button>
+            <button id="add-habit-btn" class="primary-btn add-btn">➕ Добавить привычку</button>
           </div>
           <div id="habits-list" class="cards"></div>
         </section>
@@ -80,6 +81,13 @@
             <h2>Аналитика</h2>
           </div>
           <div id="analytics-view" class="analytics"></div>
+        </section>
+
+        <section id="tab-profile" class="tab-panel">
+          <div class="panel-header">
+            <h2>Профиль</h2>
+          </div>
+          <div id="profile-view" class="profile-view"></div>
         </section>
       </main>
     </div>

@@ -91,6 +91,11 @@ body {
   color: var(--text);
 }
 
+.tab-profile {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .tab-content {
   background: rgba(15, 23, 42, 0.9);
   border-radius: var(--radius-lg);
@@ -110,12 +115,21 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .panel-header h2 {
   margin: 0;
   font-size: 18px;
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-header .primary-btn,
+.panel-header .add-btn {
+  flex-shrink: 0;
 }
 
 .primary-btn,
@@ -355,6 +369,168 @@ body {
   padding: 40px 20px;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* Свайп-контейнер для удаления (как в Telegram) */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.swipe-row-content {
+  position: relative;
+  z-index: 1;
+  background: inherit;
+  border-radius: inherit;
+  transition: transform 0.2s ease-out;
+}
+
+.swipe-row-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  z-index: 0;
+}
+
+.swipe-row-actions button {
+  border: none;
+  background: transparent;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.swipe-row.swiped .swipe-row-content {
+  transform: translateX(-72px);
+}
+
+/* График в аналитике */
+.analytics-chart-wrap {
+  margin: 16px 0;
+  padding: 12px 0;
+}
+
+.analytics-chart-title {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.analytics-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  padding: 8px 0;
+}
+
+.analytics-chart-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.analytics-chart-bar {
+  width: 100%;
+  min-height: 4px;
+  background: linear-gradient(180deg, var(--accent), #a855f7);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.2s;
+}
+
+.analytics-chart-label {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.streak-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+/* Профиль */
+.profile-view {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: white;
+  margin-bottom: 12px;
+}
+
+.profile-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.profile-username {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.profile-stats {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.profile-stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.profile-stat-row span:first-child {
+  color: var(--muted);
+}
+
+.profile-stat-row span:last-child {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.seed-btn {
+  margin-top: 16px;
+  width: 100%;
 }
 
 @media (min-width: 768px) {

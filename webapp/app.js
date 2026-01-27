@@ -3,6 +3,8 @@ const tg = window.Telegram?.WebApp;
 const state = {
   userId: null,
   baseUrl: "",
+  cache: { missions: [], goals: [], habits: [], analytics: null },
+  seeded: false,
 };
 
 function initUser() {
@@ -64,6 +66,7 @@ function switchTab(tabName) {
   $all(".tab-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${tabName}`);
   });
+  if (tabName === "profile") renderProfile();
 }
 
 async function fetchJSON(url, options = {}) {
@@ -155,12 +158,81 @@ function openDialog({ title, extraHtml = "", onSave }) {
 
 // --- render ---
 
+function wrapSwipeDelete(node, type, id) {
+  const wrap = document.createElement("div");
+  wrap.className = "swipe-row";
+  wrap.dataset.type = type;
+  wrap.dataset.id = String(id);
+  wrap.innerHTML = `
+    <div class="swipe-row-content">${node.outerHTML}</div>
+    <div class="swipe-row-actions"><button type="button" class="swipe-delete-btn">Удалить</button></div>
+  `;
+  return wrap;
+}
+
+function setupSwipeDelete(container) {
+  if (!container) return;
+  const rows = container.querySelectorAll(".swipe-row");
+  rows.forEach((row) => {
+    const type = row.dataset.type;
+    const id = row.dataset.id;
+    const content = row.querySelector(".swipe-row-content");
+    const btn = row.querySelector(".swipe-delete-btn");
+    let startX = 0, startLeft = 0;
+    const apply = (x) => {
+      const w = 72;
+      const v = Math.max(-w, Math.min(0, x));
+      if (content) content.style.transform = `translateX(${v}px)`;
+      row.classList.toggle("swiped", v <= -w / 2);
+    };
+    const onStart = (e) => {
+      if (e.target.closest(".habit-btn, .swipe-delete-btn")) return;
+      startX = e.touches ? e.touches[0].clientX : e.clientX;
+      startLeft = content && content.style.transform ? parseFloat(content.style.transform) || 0 : 0;
+    };
+    const onMove = (e) => {
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - startX;
+      apply(startLeft + x);
+    };
+    const onEnd = () => {
+      const tx = content ? parseFloat(content.style.transform) || 0 : 0;
+      row.classList.toggle("swiped", tx <= -36);
+      if (tx > -36) apply(0);
+      else apply(-72);
+    };
+    row.addEventListener("touchstart", onStart, { passive: true });
+    row.addEventListener("touchmove", onMove, { passive: true });
+    row.addEventListener("touchend", onEnd);
+    row.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      onStart(e);
+      const mm = (ev) => { if (ev.buttons !== 1) return; onMove(ev); };
+      const mu = () => { onEnd(); document.removeEventListener("mousemove", mm); document.removeEventListener("mouseup", mu); };
+      document.addEventListener("mousemove", mm);
+      document.addEventListener("mouseup", mu);
+    });
+    if (btn) {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        try {
+          const url = `${state.baseUrl}/api/${type === "mission" ? "missions" : type === "goal" ? "goals" : "habits"}/${id}`;
+          await fetch(url, { method: "DELETE" });
+          await loadAll();
+        } catch (err) {
+          console.error(err);
+          if (tg) tg.showAlert("Не удалось удалить");
+        }
+      });
+    }
+  });
+}
+
 function renderMissions(missions) {
   const root = $("#missions-list");
   root.innerHTML = "";
   
   if (!missions || missions.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет миссий. Добавьте первую миссию!</div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет миссий. Добавьте первую или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
     return;
   }
   
@@ -176,15 +248,12 @@ function renderMissions(missions) {
         <div class="card-title">${title}</div>
         <span class="badge">${done}</span>
       </div>
-      <div class="card-description">
-        ${description}
-      </div>
-      <div class="card-meta">
-        <span>Создана: ${createdAt}</span>
-      </div>
+      <div class="card-description">${description}</div>
+      <div class="card-meta"><span>Создана: ${createdAt}</span></div>
     `;
-    root.appendChild(card);
+    root.appendChild(wrapSwipeDelete(card, "mission", m.id));
   });
+  setupSwipeDelete(root);
 }
 
 function renderGoals(goals) {
@@ -192,7 +261,7 @@ function renderGoals(goals) {
   root.innerHTML = "";
   
   if (!goals || goals.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет целей. Добавьте первую цель!</div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет целей. Добавьте первую или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
     return;
   }
   
@@ -210,16 +279,12 @@ function renderGoals(goals) {
         <div class="card-title">${title}</div>
         <span class="badge">${priority}</span>
       </div>
-      <div class="card-description">
-        ${description}
-      </div>
-      <div class="card-meta">
-        <span>${done}</span>
-        <span>${deadline}</span>
-      </div>
+      <div class="card-description">${description}</div>
+      <div class="card-meta"><span>${done}</span><span>${deadline}</span></div>
     `;
-    root.appendChild(card);
+    root.appendChild(wrapSwipeDelete(card, "goal", g.id));
   });
+  setupSwipeDelete(root);
 }
 
 function renderHabits(habits) {
@@ -227,7 +292,7 @@ function renderHabits(habits) {
   root.innerHTML = "";
   
   if (!habits || habits.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет привычек. Добавьте первую привычку!</div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет привычек. Добавьте первую или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
     return;
   }
   
@@ -255,19 +320,16 @@ function renderHabits(habits) {
             <div class="card-title">${title}</div>
             <span class="badge">${isActive}</span>
           </div>
-          <div class="card-description">
-            ${description}
-          </div>
-          <div class="card-meta">
-            <span>Создана: ${createdAt}</span>
-          </div>
+          <div class="card-description">${description}</div>
+          <div class="card-meta"><span>Создана: ${createdAt}</span></div>
         </div>
       </div>
     `;
-    root.appendChild(card);
+    root.appendChild(wrapSwipeDelete(card, "habit", h.id));
   });
+  setupSwipeDelete(root);
   
-  // Добавляем обработчики для кнопок + и -
+  // Обработчики для кнопок + и -
   root.querySelectorAll('.habit-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const habitId = parseInt(btn.dataset.habitId);
@@ -300,20 +362,42 @@ function renderHabits(habits) {
 
 function renderAnalytics(data) {
   const root = $("#analytics-view");
+  if (!root) return;
   
-  // Безопасное преобразование чисел
   const missionsTotal = parseInt(data?.missions?.total || 0);
   const missionsCompleted = parseInt(data?.missions?.completed || 0);
   const missionsProgress = parseFloat(data?.missions?.avg_progress || 0);
-  
   const goalsTotal = parseInt(data?.goals?.total || 0);
   const goalsCompleted = parseInt(data?.goals?.completed || 0);
   const goalsRate = parseFloat(data?.goals?.completion_rate || 0);
-  
   const habitsTotal = parseInt(data?.habits?.total || 0);
   const habitsCompletions = parseInt(data?.habits?.total_completions || 0);
+  const streak = parseInt(data?.habits?.streak || 0);
+  const chart = data?.habit_chart || { labels: [], values: [] };
+  const labels = Array.isArray(chart.labels) ? chart.labels : [];
+  const values = Array.isArray(chart.values) ? chart.values : [];
+  const maxVal = values.length ? Math.max(1, ...values) : 1;
+  
+  let chartHtml = "";
+  if (labels.length) {
+    chartHtml = `
+      <div class="analytics-chart-wrap">
+        <div class="analytics-chart-title">Выполнения привычек по дням</div>
+        <div class="analytics-chart">
+          ${labels.map((l, i) => {
+            const v = values[i] || 0;
+            const h = Math.round((v / maxVal) * 100);
+            const short = (l + "").slice(-5);
+            return `<div class="analytics-chart-bar-wrap"><div class="analytics-chart-bar" style="height:${h}%"></div><span class="analytics-chart-label">${escapeHtml(short)}</span></div>`;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
   
   root.innerHTML = `
+    ${streak > 0 ? `<div class="streak-badge">🔥 Серия: ${streak} дн.</div>` : ""}
+    ${chartHtml}
     <div class="metric-group">
       <h4>Миссии</h4>
       <div class="metric-row"><span>Всего</span><span>${missionsTotal}</span></div>
@@ -329,8 +413,37 @@ function renderAnalytics(data) {
     <div class="metric-group">
       <h4>Привычки</h4>
       <div class="metric-row"><span>Активных</span><span>${habitsTotal}</span></div>
-      <div class="metric-row"><span>Выполнений</span><span>${habitsCompletions}</span></div>
+      <div class="metric-row"><span>Выполнений (30 дн.)</span><span>${habitsCompletions}</span></div>
+      <div class="metric-row"><span>Серия</span><span>${streak} дн.</span></div>
     </div>
+  `;
+}
+
+function renderProfile() {
+  const root = $("#profile-view");
+  if (!root) return;
+  const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+  const firstName = u ? escapeHtml(u.first_name || "") : "";
+  const lastName = u ? escapeHtml(u.last_name || "") : "";
+  const username = u && u.username ? "@" + escapeHtml(u.username) : "";
+  const name = [firstName, lastName].filter(Boolean).join(" ") || "Пользователь";
+  const missions = state.cache.missions || [];
+  const goals = state.cache.goals || [];
+  const habits = state.cache.habits || [];
+  const a = state.cache.analytics || {};
+  const missionsTotal = parseInt(a?.missions?.total || 0) || missions.length;
+  const goalsTotal = parseInt(a?.goals?.total || 0) || goals.length;
+  const habitsTotal = parseInt(a?.habits?.total || 0) || habits.length;
+  root.innerHTML = `
+    <div class="profile-avatar">${firstName ? firstName.charAt(0).toUpperCase() : "?"}</div>
+    <div class="profile-name">${name}</div>
+    ${username ? `<div class="profile-username">${username}</div>` : ""}
+    <div class="profile-stats">
+      <div class="profile-stat-row"><span>Миссий</span><span>${missionsTotal}</span></div>
+      <div class="profile-stat-row"><span>Целей</span><span>${goalsTotal}</span></div>
+      <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
+    </div>
+    <button type="button" class="primary-btn seed-btn js-seed-examples">Загрузить примеры миссий, целей и привычек</button>
   `;
 }
 
@@ -404,15 +517,36 @@ async function loadAll() {
     console.log('  Привычки:', habits?.length || 0);
     console.log('  Аналитика:', analytics);
     
-    // Обрабатываем пустые данные
-    renderMissions(Array.isArray(missions) ? missions : []);
-    renderGoals(Array.isArray(goals) ? goals : []);
-    renderHabits(Array.isArray(habits) ? habits : []);
-    renderAnalytics(analytics || {
+    const missionsList = Array.isArray(missions) ? missions : [];
+    const goalsList = Array.isArray(goals) ? goals : [];
+    const habitsList = Array.isArray(habits) ? habits : [];
+    const analyticsData = analytics || {
       missions: { total: 0, completed: 0, avg_progress: 0 },
       goals: { total: 0, completed: 0, completion_rate: 0 },
-      habits: { total: 0, total_completions: 0 }
-    });
+      habits: { total: 0, total_completions: 0, streak: 0 },
+      habit_chart: { labels: [], values: [] }
+    };
+    
+    state.cache.missions = missionsList;
+    state.cache.goals = goalsList;
+    state.cache.habits = habitsList;
+    state.cache.analytics = analyticsData;
+    
+    if (!state.seeded && missionsList.length === 0 && goalsList.length === 0 && habitsList.length === 0) {
+      state.seeded = true;
+      try {
+        await fetchJSON(`${base}/api/user/${uid}/seed`, { method: "POST" });
+        await loadAll();
+        return;
+      } catch (_) {
+        // примеры не загрузились — показываем пустые списки
+      }
+    }
+    
+    renderMissions(missionsList);
+    renderGoals(goalsList);
+    renderHabits(habitsList);
+    renderAnalytics(analyticsData);
     
     console.log('✅ Данные успешно отображены');
   } catch (e) {
@@ -423,11 +557,13 @@ async function loadAll() {
     renderMissions([]);
     renderGoals([]);
     renderHabits([]);
-    renderAnalytics({
+    state.cache.analytics = {
       missions: { total: 0, completed: 0, avg_progress: 0 },
       goals: { total: 0, completed: 0, completion_rate: 0 },
-      habits: { total: 0, total_completions: 0 }
-    });
+      habits: { total: 0, total_completions: 0, streak: 0 },
+      habit_chart: { labels: [], values: [] }
+    };
+    renderAnalytics(state.cache.analytics);
     
     // Определяем тип ошибки
     let errorMsg = "Ошибка при загрузке данных.";
@@ -457,7 +593,20 @@ function bindEvents() {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
 
-  $("#add-mission-btn").addEventListener("click", () => {
+  document.body.addEventListener("click", async (e) => {
+    if (!e.target.closest(".js-seed-examples")) return;
+    e.preventDefault();
+    try {
+      await fetchJSON(`${state.baseUrl}/api/user/${state.userId}/seed`, { method: "POST" });
+      await loadAll();
+      if (tg) tg.showAlert("Примеры загружены");
+    } catch (err) {
+      if (tg) tg.showAlert("Ошибка загрузки примеров");
+    }
+  });
+
+  const addMissionBtn = $("#add-mission-btn");
+  if (addMissionBtn) addMissionBtn.addEventListener("click", () => {
     openDialog({
       title: "Новая миссия",
       onSave: async ({ title, description }) => {
@@ -471,7 +620,8 @@ function bindEvents() {
     });
   });
 
-  $("#add-goal-btn").addEventListener("click", () => {
+  const addGoalBtn = $("#add-goal-btn");
+  if (addGoalBtn) addGoalBtn.addEventListener("click", () => {
     const extra =
       '<input id="deadline-input" class="input" type="date" /><select id="priority-input" class="input"><option value="1">📌 Низкий приоритет</option><option value="2">⭐ Средний приоритет</option><option value="3">🔥 Высокий приоритет</option></select>';
     openDialog({
@@ -496,7 +646,8 @@ function bindEvents() {
     });
   });
 
-  $("#add-habit-btn").addEventListener("click", () => {
+  const addHabitBtn = $("#add-habit-btn");
+  if (addHabitBtn) addHabitBtn.addEventListener("click", () => {
     openDialog({
       title: "Новая привычка",
       onSave: async ({ title, description }) => {
