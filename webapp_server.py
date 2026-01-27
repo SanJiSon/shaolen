@@ -61,14 +61,16 @@ class HabitCreate(BaseModel):
 # Инициализация БД теперь в lifespan выше
 
 
-# Middleware для автоматического создания пользователя
+# Middleware для логирования всех запросов
 @app.middleware("http")
-async def ensure_user_exists(request: Request, call_next):
-    """Создает пользователя автоматически при первом обращении к API"""
-    # Проверяем, является ли запрос API запросом с user_id
+async def log_requests(request: Request, call_next):
+    """Логирует все входящие запросы"""
     path = request.url.path
+    method = request.method
+    logger.info(f"📥 {method} {path} - IP: {request.client.host if request.client else 'unknown'}")
     
-    if path.startswith("/api/user/") and request.method == "GET":
+    # Создает пользователя автоматически при первом обращении к API
+    if path.startswith("/api/user/") and method == "GET":
         try:
             # Извлекаем user_id из пути
             parts = path.split("/")
@@ -76,11 +78,12 @@ async def ensure_user_exists(request: Request, call_next):
                 user_id = int(parts[3])
                 # Создаем пользователя если его нет
                 await db.add_user(user_id, None)
-                logger.info(f"Пользователь {user_id} создан/проверен")
-        except (ValueError, IndexError):
-            pass  # Не API запрос с user_id
+                logger.info(f"✅ Пользователь {user_id} создан/проверен")
+        except (ValueError, IndexError) as e:
+            logger.warning(f"⚠️ Не удалось извлечь user_id из пути {path}: {e}")
     
     response = await call_next(request)
+    logger.info(f"📤 {method} {path} - Status: {response.status_code}")
     return response
 
 
@@ -118,6 +121,13 @@ async def root():
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 """
+
+
+@app.get("/api/health", response_model=None)
+async def api_health():
+    """Проверка доступности API. Вызови: curl http://localhost:8000/api/health"""
+    logger.info("📥 GET /api/health - проверка здоровья API")
+    return JSONResponse(content={"status": "ok", "service": "goals-api"})
 
 
 @app.get("/api/user/{user_id}/missions", response_model=None)
