@@ -393,6 +393,43 @@ class Database:
             await db.execute("DELETE FROM habit_records WHERE habit_id = ?", (habit_id,))
             await db.commit()
 
+    async def get_habit_completions_by_date(self, user_id: int, days: int = 30) -> List[Dict]:
+        """По дням: дата и суммарное количество выполнений привычек за день (для графика)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT hr.date, SUM(COALESCE(hr.count, 0)) as total
+                FROM habit_records hr
+                JOIN habits h ON h.id = hr.habit_id AND h.user_id = ?
+                WHERE hr.date >= date('now', '-' || ? || ' days')
+                GROUP BY hr.date
+                ORDER BY hr.date
+                """,
+                (user_id, days),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [{"date": row[0], "completions": int(row[1] or 0)} for row in rows]
+
+    async def get_habit_streak(self, user_id: int) -> int:
+        """Текущая серия дней подряд с хотя бы одним выполнением привычки (считая сегодня)."""
+        by_date = await self.get_habit_completions_by_date(user_id, days=365)
+        if not by_date:
+            return 0
+        by_date_dict = {r["date"]: r["completions"] for r in by_date}
+        from datetime import date, timedelta
+        today = date.today().isoformat()
+        streak = 0
+        d = date.today()
+        for _ in range(365):
+            key = d.isoformat()
+            if by_date_dict.get(key, 0) > 0:
+                streak += 1
+                d -= timedelta(days=1)
+            else:
+                break
+        return streak
+
     # === АНАЛИТИКА ===
     async def get_user_analytics(self, user_id: int, days: int = 30) -> Dict:
         """Получение аналитики пользователя"""
@@ -407,14 +444,14 @@ class Database:
                 goals_total = goals_row[0] or 0
                 goals_completed = goals_row[1] or 0
 
-            # Статистика привычек
+            # Статистика привычек (total_completions = сумма count по всем записям, как на графике)
             async with db.execute(
                 """SELECT COUNT(DISTINCT h.id) as total_habits,
-                          SUM(CASE WHEN hr.completed = 1 THEN 1 ELSE 0 END) as total_completions
+                          COALESCE(SUM(hr.count), 0) as total_completions
                    FROM habits h
-                   LEFT JOIN habit_records hr ON h.id = hr.habit_id 
-                   WHERE h.user_id = ? AND hr.date >= date('now', '-' || ? || ' days')""",
-                (user_id, days)
+                   LEFT JOIN habit_records hr ON h.id = hr.habit_id AND hr.date >= date('now', '-' || ? || ' days')
+                   WHERE h.user_id = ?""",
+                (days, user_id)
             ) as cursor:
                 habits_row = await cursor.fetchone()
                 habits_total = habits_row[0] or 0
@@ -453,3 +490,37 @@ class Database:
                     "avg_progress": missions_progress * 100
                 }
             }
+
+    async def seed_user_examples(self, user_id: int) -> None:
+        """Добавляет примеры миссий, целей и привычек для нового пользователя."""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Проверяем, есть ли уже данные
+            for table, col in [("missions", "user_id"), ("goals", "user_id"), ("habits", "user_id")]:
+                async with db.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (user_id,)
+                ) as c:
+                    if (await c.fetchone())[0] > 0:
+                        return  # уже есть данные, не дублируем
+        # Примеры привычек
+        examples_habits = [
+            ("Пить воду", "Стакан воды утром и в течение дня"),
+            ("Зарядка", "10–15 минут утренней разминки"),
+            ("Читать", "Хотя бы 10 минут чтения"),
+            ("Прогулка", "Пройти 5000+ шагов"),
+        ]
+        for title, desc in examples_habits:
+            await self.add_habit(user_id, title, desc)
+        # Пример миссии с подцелями
+        mid = await self.add_mission(
+            user_id,
+            "Здоровый образ жизни",
+            "Регулярные привычки и цели на месяц",
+        )
+        for title, _ in [("Настроить режим сна", ""), ("Добавить привычки в приложение", ""), ("Первый отчёт через неделю", "")]:
+            await self.add_subgoal(mid, title, "")
+        # Примеры целей
+        from datetime import date, timedelta
+        d1 = (date.today() + timedelta(days=7)).isoformat()
+        d2 = (date.today() + timedelta(days=30)).isoformat()
+        await self.add_goal(user_id, "Пройти 5 км без остановки", "Постепенно увеличивать дистанцию", d1, 2)
+        await self.add_goal(user_id, "Прочитать одну книгу", "Выбрать книгу и читать по 15 минут в день", d2, 1)

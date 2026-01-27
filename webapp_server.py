@@ -305,6 +305,47 @@ async def api_decrement_habit(habit_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.delete("/api/missions/{mission_id}")
+async def api_delete_mission(mission_id: int):
+    """Удаление миссии и её подцелей"""
+    try:
+        await db.delete_mission(mission_id)
+        return JSONResponse(content={"ok": True})
+    except Exception as e:
+        logger.error(f"Ошибка удаления миссии {mission_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/goals/{goal_id}")
+async def api_delete_goal(goal_id: int):
+    """Удаление цели"""
+    try:
+        await db.delete_goal(goal_id)
+        return JSONResponse(content={"ok": True})
+    except Exception as e:
+        logger.error(f"Ошибка удаления цели {goal_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/habits/{habit_id}")
+async def api_delete_habit(habit_id: int):
+    """Удаление привычки"""
+    try:
+        await db.delete_habit(habit_id)
+        return JSONResponse(content={"ok": True})
+    except Exception as e:
+        logger.error(f"Ошибка удаления привычки {habit_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/user/{user_id}/seed")
+async def api_seed_user(user_id: int):
+    """Добавить примеры миссий, целей и привычек, если у пользователя ещё пусто"""
+    await db.add_user(user_id, None)
+    await db.seed_user_examples(user_id)
+    return JSONResponse(content={"ok": True, "message": "Примеры добавлены или уже были"})
+
+
 @app.get("/api/user/{user_id}/analytics", response_model=None)
 async def api_get_analytics(user_id: int):
     """Получение аналитики пользователя"""
@@ -313,6 +354,15 @@ async def api_get_analytics(user_id: int):
         # Убеждаемся, что пользователь существует
         await db.add_user(user_id, None)
         analytics = await db.get_user_analytics(user_id, days=30)
+        chart_data = await db.get_habit_completions_by_date(user_id, days=30)
+        habit_streak = await db.get_habit_streak(user_id)
+        
+        # График: все дни за период, без пропусков (дни без данных = 0)
+        from datetime import date, timedelta
+        today = date.today()
+        labels_chart = [(today - timedelta(days=i)).isoformat() for i in range(29, -1, -1)]
+        by_date = {r["date"]: r["completions"] for r in chart_data}
+        values_chart = [by_date.get(d, 0) for d in labels_chart]
         
         # Преобразуем все числа в float для JSON
         result = {
@@ -328,7 +378,12 @@ async def api_get_analytics(user_id: int):
             },
             "habits": {
                 "total": int(analytics.get("habits", {}).get("total", 0)),
-                "total_completions": int(analytics.get("habits", {}).get("total_completions", 0))
+                "total_completions": int(analytics.get("habits", {}).get("total_completions", 0)),
+                "streak": int(habit_streak)
+            },
+            "habit_chart": {
+                "labels": labels_chart,
+                "values": values_chart
             }
         }
         
@@ -339,7 +394,8 @@ async def api_get_analytics(user_id: int):
         error_result = {
             "missions": {"total": 0, "completed": 0, "avg_progress": 0.0},
             "goals": {"total": 0, "completed": 0, "completion_rate": 0.0},
-            "habits": {"total": 0, "total_completions": 0}
+            "habits": {"total": 0, "total_completions": 0, "streak": 0},
+            "habit_chart": {"labels": [], "values": []}
         }
         return JSONResponse(content=error_result)
 
