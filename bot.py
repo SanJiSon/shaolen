@@ -5,7 +5,7 @@ from datetime import datetime, date
 
 # Убираем предупреждение PTB про ConversationHandler (per_message / CallbackQueryHandler)
 warnings.filterwarnings("ignore", message=".*per_message.*", category=UserWarning)
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dotenv import load_dotenv
 from telegram import (
     Update,
@@ -47,30 +47,38 @@ WEBAPP_URL = os.getenv("WEBAPP_URL")
 db = Database()
 
 
-def get_main_menu() -> ReplyKeyboardMarkup:
-    """Главное меню бота.
+def _webapp_url() -> str:
+    if not WEBAPP_URL:
+        return ""
+    return WEBAPP_URL.rstrip("/")
 
-    Основной сценарий — открыть Telegram WebApp.
+
+def get_webapp_inline_keyboard() -> Optional[InlineKeyboardMarkup]:
+    """Inline-кнопка «Открыть приложение».
+
+    Важно: при открытии Web App с inline-кнопки Telegram передаёт initData (user и т.д.).
+    При открытии с reply-клавиатуры (кнопка над полем ввода) initData приходит пустым.
+    """
+    url = _webapp_url()
+    if not url:
+        return None
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🚀 Открыть приложение", web_app=WebAppInfo(url=url)),
+    ]])
+
+
+def get_main_menu() -> ReplyKeyboardMarkup:
+    """Главное меню бота (reply-клавиатура).
+
+    Примечание: при открытии Web App с этой клавиатуры initData часто пустой на телефонах.
+    Для надёжного входа пользователь должен открывать приложение по inline-кнопке (см. get_webapp_inline_keyboard).
     """
     keyboard = []
-    if WEBAPP_URL:
-        # Убеждаемся, что URL заканчивается правильно (без слеша или с /index.html)
-        webapp_url = WEBAPP_URL.rstrip('/')
-        # Можно использовать корневой путь, так как сервер отдает index.html по /
-        # Или явно указать /index.html если нужно
-        if not webapp_url.endswith('/index.html'):
-            # Используем корневой путь - сервер отдаст index.html
-            webapp_url = webapp_url
-        
-        logger.info(f"WebApp URL: {webapp_url}")
-        keyboard.append(
-            [
-                KeyboardButton(
-                    "🚀 Открыть веб‑приложение",
-                    web_app=WebAppInfo(url=webapp_url),
-                )
-            ]
-        )
+    if _webapp_url():
+        keyboard.append([
+            KeyboardButton("🚀 Открыть веб‑приложение", web_app=WebAppInfo(url=_webapp_url())),
+        ])
+        logger.info(f"WebApp URL: {_webapp_url()}")
     else:
         logger.warning("WEBAPP_URL не установлен в .env файле!")
     keyboard.append([KeyboardButton("ℹ️ Помощь")])
@@ -223,25 +231,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
     await db.add_user(user.id, user.username)
-    
+
     welcome_text = f"""
 👋 Привет, {user.first_name}!
 
 🎯 Добро пожаловать в бот для управления целями и привычками!
 
 ✨ Возможности:
-• 🎯 Миссии - долгосрочные цели с подцелями
-• ✅ Цели - краткосрочные и среднесрочные задачи
-• 🔄 Привычки - ежедневные активности
-• 📊 Аналитика - статистика и прогресс
+• 🎯 Миссии — долгосрочные цели с подцелями
+• ✅ Цели — краткосрочные и среднесрочные задачи
+• 🔄 Привычки — ежедневные активности
+• 📊 Аналитика — статистика и прогресс
+"""
+    await update.message.reply_text(welcome_text, reply_markup=get_main_menu())
 
-Используй меню ниже для навигации!
-    """
-    
-    await update.message.reply_text(
-        welcome_text,
-        reply_markup=get_main_menu()
-    )
+    # Inline-кнопка передаёт initData при открытии Web App; reply-кнопка «Открыть веб‑приложение» — часто нет.
+    if _webapp_url():
+        await update.message.reply_text(
+            "👇 Чтобы войти под своим аккаунтом, откройте приложение по кнопке ниже:",
+            reply_markup=get_webapp_inline_keyboard(),
+        )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -249,24 +258,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 📖 Помощь по использованию бота:
 
-🎯 **Миссии** - это долгосрочные цели с подцелями
-   Пример: "Организация свадьбы" с подцелями:
+🎯 **Миссии** — долгосрочные цели с подцелями
+   Пример: «Организация свадьбы» с подцелями:
    • Найти бюджет
    • Снять помещение
    • Выбрать меню
 
-✅ **Цели** - конкретные задачи с дедлайнами
-   Можно устанавливать приоритеты и сроки
+✅ **Цели** — задачи с дедлайнами и приоритетами
 
-🔄 **Привычки** - ежедневные активности
-   Отмечайте выполнение каждый день
+🔄 **Привычки** — ежедневные активности
 
-📊 **Аналитика** - статистика вашего прогресса
-   Просматривайте выполнение целей и привычек
+📊 **Аналитика** — статистика прогресса
 
-Используйте кнопки меню для навигации!
-    """
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+👇 Чтобы открыть веб‑приложение, нажмите кнопку ниже (так передаются данные для входа):
+"""
+    await update.message.reply_text(
+        help_text,
+        parse_mode="Markdown",
+        reply_markup=get_webapp_inline_keyboard(),
+    )
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -285,10 +295,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "ℹ️ Помощь":
         await help_command(update, context)
     else:
-        await update.message.reply_text(
-            "Используйте кнопки меню для навигации!",
-            reply_markup=get_main_menu()
-        )
+        kb = get_webapp_inline_keyboard()
+        msg = "Используйте кнопки меню для навигации!"
+        if kb:
+            msg += "\n\nЧтобы открыть веб‑приложение и войти под своим аккаунтом, нажмите кнопку ниже:"
+        await update.message.reply_text(msg, reply_markup=kb or get_main_menu())
 
 
 async def show_missions(update: Update, context: ContextTypes.DEFAULT_TYPE):
