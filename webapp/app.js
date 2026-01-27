@@ -25,6 +25,8 @@ function initUser() {
     state.userId = 1;
   }
 
+  if (tg && tg.MainButton) { try { tg.MainButton.hide(); } catch (_) {} }
+  if (tg && tg.BackButton) { try { tg.BackButton.hide(); } catch (_) {} }
   // Определяем базовый URL API
   const loc = window.location;
   // Используем текущий origin (протокол + хост) для API
@@ -126,40 +128,44 @@ async function fetchJSON(url, options = {}) {
 }
 
 function openDialog({ title, extraHtml = "", onSave }) {
-  $("#dialog-title").textContent = title;
-  $("#dialog-title-input").value = "";
-  $("#dialog-description-input").value = "";
-  $("#dialog-extra").innerHTML = extraHtml || "";
-
-  const backdrop = $("#dialog-backdrop");
+  if (tg && tg.MainButton) tg.MainButton.hide();
+  var titleEl = $("#dialog-title");
+  var titleInput = $("#dialog-title-input");
+  var descInput = $("#dialog-description-input");
+  var extraEl = $("#dialog-extra");
+  var backdrop = $("#dialog-backdrop");
+  if (titleEl) titleEl.textContent = title || "";
+  if (titleInput) titleInput.value = "";
+  if (descInput) descInput.value = "";
+  if (extraEl) extraEl.innerHTML = extraHtml || "";
   if (backdrop) backdrop.classList.remove("hidden");
 
-  const cancel = (e) => {
-    if (e) { e.preventDefault(); e.stopPropagation(); }
+  function cancel(ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
     if (backdrop) backdrop.classList.add("hidden");
-  };
+  }
 
-  const save = async (e) => {
-    if (e) { e.preventDefault(); e.stopPropagation(); }
-    const t = ($("#dialog-title-input").value || "").trim();
-    const d = ($("#dialog-description-input").value || "").trim();
+  function doSave(ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    var t = (titleInput && titleInput.value ? titleInput.value : "").trim();
+    var d = (descInput && descInput.value ? descInput.value : "").trim();
     if (!t) {
       if (tg) tg.showAlert("Введите название");
       return;
     }
-    try {
-      await onSave({ title: t, description: d });
-      if (backdrop) backdrop.classList.add("hidden");
-    } catch (err) {
+    var done = function() { if (backdrop) backdrop.classList.add("hidden"); };
+    var fail = function(err) {
       console.error("Ошибка сохранения:", err);
       if (tg) tg.showAlert("Не удалось сохранить. Проверьте подключение.");
-    }
-  };
+    };
+    Promise.resolve(onSave({ title: t, description: d })).then(done).catch(fail);
+  }
 
-  const cb = $("#dialog-cancel");
-  const sb = $("#dialog-save");
-  if (cb) cb.onclick = (e) => { if (e) { e.preventDefault(); e.stopPropagation(); } cancel(e); };
-  if (sb) sb.onclick = (e) => { if (e) { e.preventDefault(); e.stopPropagation(); } save(e); };
+  var cb = $("#dialog-cancel");
+  var sb = $("#dialog-save");
+  if (cb) cb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); cancel(ev); };
+  if (sb) sb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); doSave(ev); };
+  if (backdrop) backdrop.onclick = function(ev) { if (ev.target === backdrop) cancel(ev); };
 }
 
 // --- render ---
@@ -614,6 +620,7 @@ function bindEvents() {
   if (addMissionBtn) addMissionBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (tg && tg.MainButton) tg.MainButton.hide();
     openDialog({
       title: "Новая миссия",
       onSave: async ({ title, description }) => {
@@ -631,6 +638,7 @@ function bindEvents() {
   if (addGoalBtn) addGoalBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (tg && tg.MainButton) tg.MainButton.hide();
     const extra =
       '<input id="deadline-input" class="input" type="date" /><select id="priority-input" class="input"><option value="1">📌 Низкий приоритет</option><option value="2">⭐ Средний приоритет</option><option value="3">🔥 Высокий приоритет</option></select>';
     openDialog({
@@ -659,12 +667,14 @@ function bindEvents() {
   if (addHabitBtn) addHabitBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (tg && tg.MainButton) tg.MainButton.hide();
     openDialog({
       title: "Новая привычка",
-      onSave: async ({ title, description }) => {
-        await fetchJSON(`${state.baseUrl}/api/habits`, {
+      onSave: async function( data ) {
+        await fetchJSON(state.baseUrl + "/api/habits", {
           method: "POST",
-          body: JSON.stringify({ user_id: state.userId, title, description }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: state.userId, title: data.title, description: data.description || "" }),
         });
         await loadAll();
       },
