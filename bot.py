@@ -930,6 +930,7 @@ def main():
     application = Application.builder().token(token).post_init(post_init).build()
     
     # ConversationHandler для добавления элементов
+    # per_message=True нужен, чтобы CallbackQueryHandler корректно отслеживался по сообщениям (убирает PTBUserWarning)
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(button_callback, pattern="^add_mission$|^add_goal$|^add_habit$|^add_subgoal_"),
@@ -946,6 +947,7 @@ def main():
             WAITING_HABIT_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_habit_description)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=True,
     )
     
     # Регистрация обработчиков
