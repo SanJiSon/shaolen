@@ -531,28 +531,51 @@ function renderProfile() {
   }
 }
 
+function getInitData() {
+  if (!tg) return "";
+  if (tg.initData && typeof tg.initData === "string" && tg.initData.length > 10) return tg.initData;
+  return "";
+}
+
+async function ensureUserId() {
+  // 1) уже задан из initDataUnsafe
+  if (state.userId != null) return true;
+  if (!tg) return false;
+  var initData = getInitData();
+  if (!initData) {
+    // На части телефонов initData появляется с задержкой — даём 2 попытки с паузой
+    await new Promise(function(r) { setTimeout(r, 350); });
+    initData = getInitData();
+  }
+  if (!initData) {
+    await new Promise(function(r) { setTimeout(r, 500); });
+    initData = getInitData();
+  }
+  if (!initData) return false;
+  try {
+    var me = await fetchJSON(state.baseUrl + "/api/me", {
+      headers: { "X-Telegram-Init-Data": initData },
+    });
+    if (me && (me.user_id != null || me.user_id !== undefined)) {
+      state.userId = me.user_id;
+      console.log("✅ User ID получен через /api/me:", state.userId);
+      return true;
+    }
+  } catch (e) {
+    console.warn("Не удалось получить пользователя через /api/me:", e);
+  }
+  return false;
+}
+
 async function loadAll() {
   var base = state.baseUrl;
 
-  // Если userId не задан, но есть initData — пробуем получить пользователя через /api/me
-  // (на части устройств/клиентов tg.initDataUnsafe.user приходит пустым, хотя приложение открыто из Telegram)
-  if (!state.userId && tg && tg.initData) {
-    try {
-      var me = await fetchJSON(state.baseUrl + "/api/me", {
-        headers: { "X-Telegram-Init-Data": tg.initData },
-      });
-      if (me && me.user_id != null) {
-        state.userId = me.user_id;
-        console.log("✅ User ID получен через /api/me:", state.userId);
-      }
-    } catch (e) {
-      console.warn("Не удалось получить пользователя через /api/me:", e);
-    }
-  }
+  // На части устройств initDataUnsafe.user пустой, но приложение открыто из Telegram — получаем userId через /api/me
+  await ensureUserId();
 
   var uid = state.userId;
   if (!uid) {
-    console.error("userId не установлен");
+    console.error("userId не установлен. initData есть:", !!getInitData(), "tg:", !!tg);
     var errorMsg =
       "Ошибка: не удалось определить пользователя. Убедитесь, что вы открыли приложение через Telegram.";
     console.error(errorMsg);
@@ -773,10 +796,12 @@ function bindEvents() {
   });
 
   var addMissionBtn = $("#add-mission-btn");
-  if (addMissionBtn) addMissionBtn.addEventListener("click", function(e) {
+  if (addMissionBtn) addMissionBtn.addEventListener("click", async function(e) {
     e.preventDefault();
     e.stopPropagation();
     if (tg && tg.MainButton) tg.MainButton.hide();
+    if (!state.userId) await ensureUserId();
+    if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
     openDialog({
       title: "Новая миссия",
       onSave: async ({ title, description }) => {
@@ -791,10 +816,12 @@ function bindEvents() {
   });
 
   const addGoalBtn = $("#add-goal-btn");
-  if (addGoalBtn) addGoalBtn.addEventListener("click", (e) => {
+  if (addGoalBtn) addGoalBtn.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (tg && tg.MainButton) tg.MainButton.hide();
+    if (!state.userId) await ensureUserId();
+    if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
     const extra =
       '<input id="deadline-input" class="input" type="date" /><select id="priority-input" class="input"><option value="1">📌 Низкий приоритет</option><option value="2">⭐ Средний приоритет</option><option value="3">🔥 Высокий приоритет</option></select>';
     openDialog({
@@ -820,10 +847,12 @@ function bindEvents() {
   });
 
   const addHabitBtn = $("#add-habit-btn");
-  if (addHabitBtn) addHabitBtn.addEventListener("click", (e) => {
+  if (addHabitBtn) addHabitBtn.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (tg && tg.MainButton) tg.MainButton.hide();
+    if (!state.userId) await ensureUserId();
+    if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
     openDialog({
       title: "Новая привычка",
       onSave: async function( data ) {
