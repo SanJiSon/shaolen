@@ -59,14 +59,8 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function switchTab(tabName) {
-  $all(".tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.tab === tabName);
-  });
-  $all(".tab-panel").forEach((panel) => {
-    panel.classList.toggle("active", panel.id === `tab-${tabName}`);
-  });
-  if (tabName === "profile") renderProfile();
+function switchTab(_tabName) {
+  // Один список — вкладок нет, оставляем пустой вызов для совместимости
 }
 
 async function fetchJSON(url, options = {}) {
@@ -135,25 +129,37 @@ function openDialog({ title, extraHtml = "", onSave }) {
   $("#dialog-title").textContent = title;
   $("#dialog-title-input").value = "";
   $("#dialog-description-input").value = "";
-  $("#dialog-extra").innerHTML = extraHtml;
+  $("#dialog-extra").innerHTML = extraHtml || "";
 
   const backdrop = $("#dialog-backdrop");
-  backdrop.classList.remove("hidden");
+  if (backdrop) backdrop.classList.remove("hidden");
 
-  const cancel = () => {
-    backdrop.classList.add("hidden");
+  const cancel = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (backdrop) backdrop.classList.add("hidden");
   };
 
-  const save = async () => {
-    const t = $("#dialog-title-input").value.trim();
-    const d = $("#dialog-description-input").value.trim();
-    if (!t) return;
-    await onSave({ title: t, description: d });
-    backdrop.classList.add("hidden");
+  const save = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const t = ($("#dialog-title-input").value || "").trim();
+    const d = ($("#dialog-description-input").value || "").trim();
+    if (!t) {
+      if (tg) tg.showAlert("Введите название");
+      return;
+    }
+    try {
+      await onSave({ title: t, description: d });
+      if (backdrop) backdrop.classList.add("hidden");
+    } catch (err) {
+      console.error("Ошибка сохранения:", err);
+      if (tg) tg.showAlert("Не удалось сохранить. Проверьте подключение.");
+    }
   };
 
-  $("#dialog-cancel").onclick = cancel;
-  $("#dialog-save").onclick = save;
+  const cb = $("#dialog-cancel");
+  const sb = $("#dialog-save");
+  if (cb) cb.onclick = (e) => { if (e) { e.preventDefault(); e.stopPropagation(); } cancel(e); };
+  if (sb) sb.onclick = (e) => { if (e) { e.preventDefault(); e.stopPropagation(); } save(e); };
 }
 
 // --- render ---
@@ -300,61 +306,46 @@ function renderHabits(habits) {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
     const card = document.createElement("div");
-    card.className = "card habit-card";
+    card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
-    const description = escapeHtml(h.description || "Без описания");
-    const createdAt = h.created_at ? String(h.created_at).slice(0, 10) : '';
-    const isActive = h.is_active ? "Активна" : "Отключена";
     card.innerHTML = `
       <div class="habit-card-content">
-        <div class="habit-controls">
-          <button class="habit-btn habit-btn-minus" data-habit-id="${habitId}" data-action="decrement">−</button>
-          <div class="habit-counter">
-            <span class="habit-count-number">${count}</span>
-            <span class="habit-count-label">раз</span>
-          </div>
-          <button class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
+        <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
+        <div class="habit-name">${title}</div>
+        <div class="habit-count-wrap ${count ? '' : 'hide'}">
+          <span class="habit-count-number">${count}</span>
+          <span class="habit-count-unit">раз</span>
         </div>
-        <div class="habit-info">
-          <div class="card-header">
-            <div class="card-title">${title}</div>
-            <span class="badge">${isActive}</span>
-          </div>
-          <div class="card-description">${description}</div>
-          <div class="card-meta"><span>Создана: ${createdAt}</span></div>
-        </div>
+        <button type="button" class="habit-btn habit-btn-minus" data-habit-id="${habitId}" data-action="decrement">−</button>
       </div>
     `;
     root.appendChild(wrapSwipeDelete(card, "habit", h.id));
   });
   setupSwipeDelete(root);
   
-  // Обработчики для кнопок + и -
   root.querySelectorAll('.habit-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const habitId = parseInt(btn.dataset.habitId);
       const action = btn.dataset.action;
-      
       try {
         const endpoint = action === 'increment' 
           ? `${state.baseUrl}/api/habits/${habitId}/increment`
           : `${state.baseUrl}/api/habits/${habitId}/decrement`;
-        
         const result = await fetchJSON(endpoint, { method: 'POST' });
-        
-        // Обновляем счетчик в UI
-        const counter = btn.closest('.habit-card').querySelector('.habit-count-number');
-        if (counter) {
-          counter.textContent = result.count || 0;
+        const row = btn.closest('.habit-card');
+        const numEl = row && row.querySelector('.habit-count-number');
+        const wrapEl = row && row.querySelector('.habit-count-wrap');
+        const newCount = result.count || 0;
+        if (numEl) numEl.textContent = newCount;
+        if (wrapEl) {
+          wrapEl.classList.toggle('hide', !newCount);
         }
-        
-        // Обновляем все данные для синхронизации
         await loadAll();
-      } catch (error) {
-        console.error('Ошибка обновления счетчика:', error);
-        if (tg) {
-          tg.showAlert('Ошибка при обновлении счетчика');
-        }
+      } catch (err) {
+        console.error('Ошибка счётчика:', err);
+        if (tg) tg.showAlert('Ошибка при обновлении');
       }
     });
   });
@@ -543,6 +534,7 @@ async function loadAll() {
     renderGoals(goalsList);
     renderHabits(habitsList);
     renderAnalytics(analyticsData);
+    renderProfile();
     
     // Если всё пусто — в фоне загружаем примеры и перезапрашиваем (без блокировки UI)
     if (!state.seeded && missionsList.length === 0 && goalsList.length === 0 && habitsList.length === 0) {
@@ -560,16 +552,20 @@ async function loadAll() {
     console.error('Stack:', e.stack);
     
     // Показываем пустые списки вместо ошибки
-    renderMissions([]);
-    renderGoals([]);
-    renderHabits([]);
+    state.cache.missions = [];
+    state.cache.goals = [];
+    state.cache.habits = [];
     state.cache.analytics = {
       missions: { total: 0, completed: 0, avg_progress: 0 },
       goals: { total: 0, completed: 0, completion_rate: 0 },
       habits: { total: 0, total_completions: 0, streak: 0 },
       habit_chart: { labels: [], values: [] }
     };
+    renderMissions([]);
+    renderGoals([]);
+    renderHabits([]);
     renderAnalytics(state.cache.analytics);
+    renderProfile();
     
     // Определяем тип ошибки
     let errorMsg = "Ошибка при загрузке данных.";
@@ -595,9 +591,12 @@ async function loadAll() {
 }
 
 function bindEvents() {
-  $all(".tab").forEach((btn) => {
-    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
-  });
+  var tabEls = $all(".tab");
+  if (tabEls.length) {
+    tabEls.forEach((btn) => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+  }
 
   document.body.addEventListener("click", async (e) => {
     if (!e.target.closest(".js-seed-examples")) return;
@@ -612,7 +611,9 @@ function bindEvents() {
   });
 
   const addMissionBtn = $("#add-mission-btn");
-  if (addMissionBtn) addMissionBtn.addEventListener("click", () => {
+  if (addMissionBtn) addMissionBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     openDialog({
       title: "Новая миссия",
       onSave: async ({ title, description }) => {
@@ -627,7 +628,9 @@ function bindEvents() {
   });
 
   const addGoalBtn = $("#add-goal-btn");
-  if (addGoalBtn) addGoalBtn.addEventListener("click", () => {
+  if (addGoalBtn) addGoalBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const extra =
       '<input id="deadline-input" class="input" type="date" /><select id="priority-input" class="input"><option value="1">📌 Низкий приоритет</option><option value="2">⭐ Средний приоритет</option><option value="3">🔥 Высокий приоритет</option></select>';
     openDialog({
@@ -653,13 +656,14 @@ function bindEvents() {
   });
 
   const addHabitBtn = $("#add-habit-btn");
-  if (addHabitBtn) addHabitBtn.addEventListener("click", () => {
+  if (addHabitBtn) addHabitBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     openDialog({
       title: "Новая привычка",
       onSave: async ({ title, description }) => {
         await fetchJSON(`${state.baseUrl}/api/habits`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user_id: state.userId, title, description }),
         });
         await loadAll();

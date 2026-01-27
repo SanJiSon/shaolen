@@ -16,18 +16,13 @@
         if (tg) {
           tg.ready();
           tg.expand();
+          if (tg.MainButton) tg.MainButton.hide();
           
-          // Применяем тему Telegram
-          const theme = tg.colorScheme || 'dark';
+          var theme = tg.colorScheme || 'dark';
           document.documentElement.setAttribute('data-theme', theme);
-          
-          // Обновляем тему при изменении
           tg.onEvent('themeChanged', function() {
-            const newTheme = tg.colorScheme || 'dark';
-            document.documentElement.setAttribute('data-theme', newTheme);
+            document.documentElement.setAttribute('data-theme', tg.colorScheme || 'dark');
           });
-          
-          // Настраиваем цвета фона
           if (tg.backgroundColor) {
             document.body.style.backgroundColor = tg.backgroundColor;
           }
@@ -40,60 +35,48 @@
     <div id="app">
       <header class="app-header">
         <h1>Твои цели</h1>
-        <p class="subtitle">Миссии, цели, привычки и аналитика в одном месте</p>
+        <p class="subtitle">Один список: миссии, цели, привычки</p>
       </header>
 
-      <nav class="tabs">
-        <button class="tab active" data-tab="missions">Миссии</button>
-        <button class="tab" data-tab="goals">Цели</button>
-        <button class="tab" data-tab="habits">Привычки</button>
-        <button class="tab" data-tab="analytics">Аналитика</button>
-        <button class="tab tab-profile" data-tab="profile">Профиль</button>
-      </nav>
-
-      <main class="tab-content">
-        <section id="tab-missions" class="tab-panel active">
-          <div class="panel-header">
+      <main class="one-list">
+        <section class="list-section">
+          <div class="list-section-head">
             <h2>Миссии</h2>
-            <button id="add-mission-btn" class="primary-btn add-btn">➕ Добавить миссию</button>
+            <button type="button" id="add-mission-btn" class="icon-add" title="Добавить миссию">+</button>
           </div>
           <div id="missions-list" class="cards"></div>
         </section>
 
-        <section id="tab-goals" class="tab-panel">
-          <div class="panel-header">
+        <section class="list-section">
+          <div class="list-section-head">
             <h2>Цели</h2>
-            <button id="add-goal-btn" class="primary-btn add-btn">➕ Добавить цель</button>
+            <button type="button" id="add-goal-btn" class="icon-add" title="Добавить цель">+</button>
           </div>
           <div id="goals-list" class="cards"></div>
         </section>
 
-        <section id="tab-habits" class="tab-panel">
-          <div class="panel-header">
+        <section class="list-section">
+          <div class="list-section-head">
             <h2>Привычки</h2>
-            <button id="add-habit-btn" class="primary-btn add-btn">➕ Добавить привычку</button>
+            <button type="button" id="add-habit-btn" class="icon-add" title="Добавить привычку">+</button>
           </div>
           <div id="habits-list" class="cards"></div>
         </section>
 
-        <section id="tab-analytics" class="tab-panel">
-          <div class="panel-header">
-            <h2>Аналитика</h2>
-          </div>
+        <section class="list-section">
+          <h2>Аналитика</h2>
           <div id="analytics-view" class="analytics"></div>
         </section>
 
-        <section id="tab-profile" class="tab-panel">
-          <div class="panel-header">
-            <h2>Профиль</h2>
-          </div>
+        <section class="list-section">
+          <h2>Профиль</h2>
           <div id="profile-view" class="profile-view"></div>
         </section>
       </main>
     </div>
 
-    <div id="dialog-backdrop" class="backdrop hidden">
-      <div class="dialog">
+    <div id="dialog-backdrop" class="backdrop hidden" onclick="event.stopPropagation();">
+      <div class="dialog" onclick="event.stopPropagation();">
         <h3 id="dialog-title"></h3>
         <input id="dialog-title-input" class="input" placeholder="Название" />
         <textarea
@@ -103,8 +86,8 @@
         ></textarea>
         <div id="dialog-extra"></div>
         <div class="dialog-actions">
-          <button id="dialog-cancel" class="secondary-btn">Отмена</button>
-          <button id="dialog-save" class="primary-btn">Сохранить</button>
+          <button type="button" id="dialog-cancel" class="secondary-btn">Отмена</button>
+          <button type="button" id="dialog-save" class="primary-btn">Сохранить</button>
         </div>
       </div>
     </div>

@@ -96,6 +96,52 @@ body {
   min-width: 0;
 }
 
+/* Один общий список без вкладок */
+.one-list {
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: var(--radius-lg);
+  padding: 14px 12px 18px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.9);
+}
+
+.list-section {
+  margin-bottom: 20px;
+}
+
+.list-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.list-section-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.icon-add {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: white;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.icon-add:active {
+  transform: scale(0.92);
+}
+
 .tab-content {
   background: rgba(15, 23, 42, 0.9);
   border-radius: var(--radius-lg);
@@ -182,8 +228,53 @@ body {
   border: 1px solid rgba(55, 65, 81, 0.8);
 }
 
+/* Привычки в стиле Habitica: строка [ + ] название [ счётчик ] [ − ] */
 .habit-card {
-  padding: 12px;
+  padding: 10px 12px;
+}
+
+.habit-card.habitica-row .habit-card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.habit-card .habit-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.habit-count-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: rgba(99, 102, 241, 0.2);
+  border-radius: 999px;
+  min-width: 44px;
+  justify-content: center;
+}
+
+.habit-count-wrap.hide {
+  display: none;
+}
+
+.habit-count-number {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.habit-count-unit {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .habit-card-content {
@@ -192,85 +283,47 @@ body {
   gap: 12px;
 }
 
-.habit-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
 .habit-btn {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: transform 0.15s, box-shadow 0.15s;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .habit-btn-plus {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #f97316, #ea580c);
   color: white;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.4);
 }
 
 .habit-btn-plus:active {
-  transform: scale(0.9);
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.2);
+  transform: scale(0.92);
 }
 
 .habit-btn-minus {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
+  background: rgba(100, 116, 139, 0.5);
   color: white;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .habit-btn-minus:active {
-  transform: scale(0.9);
-  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.2);
+  transform: scale(0.92);
+  background: rgba(239, 68, 68, 0.6);
 }
 
-.habit-counter {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 50px;
-  padding: 4px 8px;
-  background: var(--accent-soft);
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-}
-
-.habit-count-number {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--accent);
-  line-height: 1;
-}
-
-.habit-count-label {
-  font-size: 10px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-top: 2px;
-}
-
-.habit-info {
-  flex: 1;
-  min-width: 0;
-}
-
-[data-theme="light"] .habit-counter {
-  background: rgba(99, 102, 241, 0.08);
-  border-color: rgba(99, 102, 241, 0.2);
+[data-theme="light"] .habit-btn-minus {
+  background: rgba(148, 163, 184, 0.35);
+  color: #334155;
 }
 
 .card-header {
