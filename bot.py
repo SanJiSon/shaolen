@@ -12,6 +12,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     KeyboardButton,
     WebAppInfo,
 )
@@ -67,22 +68,9 @@ def get_webapp_inline_keyboard() -> Optional[InlineKeyboardMarkup]:
     ]])
 
 
-def get_main_menu() -> ReplyKeyboardMarkup:
-    """Главное меню бота (reply-клавиатура).
-
-    Примечание: при открытии Web App с этой клавиатуры initData часто пустой на телефонах.
-    Для надёжного входа пользователь должен открывать приложение по inline-кнопке (см. get_webapp_inline_keyboard).
-    """
-    keyboard = []
-    if _webapp_url():
-        keyboard.append([
-            KeyboardButton("🚀 Открыть веб‑приложение", web_app=WebAppInfo(url=_webapp_url())),
-        ])
-        logger.info(f"WebApp URL: {_webapp_url()}")
-    else:
-        logger.warning("WEBAPP_URL не установлен в .env файле!")
-    keyboard.append([KeyboardButton("ℹ️ Помощь")])
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+def remove_keyboard():
+    """Убрать reply-клавиатуру (кнопки «Помощь» и «Открыть приложение» больше не показываются)."""
+    return ReplyKeyboardRemove()
 
 
 def get_mission_menu(mission_id: int) -> InlineKeyboardMarkup:
@@ -243,7 +231,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • 🔄 Привычки — ежедневные активности
 • 📊 Аналитика — статистика и прогресс
 """
-    await update.message.reply_text(welcome_text, reply_markup=get_main_menu())
+    await update.message.reply_text(welcome_text, reply_markup=remove_keyboard())
 
     # Inline-кнопка передаёт initData при открытии Web App; reply-кнопка «Открыть веб‑приложение» — часто нет.
     if _webapp_url():
@@ -296,10 +284,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await help_command(update, context)
     else:
         kb = get_webapp_inline_keyboard()
-        msg = "Используйте кнопки меню для навигации!"
-        if kb:
-            msg += "\n\nЧтобы открыть веб‑приложение и войти под своим аккаунтом, нажмите кнопку ниже:"
-        await update.message.reply_text(msg, reply_markup=kb or get_main_menu())
+        msg = "Откройте приложение по кнопке ниже:"
+        await update.message.reply_text(msg, reply_markup=kb or remove_keyboard())
 
 
 async def show_missions(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -923,7 +909,7 @@ async def handle_habit_description(update: Update, context: ContextTypes.DEFAULT
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена операции"""
-    await update.message.reply_text("❌ Операция отменена.", reply_markup=get_main_menu())
+    await update.message.reply_text("❌ Операция отменена.", reply_markup=remove_keyboard())
     return ConversationHandler.END
 
 

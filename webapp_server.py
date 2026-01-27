@@ -74,6 +74,12 @@ class MissionCreate(BaseModel):
     user_id: int
     title: str
     description: Optional[str] = ""
+    deadline: Optional[str] = None
+
+
+class SubgoalCreate(BaseModel):
+    title: str
+    description: Optional[str] = ""
 
 
 class GoalCreate(BaseModel):
@@ -93,6 +99,7 @@ class HabitCreate(BaseModel):
 class MissionUpdate(BaseModel):
     title: str
     description: Optional[str] = ""
+    deadline: Optional[str] = None
 
 
 class GoalUpdate(BaseModel):
@@ -275,7 +282,9 @@ def _row_to_json(obj):
 async def api_add_mission(payload: MissionCreate):
     """Добавление миссии"""
     await db.add_user(payload.user_id, None)
-    mission_id = await db.add_mission(payload.user_id, payload.title, payload.description or "")
+    mission_id = await db.add_mission(
+        payload.user_id, payload.title, payload.description or "", payload.deadline
+    )
     mission = await db.get_mission(mission_id)
     return JSONResponse(content=_row_to_json(mission) or {})
 
@@ -283,9 +292,52 @@ async def api_add_mission(payload: MissionCreate):
 @app.put("/api/missions/{mission_id}")
 async def api_update_mission(mission_id: int, payload: MissionUpdate):
     """Редактирование миссии"""
-    await db.update_mission(mission_id, payload.title, payload.description or "")
+    await db.update_mission(
+        mission_id, payload.title, payload.description or "", payload.deadline
+    )
     mission = await db.get_mission(mission_id)
     return JSONResponse(content=_row_to_json(mission) or {})
+
+
+@app.post("/api/missions/{mission_id}/complete")
+async def api_complete_mission(mission_id: int):
+    """Отметить миссию как выполненную"""
+    await db.complete_mission(mission_id)
+    mission = await db.get_mission(mission_id)
+    return JSONResponse(content=_row_to_json(mission) or {})
+
+
+@app.post("/api/goals/{goal_id}/complete")
+async def api_complete_goal(goal_id: int):
+    """Отметить цель как выполненную"""
+    await db.complete_goal(goal_id)
+    goal = await db.get_goal(goal_id)
+    return JSONResponse(content=_row_to_json(goal) or {})
+
+
+@app.post("/api/missions/{mission_id}/subgoals")
+async def api_add_subgoal(mission_id: int, payload: SubgoalCreate):
+    """Добавить подцель к миссии"""
+    subgoal_id = await db.add_subgoal(
+        mission_id, payload.title, payload.description or ""
+    )
+    subgoal = await db.get_subgoal(subgoal_id)
+    return JSONResponse(content=_row_to_json(subgoal) or {})
+
+
+@app.post("/api/subgoals/{subgoal_id}/complete")
+async def api_complete_subgoal(subgoal_id: int):
+    """Отметить подцель как выполненную"""
+    await db.complete_subgoal(subgoal_id)
+    subgoal = await db.get_subgoal(subgoal_id)
+    return JSONResponse(content=_row_to_json(subgoal) or {})
+
+
+@app.delete("/api/subgoals/{subgoal_id}")
+async def api_delete_subgoal(subgoal_id: int):
+    """Удалить подцель"""
+    await db.delete_subgoal(subgoal_id)
+    return JSONResponse(content={"ok": True})
 
 
 @app.get("/api/mission/{mission_id}/subgoals", response_model=None)
@@ -516,23 +568,29 @@ async def api_seed_user(user_id: int):
 
 
 @app.get("/api/user/{user_id}/analytics", response_model=None)
-async def api_get_analytics(user_id: int):
-    """Получение аналитики пользователя"""
+async def api_get_analytics(user_id: int, period: str = "month"):
+    """Получение аналитики пользователя. period: week (7 дн.), month (30 дн.), all (365 дн.)"""
+    from datetime import date, timedelta
+    if period == "week":
+        days = 7
+    elif period == "all":
+        days = 365
+    else:
+        days = 30  # month
     try:
-        logger.info(f"Запрос аналитики для пользователя {user_id}")
-        analytics = await db.get_user_analytics(user_id, days=30)
-        chart_data = await db.get_habit_completions_by_date(user_id, days=30)
+        logger.info(f"Запрос аналитики для пользователя {user_id}, период={period}, days={days}")
+        analytics = await db.get_user_analytics(user_id, days=days)
+        chart_data = await db.get_habit_completions_by_date(user_id, days=days)
         habit_streak = await db.get_habit_streak(user_id)
-        
-        # График: все дни за период, без пропусков (дни без данных = 0)
-        from datetime import date, timedelta
+
         today = date.today()
-        labels_chart = [(today - timedelta(days=i)).isoformat() for i in range(29, -1, -1)]
+        labels_chart = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
         by_date = {r["date"]: r["completions"] for r in chart_data}
         values_chart = [by_date.get(d, 0) for d in labels_chart]
         
         # Преобразуем все числа в float для JSON
         result = {
+            "period": period,
             "missions": {
                 "total": int(analytics.get("missions", {}).get("total", 0)),
                 "completed": int(analytics.get("missions", {}).get("completed", 0)),

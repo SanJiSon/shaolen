@@ -35,12 +35,17 @@ class Database:
                     user_id INTEGER NOT NULL,
                     title TEXT NOT NULL,
                     description TEXT,
+                    deadline TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     completed_at TIMESTAMP,
                     is_completed INTEGER DEFAULT 0,
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )
             """)
+            try:
+                await db.execute("ALTER TABLE missions ADD COLUMN deadline TEXT")
+            except Exception:
+                pass
 
             # Таблица подцелей (подцели миссий)
             await db.execute("""
@@ -160,12 +165,12 @@ class Database:
             await db.commit()
 
     # === МИССИИ ===
-    async def add_mission(self, user_id: int, title: str, description: str = "") -> int:
+    async def add_mission(self, user_id: int, title: str, description: str = "", deadline: Optional[str] = None) -> int:
         """Добавление миссии"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT INTO missions (user_id, title, description) VALUES (?, ?, ?)",
-                (user_id, title, description)
+                "INSERT INTO missions (user_id, title, description, deadline) VALUES (?, ?, ?, ?)",
+                (user_id, title, description or "", deadline)
             )
             await db.commit()
             return cursor.lastrowid
@@ -199,12 +204,12 @@ class Database:
             )
             await db.commit()
 
-    async def update_mission(self, mission_id: int, title: str, description: str = "") -> bool:
+    async def update_mission(self, mission_id: int, title: str, description: str = "", deadline: Optional[str] = None) -> bool:
         """Обновление миссии"""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "UPDATE missions SET title = ?, description = ? WHERE id = ?",
-                (title, description or "", mission_id)
+                "UPDATE missions SET title = ?, description = ?, deadline = ? WHERE id = ?",
+                (title, description or "", deadline, mission_id)
             )
             await db.commit()
             return True
