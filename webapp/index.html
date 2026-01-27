@@ -5,12 +5,11 @@
     <title>Goals WebApp</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0f172a" />
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=5" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
     <script>
-      // Инициализация Telegram WebApp и принудительное скрытие MainButton
       (function() {
         var tg = window.Telegram && window.Telegram.WebApp;
         if (tg) {
@@ -36,29 +35,47 @@
     <div id="app">
       <header class="app-header">
         <h1>Твои цели</h1>
+        <p class="subtitle">Миссии, цели, привычки и аналитика</p>
       </header>
 
-      <main class="one-list">
-        <div class="list-block">
-          <div class="list-head"><span class="list-head-title">Миссии</span><button type="button" id="add-mission-btn" class="btn-plus" aria-label="Добавить миссию">+</button></div>
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="missions" role="tab" aria-selected="true">Миссии</button>
+        <button type="button" class="tab" data-tab="goals" role="tab">Цели</button>
+        <button type="button" class="tab" data-tab="habits" role="tab">Привычки</button>
+        <button type="button" class="tab" data-tab="analytics" role="tab">Аналитика</button>
+        <button type="button" class="tab tab-profile" data-tab="profile" role="tab">Профиль</button>
+      </nav>
+
+      <main class="tab-content">
+        <section id="panel-missions" class="tab-panel active" role="tabpanel">
+          <div class="panel-header">
+            <h2>Миссии</h2>
+            <button type="button" id="add-mission-btn" class="primary-btn add-btn" aria-label="Добавить миссию">+ Добавить</button>
+          </div>
           <div id="missions-list" class="cards"></div>
-        </div>
-        <div class="list-block">
-          <div class="list-head"><span class="list-head-title">Цели</span><button type="button" id="add-goal-btn" class="btn-plus" aria-label="Добавить цель">+</button></div>
+        </section>
+        <section id="panel-goals" class="tab-panel" role="tabpanel">
+          <div class="panel-header">
+            <h2>Цели</h2>
+            <button type="button" id="add-goal-btn" class="primary-btn add-btn" aria-label="Добавить цель">+ Добавить</button>
+          </div>
           <div id="goals-list" class="cards"></div>
-        </div>
-        <div class="list-block">
-          <div class="list-head"><span class="list-head-title">Привычки</span><button type="button" id="add-habit-btn" class="btn-plus" aria-label="Добавить привычку">+</button></div>
+        </section>
+        <section id="panel-habits" class="tab-panel" role="tabpanel">
+          <div class="panel-header">
+            <h2>Привычки</h2>
+            <button type="button" id="add-habit-btn" class="primary-btn add-btn" aria-label="Добавить привычку">+ Добавить</button>
+          </div>
           <div id="habits-list" class="cards"></div>
-        </div>
-        <div class="list-block list-block-small">
-          <div class="list-head"><span class="list-head-title">Аналитика</span></div>
+        </section>
+        <section id="panel-analytics" class="tab-panel analytics-panel" role="tabpanel">
+          <h2>Аналитика</h2>
           <div id="analytics-view" class="analytics"></div>
-        </div>
-        <div class="list-block list-block-small">
-          <div class="list-head"><span class="list-head-title">Профиль</span></div>
+        </section>
+        <section id="panel-profile" class="tab-panel" role="tabpanel">
+          <h2>Профиль</h2>
           <div id="profile-view" class="profile-view"></div>
-        </div>
+        </section>
       </main>
     </div>
 
@@ -77,7 +94,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>
-
