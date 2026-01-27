@@ -123,13 +123,25 @@ body {
 .panel-header h2 {
   margin: 0;
   font-size: 18px;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .panel-header .primary-btn,
 .panel-header .add-btn {
   flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* На узких экранах кнопка «Добавить» под заголовком, чтобы всегда была видна */
+@media (max-width: 400px) {
+  .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .panel-header .add-btn {
+    width: 100%;
+  }
 }
 
 .primary-btn,
@@ -366,9 +378,16 @@ body {
 
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: 24px 16px;
   color: var(--muted);
   font-size: 14px;
+  line-height: 1.5;
+}
+
+.empty-state .primary-btn,
+.empty-state .js-seed-examples {
+  margin-top: 12px;
+  display: inline-block;
 }
 
 /* Свайп-контейнер для удаления (как в Telegram) */

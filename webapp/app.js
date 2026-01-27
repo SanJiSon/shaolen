@@ -232,7 +232,7 @@ function renderMissions(missions) {
   root.innerHTML = "";
   
   if (!missions || missions.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет миссий. Добавьте первую или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет миссий.<br>Используйте кнопку <strong>«➕ Добавить миссию»</strong> выше или загрузите примеры: <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
     return;
   }
   
@@ -261,7 +261,7 @@ function renderGoals(goals) {
   root.innerHTML = "";
   
   if (!goals || goals.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет целей. Добавьте первую или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет целей.<br>Кнопка <strong>«➕ Добавить цель»</strong> выше или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
     return;
   }
   
@@ -292,7 +292,7 @@ function renderHabits(habits) {
   root.innerHTML = "";
   
   if (!habits || habits.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет привычек. Добавьте первую или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
+    root.innerHTML = '<div class="empty-state">У вас пока нет привычек (Пить воду, Зарядка и др.).<br>Кнопка <strong>«➕ Добавить привычку»</strong> выше или <button type="button" class="primary-btn js-seed-examples">Загрузить примеры</button></div>';
     return;
   }
   
@@ -467,7 +467,7 @@ async function loadAll() {
   console.log('URL проверки API:', base + '/api/health');
   console.log('URL миссий:', base + '/api/user/' + uid + '/missions');
   
-  // Сначала проверяем доступность API через /api/health
+  // Проверка API: при недоступности всё равно рисуем интерфейс, потом покажем предупреждение
   try {
     const healthRes = await fetch(base + '/api/health', { method: 'GET' });
     const healthOk = healthRes.ok && (healthRes.headers.get('content-type') || '').includes('application/json');
@@ -475,15 +475,20 @@ async function loadAll() {
     if (!healthOk) {
       const text = await healthRes.text();
       console.error('🔍 Ответ /api/health не JSON:', text.substring(0, 150));
-      if (tg) {
-        tg.showAlert('Сервер API недоступен. Проверьте, что Nginx проксирует /api/ на порт 8000. См. NGINX_SETUP.md');
-      }
+      renderMissions([]);
+      renderGoals([]);
+      renderHabits([]);
+      renderAnalytics({ missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } });
+      if (tg) tg.showAlert('Сервер API недоступен. Проверьте Nginx (прокси /api/ на порт 8000).');
+      return;
     }
   } catch (healthErr) {
     console.error('🔍 /api/health недоступен:', healthErr);
-    if (tg) {
-      tg.showAlert('Не удалось подключиться к API по адресу: ' + base + '/api/ — проверьте настройку Nginx (прокси /api/ на порт 8000).');
-    }
+    renderMissions([]);
+    renderGoals([]);
+    renderHabits([]);
+    renderAnalytics({ missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } });
+    if (tg) tg.showAlert('Не удалось подключиться к API. Проверьте Nginx и доступность ' + base + '/api/');
     return;
   }
   
@@ -506,7 +511,8 @@ async function loadAll() {
         return {
           missions: { total: 0, completed: 0, avg_progress: 0 },
           goals: { total: 0, completed: 0, completion_rate: 0 },
-          habits: { total: 0, total_completions: 0 }
+          habits: { total: 0, total_completions: 0, streak: 0 },
+          habit_chart: { labels: [], values: [] }
         };
       }),
     ]);
@@ -532,21 +538,21 @@ async function loadAll() {
     state.cache.habits = habitsList;
     state.cache.analytics = analyticsData;
     
-    if (!state.seeded && missionsList.length === 0 && goalsList.length === 0 && habitsList.length === 0) {
-      state.seeded = true;
-      try {
-        await fetchJSON(`${base}/api/user/${uid}/seed`, { method: "POST" });
-        await loadAll();
-        return;
-      } catch (_) {
-        // примеры не загрузились — показываем пустые списки
-      }
-    }
-    
+    // Сразу показываем интерфейс (пустой или с данными)
     renderMissions(missionsList);
     renderGoals(goalsList);
     renderHabits(habitsList);
     renderAnalytics(analyticsData);
+    
+    // Если всё пусто — в фоне загружаем примеры и перезапрашиваем (без блокировки UI)
+    if (!state.seeded && missionsList.length === 0 && goalsList.length === 0 && habitsList.length === 0) {
+      state.seeded = true;
+      fetchJSON(`${base}/api/user/${uid}/seed`, { method: "POST" })
+        .then(function () { return loadAll(); })
+        .catch(function () {
+          if (tg) tg.showAlert("Не удалось загрузить примеры. Нажмите «Загрузить примеры» вручную.");
+        });
+    }
     
     console.log('✅ Данные успешно отображены');
   } catch (e) {
