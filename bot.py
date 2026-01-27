@@ -1,6 +1,10 @@
 import os
+import warnings
 import logging
 from datetime import datetime, date
+
+# Убираем предупреждение PTB про ConversationHandler (per_message / CallbackQueryHandler)
+warnings.filterwarnings("ignore", message=".*per_message.*", category=UserWarning)
 from typing import Dict, List
 from dotenv import load_dotenv
 from telegram import (
@@ -929,8 +933,7 @@ def main():
     # Создание приложения
     application = Application.builder().token(token).post_init(post_init).build()
     
-    # ConversationHandler для добавления элементов
-    # per_message=True нужен, чтобы CallbackQueryHandler корректно отслеживался по сообщениям (убирает PTBUserWarning)
+    # ConversationHandler для добавления элементов (per_message=False по умолчанию — предупреждение подавлено выше)
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(button_callback, pattern="^add_mission$|^add_goal$|^add_habit$|^add_subgoal_"),
@@ -947,7 +950,6 @@ def main():
             WAITING_HABIT_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_habit_description)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=True,
     )
     
     # Регистрация обработчиков
