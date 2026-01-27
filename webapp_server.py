@@ -198,6 +198,38 @@ async def api_health():
     return JSONResponse(content={"status": "ok", "service": "goals-api"})
 
 
+@app.get("/api/me", response_model=None)
+async def api_me(request: Request):
+    """
+    Определение пользователя по X-Telegram-Init-Data.
+    Используется, когда в WebApp приходит пустой initDataUnsafe.user (например на части клиентов).
+    """
+    raw = request.headers.get("X-Telegram-Init-Data", "").strip()
+    parsed = validate_telegram_init_data(raw)
+    if not parsed:
+        logger.warning("⛔ GET /api/me — нет или неверный X-Telegram-Init-Data")
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Откройте приложение из Telegram. Данные пользователя не прошли проверку."},
+        )
+    u = parsed.get("_user") or {}
+    tg_user_id = u.get("id")
+    if tg_user_id is None:
+        return JSONResponse(status_code=401, content={"detail": "В initData нет пользователя."})
+    await db.add_user(
+        int(tg_user_id),
+        username=u.get("username"),
+        first_name=u.get("first_name"),
+        last_name=u.get("last_name"),
+    )
+    return JSONResponse(content={
+        "user_id": int(tg_user_id),
+        "first_name": u.get("first_name"),
+        "last_name": u.get("last_name"),
+        "username": u.get("username"),
+    })
+
+
 @app.get("/api/user/{user_id}/missions", response_model=None)
 async def api_get_missions(user_id: int):
     """Получение миссий пользователя (user_id проверен через initData в middleware)."""
