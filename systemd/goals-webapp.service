@@ -1,0 +1,18 @@
+[Unit]
+Description=Goals WebApp API (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/telegram_goals_bot
+Environment=PATH=/usr/bin:/usr/local/bin
+EnvironmentFile=/path/to/telegram_goals_bot/.env
+ExecStart=/usr/bin/python3 /path/to/telegram_goals_bot/webapp_server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
