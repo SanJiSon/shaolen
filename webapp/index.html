@@ -79,6 +79,23 @@
       </main>
     </div>
 
+    <button type="button" id="shaolen-fab" class="shaolen-fab" aria-label="Спросить совета у мастера Шаолень">Спросить совета у мастера Шаолень</button>
+
+    <div id="shaolen-overlay" class="shaolen-overlay hidden">
+      <div class="shaolen-chat">
+        <div class="shaolen-chat-header">
+          <h3>Мастер Шаолень</h3>
+          <span class="shaolen-usage"></span>
+          <button type="button" class="shaolen-close" aria-label="Закрыть">&times;</button>
+        </div>
+        <div class="shaolen-messages"></div>
+        <div class="shaolen-input-wrap">
+          <textarea id="shaolen-input" class="shaolen-input" placeholder="Напишите вопрос или попросите совет…" rows="2"></textarea>
+          <button type="button" id="shaolen-send" class="shaolen-send primary-btn">Отправить</button>
+        </div>
+      </div>
+    </div>
+
     <div id="dialog-backdrop" class="backdrop hidden">
       <div class="dialog">
         <form id="dialog-form" novalidate>
@@ -94,6 +111,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
   </body>
 </html>

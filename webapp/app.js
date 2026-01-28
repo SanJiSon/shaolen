@@ -5,6 +5,8 @@ const state = {
   baseUrl: "",
   cache: { missions: [], goals: [], habits: [], analytics: null, profile: null, subgoalsByMission: {} },
   analyticsPeriod: "month",
+  shaolenMessages: [],
+  shaolenUsage: { used: 0, limit: 50 },
 };
 
 function initUser() {
@@ -725,10 +727,102 @@ async function loadAll() {
   }
 }
 
+function openShaolenChat() {
+  var overlay = $("#shaolen-overlay");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  fetchShaolenUsage().then(function() { renderShaolenChat(); });
+}
+
+function closeShaolenChat() {
+  var overlay = $("#shaolen-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function fetchShaolenUsage() {
+  var uid = state.userId;
+  if (!uid) return Promise.resolve();
+  return fetchJSON(state.baseUrl + "/api/user/" + uid + "/shaolen/usage")
+    .then(function(r) { state.shaolenUsage = r || { used: 0, limit: 50 }; })
+    .catch(function() { state.shaolenUsage = { used: 0, limit: 50 }; });
+}
+
+function renderShaolenChat() {
+  var usageEl = $(".shaolen-usage");
+  var messagesEl = $(".shaolen-messages");
+  if (!messagesEl) return;
+  var u = state.shaolenUsage || { used: 0, limit: 50 };
+  if (usageEl) usageEl.textContent = "Запросов сегодня: " + u.used + " / " + u.limit;
+  var msgs = state.shaolenMessages || [];
+  var html = "";
+  for (var i = 0; i < msgs.length; i++) {
+    var m = msgs[i];
+    var cls = m.role === "user" ? "shaolen-msg-user" : "shaolen-msg-assistant";
+    html += "<div class=\"shaolen-msg " + cls + "\">" + escapeHtml(m.content || "") + "</div>";
+  }
+  messagesEl.innerHTML = html;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function sendShaolenMessage() {
+  var input = $("#shaolen-input");
+  var sendBtn = $("#shaolen-send");
+  if (!input || !state.userId) return;
+  var text = (input.value || "").trim();
+  if (!text) return;
+  var u = state.shaolenUsage || { used: 0, limit: 50 };
+  if (u.used >= u.limit) {
+    if (tg) tg.showAlert("Достигнут лимит запросов на сегодня (50). Заходите завтра.");
+    return;
+  }
+  state.shaolenMessages.push({ role: "user", content: text });
+  input.value = "";
+  renderShaolenChat();
+  if (sendBtn) sendBtn.disabled = true;
+  fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/shaolen/ask", {
+    method: "POST",
+    body: JSON.stringify({ message: text }),
+  })
+    .then(function(res) {
+      state.shaolenMessages.push({ role: "assistant", content: res.reply || "Нет ответа." });
+      state.shaolenUsage = res.usage || state.shaolenUsage;
+      renderShaolenChat();
+    })
+    .catch(function(err) {
+      var msg = "Не удалось получить ответ.";
+      if (err && err.status === 429) msg = "Лимит запросов на сегодня исчерпан. Заходите завтра.";
+      else if (err && err.body) { try { var j = JSON.parse(err.body); if (j.detail) msg = j.detail; } catch (_) {} }
+      state.shaolenMessages.push({ role: "assistant", content: "⚠️ " + msg });
+      renderShaolenChat();
+      if (err && err.status === 429 && err.body) {
+        try { var j = JSON.parse(err.body); if (j.usage) state.shaolenUsage = j.usage; } catch (_) {}
+      }
+    })
+    .finally(function() { if (sendBtn) sendBtn.disabled = false; });
+}
+
 function bindEvents() {
   var tabEls = $all(".tab");
   tabEls.forEach(function(btn) {
     btn.addEventListener("click", function() { switchTab(btn.dataset.tab); });
+  });
+
+  var shaolenFab = $("#shaolen-fab");
+  if (shaolenFab) shaolenFab.addEventListener("click", function() {
+    if (!state.userId) { if (tg) tg.showAlert("Откройте приложение из Telegram."); return; }
+    openShaolenChat();
+  });
+  var shaolenClose = $(".shaolen-close");
+  if (shaolenClose) shaolenClose.addEventListener("click", closeShaolenChat);
+  var shaolenSend = $("#shaolen-send");
+  if (shaolenSend) shaolenSend.addEventListener("click", sendShaolenMessage);
+  var shaolenInput = $("#shaolen-input");
+  if (shaolenInput) shaolenInput.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendShaolenMessage(); }
+  });
+  var shaolenOverlay = $("#shaolen-overlay");
+  if (shaolenOverlay) shaolenOverlay.addEventListener("click", function(e) {
+    if (e.target === shaolenOverlay) closeShaolenChat();
   });
 
   document.body.addEventListener("change", async function(e) {
