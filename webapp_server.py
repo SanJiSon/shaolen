@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import hmac
 import hashlib
@@ -701,6 +702,65 @@ def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> s
     return "\n".join(parts)
 
 
+def _parse_add_intent(text: str):
+    """
+    Если пользователь просит добавить привычку/цель/миссию — возвращаем
+    ("habit"|"goal"|"mission", title, description, subgoals_list или []).
+    Иначе None.
+    """
+    t = (text or "").strip()
+    if len(t) < 4:
+        return None
+    low = t.lower()
+    # Привычка
+    m = re.search(
+        r"(?:добавь|добавить|создай|создать|хочу|заведи|завести|новая?)\s+привычк\w*\s*[:-]?\s*(.+)",
+        low,
+        re.IGNORECASE,
+    )
+    if m:
+        title = m.group(1).strip().strip("'\"").strip()[:200]
+        if title:
+            return ("habit", title, "", [])
+
+    # Цель (цель, задача)
+    m = re.search(
+        r"(?:добавь|добавить|создай|создать|хочу|новая?)\s+(?:цел\w*|задач\w*)\s*[:-]?\s*(.+)",
+        low,
+        re.IGNORECASE,
+    )
+    if m:
+        title = m.group(1).strip().strip("'\"").strip()[:200]
+        if title:
+            return ("goal", title, "", [])
+
+    # Миссия (возможно с подцелями)
+    m = re.search(
+        r"(?:добавь|добавить|создай|создать|хочу|новая?)\s+мисси\w*\s*[:-]?\s*(.+)",
+        low,
+        re.IGNORECASE,
+    )
+    if m:
+        rest = m.group(1).strip().strip("'\"").strip()
+        subgoals = []
+        title = rest
+        sub_match = re.search(
+            r"\s+(?:с\s+)?подцелями?\s*[:-]?\s*(.+)$",
+            rest,
+            re.IGNORECASE,
+        )
+        if sub_match:
+            title = rest[: sub_match.start()].strip().strip("'\"").strip()
+            sub_str = sub_match.group(1).strip()
+            for part in re.split(r"[,;]|\s+и\s+", sub_str):
+                s = part.strip().strip("'\"").strip()[:150]
+                if s:
+                    subgoals.append(s)
+        if title:
+            return ("mission", title[:200], "", subgoals)
+    return None
+
+
 def _normalize_image_url(img_b64: Optional[str]) -> Optional[str]:
     """Вернуть data:image/...;base64,... не длиннее ~4MB для Groq."""
     if not img_b64 or not str(img_b64).strip():
@@ -742,6 +802,27 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
     has_image = bool(image_url)
     logger.info("shaolen/ask user_id=%s has_image=%s msg_len=%s", user_id, has_image, len(text))
 
+    created_what = None
+    intent = _parse_add_intent(text)
+    if intent:
+        action, title, desc, subgoals = intent
+        try:
+            if action == "habit":
+                await db.add_habit(user_id, title, desc or "")
+                created_what = f"привычку «{title}»"
+            elif action == "goal":
+                await db.add_goal(user_id, title, desc or "", None, 1)
+                created_what = f"цель «{title}»"
+            elif action == "mission":
+                mid = await db.add_mission(user_id, title, desc or "", None)
+                for sg in (subgoals or [])[:10]:
+                    await db.add_subgoal(mid, sg, "")
+                sub_s = f" (подцели: {', '.join(subgoals[:5])})" if subgoals else ""
+                created_what = f"миссию «{title}»{sub_s}"
+        except Exception as e:
+            logger.exception("Ошибка авто-добавления по фразе user_id=%s: %s", user_id, e)
+            created_what = None
+
     missions = await db.get_missions(user_id, include_completed=True)
     goals = await db.get_goals(user_id, include_completed=True)
     habits = await db.get_habits(user_id, active_only=False)
@@ -752,6 +833,8 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
     )
     if has_image:
         system_text += "\n\nПользователь может присылать фото еды — помогай оценивать калории и давать советы по питанию в рамках его целей."
+    if created_what:
+        system_text += f"\n\nТы только что по просьбе пользователя добавил {created_what}. Ответь коротко, подтверди добавление и подбодри."
 
     user_content: object
     if has_image and image_url:
@@ -797,10 +880,10 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
     await db.increment_shaolen_requests(user_id)
     await db.add_shaolen_history(user_id, text, reply, has_image=has_image)
     new_used = used + 1
-    return JSONResponse(content={
-        "reply": reply,
-        "usage": {"used": new_used, "limit": LIMIT_SHAOLEN_PER_DAY},
-    })
+    out = {"reply": reply, "usage": {"used": new_used, "limit": LIMIT_SHAOLEN_PER_DAY}}
+    if intent and created_what:
+        out["created"] = intent[0]
+    return JSONResponse(content=out)
 
 
 if __name__ == "__main__":
