@@ -10,11 +10,12 @@
    sudo cp systemd/goals-webapp.service /etc/systemd/system/
    ```
 
-2. Отредактируйте пути и пользователя в обоих файлах:
-   - `User=YOUR_USER` — ваш пользователь на сервере
-   - `WorkingDirectory=/path/to/telegram_goals_bot` — полный путь к папке проекта
-   - `EnvironmentFile=/path/to/telegram_goals_bot/.env`
-   - `ExecStart=/usr/bin/python3 /path/to/telegram_goals_bot/bot.py` (и аналогично webapp_server.py)
+2. Отредактируйте пути и пользователя в обоих файлах (обязательно **реальные** пути, не оставляйте `/path/to/...`):
+   - `User=root` или ваш пользователь на сервере
+   - `WorkingDirectory=/root/shaolen` — полный путь к папке проекта (где лежит `webapp_server.py` и `.env`)
+   - `EnvironmentFile=/root/shaolen/.env` — тот же каталог + `/.env`
+   - `ExecStart=` — полный путь к Python и к скрипту. Если используете venv: `/root/shaolen/venv/bin/python3 /root/shaolen/webapp_server.py` (для bot: `.../bot.py`). Без venv: `/usr/bin/python3 /root/shaolen/webapp_server.py`
+   - Ошибки «Failed to load environment files: No such file or directory» и «Failed to run 'start' task» означают, что в юните всё ещё заглушки — проверьте, что все три пути (WorkingDirectory, EnvironmentFile, ExecStart) ведут в существующие файлы/каталоги.
 
 3. Включите и запустите:
    ```bash
