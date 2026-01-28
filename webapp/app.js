@@ -10,6 +10,7 @@ const state = {
   shaolenHistory: [],
   shaolenFullscreen: false,
   shaolenImageData: null,
+  shaolenVoiceData: null,
   capsule: null,
   capsuleCanEdit: false,
   capsuleView: "main",
@@ -1188,6 +1189,14 @@ function clearShaolenImage() {
   if (input) input.value = "";
 }
 
+function clearShaolenVoice() {
+  state.shaolenVoiceData = null;
+  var preview = $(".shaolen-voice-preview");
+  var input = $("#shaolen-voice-input");
+  if (preview) preview.innerHTML = "";
+  if (input) input.value = "";
+}
+
 function compressImageForShaolen(file, maxBytes) {
   maxBytes = maxBytes || 700000;
   return new Promise(function(resolve, reject) {
@@ -1244,24 +1253,29 @@ function sendShaolenMessage() {
   if (!input || !state.userId) return;
   var text = (input.value || "").trim();
   var hasImage = !!state.shaolenImageData;
-  if (!text && !hasImage) return;
+  var hasVoice = !!state.shaolenVoiceData;
+  if (!text && !hasImage && !hasVoice) return;
   var u = state.shaolenUsage || { used: 0, limit: 50 };
   if (u.used >= u.limit) {
     if (tg) tg.showAlert("Достигнут лимит запросов на сегодня (50). Заходите завтра.");
     return;
   }
-  var displayContent = text || (hasImage ? "[Фото]" : "");
+  var displayContent = text || (hasImage ? "[Фото]" : (hasVoice ? "[Голосовое]" : ""));
   state.shaolenMessages.push({
     role: "user",
     content: displayContent,
     imagePreview: hasImage ? (state.shaolenImageData.indexOf("data:") === 0 ? state.shaolenImageData : "data:image/jpeg;base64," + state.shaolenImageData) : null,
   });
   input.value = "";
-  var bodyToSend = { message: text || (hasImage ? "Что на фото? Оцени калории и дай краткий совет." : "") };
+  var bodyToSend = {
+    message: text || (hasImage ? "Что на фото? Оцени калории и дай краткий совет." : (hasVoice ? "" : "")),
+  };
   if (state.shaolenImageData) bodyToSend.image_base64 = state.shaolenImageData;
+  if (state.shaolenVoiceData) bodyToSend.audio_base64 = state.shaolenVoiceData;
   var prev = state.shaolenMessages.slice(0, -1).slice(-20);
   bodyToSend.history = prev.map(function(m) { return { role: m.role, content: (m.content || "").slice(0, 1200) }; });
   clearShaolenImage();
+  clearShaolenVoice();
   renderShaolenChat();
   if (sendBtn) sendBtn.disabled = true;
   fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/shaolen/ask", {
@@ -1369,6 +1383,43 @@ function bindEvents() {
         if (preview) preview.innerHTML = "";
         if (tg) tg.showAlert("Не удалось загрузить фото.");
       });
+    });
+  }
+  var shaolenVoiceBtn = $(".shaolen-voice-btn");
+  var shaolenVoiceInput = $("#shaolen-voice-input");
+  if (shaolenVoiceBtn && shaolenVoiceInput) {
+    shaolenVoiceBtn.addEventListener("click", function() { shaolenVoiceInput.click(); });
+    shaolenVoiceInput.addEventListener("change", function() {
+      var f = shaolenVoiceInput.files && shaolenVoiceInput.files[0];
+      if (!f || !f.type.match(/^audio\//)) return;
+      var maxBytes = 20 * 1024 * 1024;
+      if (f.size > maxBytes) {
+        if (tg) tg.showAlert("Файл больше 20 МБ. Выберите более короткое голосовое.");
+        shaolenVoiceInput.value = "";
+        return;
+      }
+      var preview = $(".shaolen-voice-preview");
+      if (preview) preview.innerHTML = "<span class=\"shaolen-preview-thumb\">Загрузка…</span>";
+      var fr = new FileReader();
+      fr.onload = function() {
+        var data = fr.result;
+        if (typeof data !== "string" || !data) {
+          if (preview) preview.innerHTML = "";
+          return;
+        }
+        state.shaolenVoiceData = data;
+        if (preview) {
+          preview.innerHTML = "<span class=\"shaolen-preview-thumb\">🎤 голосовое</span> <button type=\"button\" class=\"shaolen-voice-remove link-btn\">удалить</button>";
+          var removeBtn = preview.querySelector(".shaolen-voice-remove");
+          if (removeBtn) removeBtn.addEventListener("click", function() { clearShaolenVoice(); });
+        }
+      };
+      fr.onerror = function() {
+        if (preview) preview.innerHTML = "";
+        if (tg) tg.showAlert("Не удалось загрузить голосовое.");
+        shaolenVoiceInput.value = "";
+      };
+      fr.readAsDataURL(f);
     });
   }
   var shaolenOverlay = $("#shaolen-overlay");
