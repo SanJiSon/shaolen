@@ -1318,7 +1318,8 @@ body {
   pointer-events: none;
 }
 .shaolen-attach-btn,
-.shaolen-voice-btn {
+.shaolen-voice-btn,
+.shaolen-voice-attach-btn {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -1331,9 +1332,31 @@ body {
   flex-shrink: 0;
 }
 .shaolen-attach-btn:hover,
-.shaolen-voice-btn:hover {
+.shaolen-voice-btn:hover,
+.shaolen-voice-attach-btn:hover {
   color: var(--text);
   border-color: var(--accent);
+}
+.shaolen-voice-btn.shaolen-recording-active {
+  color: #ef4444;
+  border-color: #ef4444;
+  animation: shaolen-pulse 1s ease-in-out infinite;
+}
+@keyframes shaolen-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.shaolen-preview-thumb.shaolen-recording {
+  color: #ef4444;
+}
+.shaolen-record-stop.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
 }
 .shaolen-image-preview,
 .shaolen-voice-preview {

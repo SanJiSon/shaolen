@@ -11,6 +11,8 @@ const state = {
   shaolenFullscreen: false,
   shaolenImageData: null,
   shaolenVoiceData: null,
+  shaolenRecording: false,
+  shaolenRecordingChunks: [],
   capsule: null,
   capsuleCanEdit: false,
   capsuleView: "main",
@@ -1062,6 +1064,7 @@ function openShaolenChat() {
 }
 
 function closeShaolenChat() {
+  if (state.shaolenRecording) stopShaolenVoiceRecording();
   var overlay = $("#shaolen-overlay");
   var fab = $("#shaolen-fab");
   if (overlay) overlay.classList.add("hidden");
@@ -1197,6 +1200,86 @@ function clearShaolenVoice() {
   if (input) input.value = "";
 }
 
+function startShaolenVoiceRecording() {
+  if (state.shaolenRecording) return;
+  var MR = window.MediaRecorder || window.webkitMediaRecorder;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !MR) {
+    if (tg) tg.showAlert("Запись с микрофона недоступна. Используйте кнопку 📎 для выбора аудиофайла.");
+    return;
+  }
+  state.shaolenRecordingChunks = [];
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function(stream) {
+      state.shaolenRecording = true;
+      state.shaolenRecordingStream = stream;
+      var mime = "audio/webm";
+      if (MR.isTypeSupported && MR.isTypeSupported("audio/webm;codecs=opus")) mime = "audio/webm;codecs=opus";
+      else if (MR.isTypeSupported && MR.isTypeSupported("audio/webm")) mime = "audio/webm";
+      var rec;
+      try {
+        rec = new MR(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+      } catch (_) {
+        rec = new MR(stream);
+      }
+      state.shaolenMediaRecorder = rec;
+      rec.ondataavailable = function(e) { if (e.data && e.data.size > 0) state.shaolenRecordingChunks.push(e.data); };
+      rec.onstop = function() {
+        var micBtn = $(".shaolen-voice-btn");
+        if (micBtn) micBtn.classList.remove("shaolen-recording-active");
+        if (state.shaolenRecordingStream) {
+          state.shaolenRecordingStream.getTracks().forEach(function(t) { t.stop(); });
+          state.shaolenRecordingStream = null;
+        }
+        state.shaolenMediaRecorder = null;
+        state.shaolenRecording = false;
+        var preview = $(".shaolen-voice-preview");
+        if (state.shaolenRecordingChunks.length === 0) {
+          if (preview) preview.innerHTML = "";
+          if (tg) tg.showAlert("Запись пуста. Попробуйте ещё раз.");
+          return;
+        }
+        var blob = new Blob(state.shaolenRecordingChunks, { type: "audio/webm" });
+        state.shaolenRecordingChunks = [];
+        var fr = new FileReader();
+        fr.onload = function() {
+          var data = fr.result;
+          if (typeof data === "string" && data) {
+            state.shaolenVoiceData = data;
+            if (preview) {
+              preview.innerHTML = "<span class=\"shaolen-preview-thumb\">🎤 голосовое</span> <button type=\"button\" class=\"shaolen-voice-remove link-btn\">удалить</button>";
+              var removeBtn = preview.querySelector(".shaolen-voice-remove");
+              if (removeBtn) removeBtn.addEventListener("click", function() { clearShaolenVoice(); });
+            }
+            renderShaolenChat();
+          }
+        };
+        fr.readAsDataURL(blob);
+      };
+      rec.start(200);
+      var preview = $(".shaolen-voice-preview");
+      var micBtn = $(".shaolen-voice-btn");
+      if (micBtn) micBtn.classList.add("shaolen-recording-active");
+      if (preview) {
+        preview.innerHTML = "<span class=\"shaolen-preview-thumb shaolen-recording\">🔴 Запись…</span> <button type=\"button\" class=\"shaolen-record-stop link-btn\">Остановить</button>";
+        var stopBtn = preview.querySelector(".shaolen-record-stop");
+        if (stopBtn) stopBtn.addEventListener("click", stopShaolenVoiceRecording);
+      }
+      renderShaolenChat();
+    })
+    .catch(function(err) {
+      state.shaolenRecording = false;
+      if (tg) tg.showAlert("Нет доступа к микрофону. Разрешите микрофон в настройках или прикрепите файл (📎).");
+      console.warn("getUserMedia error:", err);
+    });
+}
+
+function stopShaolenVoiceRecording() {
+  if (!state.shaolenRecording || !state.shaolenMediaRecorder) return;
+  try {
+    if (state.shaolenMediaRecorder.state === "recording") state.shaolenMediaRecorder.stop();
+  } catch (e) { state.shaolenRecording = false; state.shaolenMediaRecorder = null; }
+}
+
 function compressImageForShaolen(file, maxBytes) {
   maxBytes = maxBytes || 700000;
   return new Promise(function(resolve, reject) {
@@ -1283,10 +1366,14 @@ function sendShaolenMessage() {
     body: JSON.stringify(bodyToSend),
   })
     .then(function(res) {
-      state.shaolenMessages.push({ role: "assistant", content: res.reply || "Нет ответа." });
-      state.shaolenUsage = res.usage || state.shaolenUsage;
+      var reply = (res && res.reply != null) ? String(res.reply).trim() : "";
+      if (!reply) {
+        reply = "Ответ не получен. Попробуйте переформулировать или записать голосовое кнопкой 🎤.";
+      }
+      state.shaolenMessages.push({ role: "assistant", content: reply });
+      state.shaolenUsage = (res && res.usage) ? res.usage : state.shaolenUsage;
       renderShaolenChat();
-      if (res.created) loadAll();
+      if (res && res.created) loadAll();
     })
     .catch(function(err) {
       var msg = "Не удалось получить ответ.";
@@ -1387,11 +1474,26 @@ function bindEvents() {
   }
   var shaolenVoiceBtn = $(".shaolen-voice-btn");
   var shaolenVoiceInput = $("#shaolen-voice-input");
-  if (shaolenVoiceBtn && shaolenVoiceInput) {
-    shaolenVoiceBtn.addEventListener("click", function() { shaolenVoiceInput.click(); });
+  var shaolenVoiceAttachBtn = $(".shaolen-voice-attach-btn");
+  if (shaolenVoiceBtn) {
+    shaolenVoiceBtn.addEventListener("click", function() {
+      if (state.shaolenRecording) {
+        stopShaolenVoiceRecording();
+      } else {
+        startShaolenVoiceRecording();
+      }
+    });
+  }
+  if (shaolenVoiceAttachBtn && shaolenVoiceInput) {
+    shaolenVoiceAttachBtn.addEventListener("click", function() { shaolenVoiceInput.click(); });
+  }
+  if (shaolenVoiceInput) {
     shaolenVoiceInput.addEventListener("change", function() {
       var f = shaolenVoiceInput.files && shaolenVoiceInput.files[0];
-      if (!f || !f.type.match(/^audio\//)) return;
+      if (!f || !f.type.match(/^audio\//)) {
+        shaolenVoiceInput.value = "";
+        return;
+      }
       var maxBytes = 20 * 1024 * 1024;
       if (f.size > maxBytes) {
         if (tg) tg.showAlert("Файл больше 20 МБ. Выберите более короткое голосовое.");
@@ -1413,6 +1515,7 @@ function bindEvents() {
           var removeBtn = preview.querySelector(".shaolen-voice-remove");
           if (removeBtn) removeBtn.addEventListener("click", function() { clearShaolenVoice(); });
         }
+        renderShaolenChat();
       };
       fr.onerror = function() {
         if (preview) preview.innerHTML = "";
