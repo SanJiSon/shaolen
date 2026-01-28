@@ -27,6 +27,14 @@ server {
     root /var/www/html/shaolen;
     index index.html;
 
+    # ——— Админка: отдавать admin.html, не подменять приложением ———
+    location = /admin {
+        return 302 /admin.html$is_args$args;
+    }
+    location = /admin.html {
+        try_files /admin.html =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
