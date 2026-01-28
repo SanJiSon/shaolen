@@ -833,6 +833,56 @@ function clearShaolenImage() {
   if (input) input.value = "";
 }
 
+function compressImageForShaolen(file, maxBytes) {
+  maxBytes = maxBytes || 700000;
+  return new Promise(function(resolve, reject) {
+    var img = new Image();
+    var url = (typeof URL !== "undefined" && URL.createObjectURL) ? URL.createObjectURL(file) : null;
+    if (!url) { reject(new Error("No URL.createObjectURL")); return; }
+    img.onload = function() {
+      if (typeof URL !== "undefined" && URL.revokeObjectURL) URL.revokeObjectURL(url);
+      var w = img.naturalWidth || img.width;
+      var h = img.naturalHeight || img.height;
+      var maxSide = 1024;
+      if (w > maxSide || h > maxSide) {
+        if (w > h) { h = Math.round(h * maxSide / w); w = maxSide; } else { w = Math.round(w * maxSide / h); h = maxSide; }
+      }
+      var canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      var ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(null); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      var quality = 0.82;
+      function tryExport() {
+        canvas.toBlob(function(blob) {
+          if (!blob) { resolve(null); return; }
+          if (blob.size <= maxBytes) {
+            var fr = new FileReader();
+            fr.onload = function() { resolve(fr.result); };
+            fr.onerror = function() { resolve(null); };
+            fr.readAsDataURL(blob);
+            return;
+          }
+          quality -= 0.12;
+          if (quality > 0.2) tryExport(); else {
+            var fr2 = new FileReader();
+            fr2.onload = function() { resolve(fr2.result); };
+            fr2.onerror = function() { resolve(null); };
+            fr2.readAsDataURL(blob);
+          }
+        }, "image/jpeg", quality);
+      }
+      tryExport();
+    };
+    img.onerror = function() {
+      if (typeof URL !== "undefined" && URL.revokeObjectURL) URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image"));
+    };
+    img.src = url;
+  });
+}
+
 function sendShaolenMessage() {
   var input = $("#shaolen-input");
   var sendBtn = $("#shaolen-send");
@@ -869,6 +919,7 @@ function sendShaolenMessage() {
     .catch(function(err) {
       var msg = "Не удалось получить ответ.";
       if (err && err.status === 429) msg = "Лимит запросов на сегодня исчерпан. Заходите завтра.";
+      else if (err && err.status === 413) msg = "Фото слишком большое. Выберите другое или меньшее изображение.";
       else if (err && err.body) { try { var j = JSON.parse(err.body); if (j.detail) msg = j.detail; } catch (_) {} }
       state.shaolenMessages.push({ role: "assistant", content: "⚠️ " + msg });
       renderShaolenChat();
@@ -922,24 +973,24 @@ function bindEvents() {
     shaolenImageInput.addEventListener("change", function() {
       var f = shaolenImageInput.files && shaolenImageInput.files[0];
       if (!f || !f.type.match(/^image\//)) return;
-      var reader = new FileReader();
-      reader.onload = function() {
-        var data = reader.result;
-        if (typeof data !== "string") return;
-        var base64 = data.indexOf("base64,") >= 0 ? data.split("base64,")[1] : data;
-        if (base64.length > 5400000) {
-          if (tg) tg.showAlert("Фото слишком большое. Выберите до ~4 МБ.");
+      var preview = $(".shaolen-image-preview");
+      if (preview) preview.innerHTML = "<span class=\"shaolen-preview-thumb\">Сжатие…</span>";
+      compressImageForShaolen(f, 600000).then(function(data) {
+        if (!data || typeof data !== "string") {
+          if (preview) preview.innerHTML = "";
+          if (tg) tg.showAlert("Не удалось обработать фото.");
           return;
         }
-        state.shaolenImageData = data.indexOf("data:") === 0 ? data : "data:image/jpeg;base64," + base64;
-        var preview = $(".shaolen-image-preview");
+        state.shaolenImageData = data;
         if (preview) {
           preview.innerHTML = "<span class=\"shaolen-preview-thumb\">📷</span> <button type=\"button\" class=\"shaolen-preview-remove link-btn\">удалить</button>";
           var removeBtn = preview.querySelector(".shaolen-preview-remove");
           if (removeBtn) removeBtn.addEventListener("click", function() { clearShaolenImage(); });
         }
-      };
-      reader.readAsDataURL(f);
+      }).catch(function() {
+        if (preview) preview.innerHTML = "";
+        if (tg) tg.showAlert("Не удалось загрузить фото.");
+      });
     });
   }
   var shaolenOverlay = $("#shaolen-overlay");

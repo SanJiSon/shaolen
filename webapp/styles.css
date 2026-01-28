@@ -1087,12 +1087,13 @@ body {
   border-color: rgba(0, 0, 0, 0.08);
 }
 .shaolen-input-wrap {
-  padding: 12px 16px 16px;
+  padding: 14px 16px 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-end;
+  min-height: 88px;
 }
 [data-theme="light"] .shaolen-input-wrap {
   border-top-color: rgba(0, 0, 0, 0.08);
@@ -1145,23 +1146,30 @@ body {
 .shaolen-input {
   flex: 1;
   min-width: 120px;
-  min-height: 44px;
-  padding: 10px 14px;
-  font-size: 14px;
+  min-height: 72px;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.4;
   font-family: inherit;
   color: var(--text);
   background: var(--bg-elevated);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  resize: none;
+  resize: vertical;
+  max-height: 140px;
 }
 .shaolen-input::placeholder {
   color: var(--muted);
 }
 .shaolen-send {
   flex-shrink: 0;
-  padding: 10px 18px;
-  font-size: 14px;
+  padding: 12px 20px;
+  font-size: 15px;
+  min-height: 72px;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .shaolen-msg-img {
   display: block;
