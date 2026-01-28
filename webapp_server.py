@@ -25,6 +25,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 LIMIT_SHAOLEN_PER_DAY = 50
 SHAOLEN_MODEL = "llama-3.3-70b-versatile"
+SHAOLEN_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[dict]:
@@ -537,6 +538,7 @@ class ProfileUpdate(BaseModel):
 
 class ShaolenAsk(BaseModel):
     message: str
+    image_base64: Optional[str] = None  # data:image/jpeg;base64,... или только base64
 
 
 @app.get("/api/user/{user_id}/profile", response_model=None)
@@ -644,6 +646,24 @@ async def api_shaolen_usage(user_id: int):
     return JSONResponse(content={"used": used, "limit": LIMIT_SHAOLEN_PER_DAY})
 
 
+@app.get("/api/user/{user_id}/shaolen/history", response_model=None)
+async def api_shaolen_history(user_id: int, limit: int = 50):
+    """История запросов к Шаолень: последние пары вопрос–ответ."""
+    if limit < 1 or limit > 100:
+        limit = 50
+    rows = await db.get_shaolen_history(user_id, limit=limit)
+    out = []
+    for r in rows:
+        out.append({
+            "id": r.get("id"),
+            "created_at": r.get("created_at").isoformat() if hasattr(r.get("created_at"), "isoformat") else str(r.get("created_at") or ""),
+            "user_message": r.get("user_message") or "",
+            "assistant_reply": r.get("assistant_reply") or "",
+            "has_image": bool(r.get("has_image")),
+        })
+    return JSONResponse(content=out)
+
+
 def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> str:
     parts = [
         "Ты — мастер Шаолень, мудрый и доброжелательный помощник в приложении для целей, миссий и привычек.",
@@ -680,9 +700,23 @@ def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> s
     return "\n".join(parts)
 
 
+def _normalize_image_url(img_b64: Optional[str]) -> Optional[str]:
+    """Вернуть data:image/...;base64,... не длиннее ~4MB для Groq."""
+    if not img_b64 or not str(img_b64).strip():
+        return None
+    s = str(img_b64).strip()
+    if s.startswith("data:"):
+        if len(s) > 5_500_000:
+            return None
+        return s
+    if len(s) > 5_400_000:
+        return None
+    return "data:image/jpeg;base64," + s
+
+
 @app.post("/api/user/{user_id}/shaolen/ask", response_model=None)
 async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
-    """Запрос к мастеру Шаолень. Лимит 50 запросов в день на пользователя."""
+    """Запрос к мастеру Шаолень. Лимит 50 запросов в день. Поддержка картинки (оценка калорий и т.п.)."""
     used = await db.get_shaolen_requests_today(user_id)
     if used >= LIMIT_SHAOLEN_PER_DAY:
         return JSONResponse(
@@ -692,7 +726,8 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
                 "usage": {"used": used, "limit": LIMIT_SHAOLEN_PER_DAY},
             },
         )
-    if not payload.message or not str(payload.message).strip():
+    text = str(payload.message or "").strip()
+    if not text:
         return JSONResponse(status_code=400, content={"detail": "Сообщение не может быть пустым."})
 
     if not Groq or not GROQ_API_KEY:
@@ -702,6 +737,9 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
             content={"detail": "Советник временно недоступен. Добавьте GROQ_API_KEY в настройки сервера."},
         )
 
+    image_url = _normalize_image_url(payload.image_base64)
+    has_image = bool(image_url)
+
     missions = await db.get_missions(user_id, include_completed=True)
     goals = await db.get_goals(user_id, include_completed=True)
     habits = await db.get_habits(user_id, active_only=False)
@@ -710,14 +748,27 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
         [dict(g) for g in goals],
         [dict(h) for h in habits],
     )
+    if has_image:
+        system_text += "\n\nПользователь может присылать фото еды — помогай оценивать калории и давать советы по питанию в рамках его целей."
+
+    user_content: object
+    if has_image and image_url:
+        user_content = [
+            {"type": "text", "text": text[:2000]},
+            {"type": "image_url", "image_url": {"url": image_url}},
+        ]
+        model = SHAOLEN_VISION_MODEL
+    else:
+        user_content = text[:2000]
+        model = SHAOLEN_MODEL
 
     try:
         client = Groq(api_key=GROQ_API_KEY)
         chat = client.chat.completions.create(
-            model=SHAOLEN_MODEL,
+            model=model,
             messages=[
                 {"role": "system", "content": system_text},
-                {"role": "user", "content": str(payload.message).strip()[:2000]},
+                {"role": "user", "content": user_content},
             ],
             max_tokens=800,
             temperature=0.7,
@@ -731,6 +782,7 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
         )
 
     await db.increment_shaolen_requests(user_id)
+    await db.add_shaolen_history(user_id, text, reply, has_image=has_image)
     new_used = used + 1
     return JSONResponse(content={
         "reply": reply,

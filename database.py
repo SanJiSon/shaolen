@@ -134,6 +134,19 @@ class Database:
                 )
             """)
 
+            # История запросов к Шаолень (для кнопки «История»)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS shaolen_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_message TEXT NOT NULL,
+                    assistant_reply TEXT NOT NULL,
+                    has_image INTEGER DEFAULT 0,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
             await db.commit()
 
     async def add_user(
@@ -652,3 +665,27 @@ class Database:
                 (user_id, today),
             )
             await db.commit()
+
+    async def add_shaolen_history(
+        self, user_id: int, user_message: str, assistant_reply: str, has_image: bool = False
+    ) -> None:
+        """Добавить запись в историю запросов Шаолень."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO shaolen_history (user_id, user_message, assistant_reply, has_image)
+                   VALUES (?, ?, ?, ?)""",
+                (user_id, (user_message or "")[:4000], (assistant_reply or "")[:16000], 1 if has_image else 0),
+            )
+            await db.commit()
+
+    async def get_shaolen_history(self, user_id: int, limit: int = 50) -> List[Dict]:
+        """Последние записи истории Шаолень по пользователю."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT id, user_id, created_at, user_message, assistant_reply, has_image
+                   FROM shaolen_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?""",
+                (user_id, limit),
+            ) as c:
+                rows = await c.fetchall()
+                return [dict(r) for r in rows]
