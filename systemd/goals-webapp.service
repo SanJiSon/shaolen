@@ -4,11 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=YOUR_USER
-WorkingDirectory=/path/to/telegram_goals_bot
+# Замените на своего пользователя и реальные пути (НЕ оставляйте /path/to/...)
+User=root
+WorkingDirectory=/root/shaolen
 Environment=PATH=/usr/bin:/usr/local/bin
-EnvironmentFile=/path/to/telegram_goals_bot/.env
-ExecStart=/usr/bin/python3 /path/to/telegram_goals_bot/webapp_server.py
+EnvironmentFile=/root/shaolen/.env
+# Если используете venv: /root/shaolen/venv/bin/python3
+ExecStart=/root/shaolen/venv/bin/python3 /root/shaolen/webapp_server.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
