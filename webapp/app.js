@@ -10,6 +10,10 @@ const state = {
   shaolenHistory: [],
   shaolenFullscreen: false,
   shaolenImageData: null,
+  capsule: null,
+  capsuleCanEdit: false,
+  capsuleView: "main",
+  capsuleHistory: [],
 };
 
 function initUser() {
@@ -540,6 +544,267 @@ function renderProfile() {
   }
 }
 
+function parseOpenAt(s) {
+  if (!s) return null;
+  try {
+    var d = new Date(String(s).replace("Z", "").trim());
+    return isNaN(d.getTime()) ? null : d;
+  } catch (e) { return null; }
+}
+
+function capsuleCountdown(openAt) {
+  var end = parseOpenAt(openAt);
+  if (!end) return { days: 0, hours: 0, totalMs: 0, opened: true };
+  var now = new Date();
+  var totalMs = end.getTime() - now.getTime();
+  if (totalMs <= 0) return { days: 0, hours: 0, totalMs: 0, opened: true };
+  var days = Math.floor(totalMs / (24 * 60 * 60 * 1000));
+  var hours = Math.floor((totalMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  return { days: days, hours: hours, totalMs: totalMs, opened: false };
+}
+
+function runCapsuleConfetti() {
+  var canvas = document.getElementById("capsule-confetti-canvas");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  var w = canvas.width = window.innerWidth;
+  var h = canvas.height = window.innerHeight;
+  var particles = [];
+  var colors = ["#7c3aed", "#22c55e", "#f43f5e", "#fbbf24", "#38bdf8"];
+  for (var i = 0; i < 80; i++) {
+    particles.push({
+      x: Math.random() * w, y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 8, vy: -4 - Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: 4 + Math.random() * 6
+    });
+  }
+  function tick() {
+    ctx.fillStyle = "rgba(12,14,20,0.15)";
+    ctx.fillRect(0, 0, w, h);
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.2;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  var count = 0;
+  var id = setInterval(function() {
+    tick();
+    if (++count > 120) clearInterval(id);
+  }, 33);
+}
+
+function renderCapsuleHistoryList() {
+  var list = state.capsuleHistory || [];
+  var html = "<div class=\"capsule-history-header\"><button type=\"button\" class=\"link-btn capsule-back-btn\">← К капсуле</button></div>";
+  if (list.length === 0) {
+    html += "<div class=\"capsule-intro\">Пока нет открытых капсул. Откройте капсулу — она появится здесь, и вы сможете добавить впечатления.</div>";
+  } else {
+    list.forEach(function(h) {
+      var viewed = (h.viewed_at || "").slice(0, 16).replace("T", " ");
+      var ref = h.reflection;
+      var refBlock = ref
+        ? "<div class=\"capsule-history-reflection\">" + escapeHtml(ref) + "</div>"
+        : "<button type=\"button\" class=\"link-btn capsule-add-reflection-btn\" data-id=\"" + h.id + "\">+ Добавить впечатления</button><div class=\"capsule-reflection-form hidden\" id=\"ref-form-" + h.id + "\"><textarea class=\"input capsule-reflection-input\" id=\"ref-text-" + h.id + "\" placeholder=\"Что получилось на самом деле? Чем довольны?\" rows=\"3\"></textarea><button type=\"button\" class=\"primary-btn capsule-save-reflection-btn\" data-id=\"" + h.id + "\">Сохранить</button></div>";
+      html += "<div class=\"capsule-history-card\" data-id=\"" + h.id + "\">" +
+        "<div class=\"capsule-history-title\">" + escapeHtml(h.title || "") + "</div>" +
+        "<div class=\"capsule-history-meta\">Открыта: " + escapeHtml(viewed) + "</div>" +
+        "<div class=\"capsule-history-expected\"><strong>Ожидали:</strong> " + escapeHtml(h.expected_result || "") + "</div>" +
+        "<div class=\"capsule-history-ref-block\">" + refBlock + "</div></div>";
+    });
+  }
+  return html;
+}
+
+function renderCapsule() {
+  var root = $("#capsule-view");
+  if (!root) return;
+
+  if (state.capsuleView === "history") {
+    root.innerHTML = "<div class=\"capsule-history-root\">" + renderCapsuleHistoryList() + "</div>";
+    root.querySelectorAll(".capsule-back-btn").forEach(function(b) {
+      b.addEventListener("click", function() { state.capsuleView = "main"; renderCapsule(); });
+    });
+    root.querySelectorAll(".capsule-add-reflection-btn").forEach(function(b) {
+      b.addEventListener("click", function() {
+        var id = b.dataset.id;
+        var form = document.getElementById("ref-form-" + id);
+        if (form) form.classList.remove("hidden");
+      });
+    });
+    root.querySelectorAll(".capsule-save-reflection-btn").forEach(function(b) {
+      b.addEventListener("click", async function() {
+        var id = parseInt(b.dataset.id, 10);
+        var textEl = document.getElementById("ref-text-" + id);
+        var text = textEl ? textEl.value : "";
+        try {
+          await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule/history/" + id + "/reflection", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reflection: text })
+          });
+          var idx = (state.capsuleHistory || []).findIndex(function(h) { return h.id === id; });
+          if (idx >= 0 && state.capsuleHistory) state.capsuleHistory[idx].reflection = text;
+          if (tg) tg.showAlert("Впечатления сохранены");
+          renderCapsule();
+        } catch (e) {
+          if (tg) tg.showAlert("Не удалось сохранить");
+        }
+      });
+    });
+    return;
+  }
+
+  var cap = state.capsule;
+  var canEdit = state.capsuleCanEdit;
+  var topBar = "<div class=\"capsule-top-bar\"><button type=\"button\" class=\"link-btn capsule-history-link\">📜 История капсул</button></div>";
+
+  if (!cap) {
+    root.innerHTML = topBar +
+      "<div class=\"capsule-intro\">" +
+      "<p><strong>Капсула времени</strong> — это послание себе в будущее.</p>" +
+      "<p>Опишите, чего вы ждёте от себя через несколько дней или недель привычек и целей. Когда капсула откроется, вы сможете сравнить ожидания и реальность — и увидеть, как далеко продвинулись.</p>" +
+      "<p>Пример: заголовок «Через 30 дней привычек я надеюсь выглядеть стройнее», описание — конкретный образ результата.</p>" +
+      "<p>Создать можно только одну капсулу. После открытия её можно перенести в историю и создать новую. В течение часа после создания активную капсулу можно редактировать или удалить.</p>" +
+      "</div>" +
+      "<button type=\"button\" id=\"capsule-create-btn\" class=\"primary-btn\">Создать капсулу</button>";
+    root.querySelectorAll(".capsule-history-link").forEach(function(b) {
+      b.addEventListener("click", showCapsuleHistory);
+    });
+    var btn = document.getElementById("capsule-create-btn");
+    if (btn) btn.addEventListener("click", openCapsuleCreateDialog);
+    return;
+  }
+
+  var openAt = cap.open_at;
+  var cd = capsuleCountdown(openAt);
+
+  if (cd.opened) {
+    root.innerHTML = topBar +
+      "<div class=\"capsule-countdown capsule-opened\">Капсула открыта!</div>" +
+      "<button type=\"button\" id=\"capsule-reveal-btn\" class=\"primary-btn\">Открыть</button>";
+    root.querySelectorAll(".capsule-history-link").forEach(function(b) {
+      b.addEventListener("click", showCapsuleHistory);
+    });
+    var revBtn = document.getElementById("capsule-reveal-btn");
+    if (revBtn) revBtn.addEventListener("click", function() {
+      var overlay = $("#capsule-open-overlay");
+      var body = $("#capsule-open-body");
+      if (body) body.innerHTML = "<div class=\"capsule-reveal-title\">" + escapeHtml(cap.title || "") + "</div><div class=\"capsule-reveal-result\">" + escapeHtml(cap.expected_result || "") + "</div>";
+      if (overlay) overlay.classList.remove("hidden");
+      runCapsuleConfetti();
+    });
+    return;
+  }
+
+  var countdownText = "До открытия: " + cd.days + " дн. " + cd.hours + " ч.";
+  var actionsHtml = "";
+  if (canEdit) actionsHtml = "<div class=\"capsule-actions\"><button type=\"button\" class=\"secondary-btn capsule-edit-btn\">Редактировать</button> <button type=\"button\" class=\"secondary-btn capsule-delete-btn\">Удалить</button></div>";
+
+  root.innerHTML = topBar +
+    "<div class=\"capsule-countdown\">" + escapeHtml(countdownText) + "</div>" +
+    "<div class=\"capsule-title-preview\">" + escapeHtml(cap.title || "") + "</div>" +
+    actionsHtml;
+
+  root.querySelectorAll(".capsule-history-link").forEach(function(b) {
+    b.addEventListener("click", showCapsuleHistory);
+  });
+  root.querySelectorAll(".capsule-edit-btn").forEach(function(b) {
+    b.addEventListener("click", function() { openCapsuleEditDialog(cap); });
+  });
+  root.querySelectorAll(".capsule-delete-btn").forEach(function(b) {
+    b.addEventListener("click", confirmCapsuleDelete);
+  });
+}
+
+function openCapsuleCreateDialog() {
+  var extra = "<label>Открыть через (дней)</label><input type=\"number\" id=\"cap-days\" class=\"input\" min=\"0\" value=\"30\" />" +
+    "<label>Открыть через (часов)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"0.5\" value=\"0\" placeholder=\"Только часы — укажите здесь\" />";
+  openDialog({
+    title: "Создать капсулу времени",
+    extraHtml: extra,
+    initialValues: { title: "Через 30 дней привычек я надеюсь…", description: "Опишите ожидаемый результат: как вы хотите себя чувствовать или выглядеть." },
+    onSave: async function(p) {
+      var days = parseInt(document.getElementById("cap-days").value, 10) || 0;
+      var hours = parseFloat(document.getElementById("cap-hours").value) || 0;
+      await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: p.title, expected_result: p.description, open_in_days: days, open_in_hours: hours })
+      });
+      await loadAll();
+      if (tg) tg.showAlert("Капсула создана");
+    }
+  });
+}
+
+function openCapsuleEditDialog(cap) {
+  var extra = "<label>Открыть через (дней)</label><input type=\"number\" id=\"cap-days\" class=\"input\" min=\"0\" value=\"0\" />" +
+    "<label>Открыть через (часов)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"0.5\" value=\"24\" />";
+  openDialog({
+    title: "Редактировать капсулу",
+    extraHtml: extra,
+    initialValues: { title: cap.title || "", description: cap.expected_result || "" },
+    onSave: async function(p) {
+      var days = parseInt(document.getElementById("cap-days").value, 10) || 0;
+      var hours = parseFloat(document.getElementById("cap-hours").value) || 0;
+      await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: p.title, expected_result: p.description, open_in_days: days, open_in_hours: hours })
+      });
+      await loadAll();
+      if (tg) tg.showAlert("Капсула обновлена");
+    }
+  });
+}
+
+function confirmCapsuleDelete() {
+  var msg = "Удалить капсулу времени?";
+  if (tg && typeof tg.showConfirm === "function") {
+    tg.showConfirm(msg, function(ok) { if (ok) doCapsuleDelete(); });
+  } else if (window.confirm(msg)) {
+    doCapsuleDelete();
+  }
+}
+
+async function doCapsuleDelete() {
+  try {
+    await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule", { method: "DELETE" });
+    await loadAll();
+    if (tg) tg.showAlert("Капсула удалена");
+  } catch (e) {
+    if (tg) tg.showAlert("Не удалось удалить");
+  }
+}
+
+async function showCapsuleHistory() {
+  if (!state.userId) return;
+  try {
+    var list = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule/history");
+    state.capsuleHistory = Array.isArray(list) ? list : [];
+  } catch (e) {
+    state.capsuleHistory = [];
+  }
+  state.capsuleView = "history";
+  renderCapsule();
+}
+
+async function closeCapsuleOverlayAndArchive() {
+  var overlay = $("#capsule-open-overlay");
+  if (state.capsule && state.userId) {
+    try {
+      await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule/archive", { method: "POST" });
+    } catch (e) { /* ignore */ }
+  }
+  if (overlay) overlay.classList.add("hidden");
+  await loadAll();
+}
+
 function getInitData() {
   if (!tg) return "";
   if (tg.initData && typeof tg.initData === "string" && tg.initData.length > 10) return tg.initData;
@@ -672,12 +937,17 @@ async function loadAll() {
       missionsList.forEach(function(m, i) { state.cache.subgoalsByMission[m.id] = subs[i] || []; });
     }
 
+    var capsuleRes = await fetchJSON(base + "/api/user/" + uid + "/time-capsule").catch(function() { return { capsule: null, can_edit: false }; });
+    state.capsule = (capsuleRes && capsuleRes.capsule) || null;
+    state.capsuleCanEdit = !!(capsuleRes && capsuleRes.can_edit);
+
     renderMissions(missionsList);
     renderGoals(goalsList);
     renderHabits(habitsList);
     renderAnalytics(analyticsData);
     renderProfile();
-    
+    renderCapsule();
+
     console.log('✅ Данные успешно отображены');
   } catch (e) {
     if (e && e.status === 401) {
@@ -979,7 +1249,14 @@ function sendShaolenMessage() {
 function bindEvents() {
   var tabEls = $all(".tab");
   tabEls.forEach(function(btn) {
-    btn.addEventListener("click", function() { switchTab(btn.dataset.tab); });
+    btn.addEventListener("click", function() {
+      switchTab(btn.dataset.tab);
+      if (btn.dataset.tab === "capsule") renderCapsule();
+    });
+  });
+  var capsuleCloseBtn = document.getElementById("capsule-open-close");
+  if (capsuleCloseBtn) capsuleCloseBtn.addEventListener("click", function() {
+    closeCapsuleOverlayAndArchive().catch(function() {});
   });
 
   var shaolenFab = $("#shaolen-fab");
@@ -1240,9 +1517,12 @@ function bindEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", async function() {
-  console.log("WebApp v4 — вкладки, свайп без сдвига, редактирование, новая палитра");
+  console.log("WebApp v5 — капсула времени");
   initUser();
   bindEvents();
   await loadAll();
+  var hash = window.location.hash || "";
+  if (hash === "#capsule") switchTab("capsule");
+  if (hash === "#capsule-history") { switchTab("capsule"); showCapsuleHistory(); }
 });
 

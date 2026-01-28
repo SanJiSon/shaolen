@@ -5,7 +5,7 @@
     <title>Goals WebApp</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0f172a" />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=8" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
@@ -43,6 +43,7 @@
         <button type="button" class="tab" data-tab="goals" role="tab">Цели</button>
         <button type="button" class="tab" data-tab="habits" role="tab">Привычки</button>
         <button type="button" class="tab" data-tab="analytics" role="tab">Аналитика</button>
+        <button type="button" class="tab" data-tab="capsule" role="tab">⏳ Капсула</button>
         <button type="button" class="tab tab-profile" data-tab="profile" role="tab">Профиль</button>
       </nav>
 
@@ -71,6 +72,10 @@
         <section id="panel-analytics" class="tab-panel analytics-panel" role="tabpanel">
           <h2>Аналитика</h2>
           <div id="analytics-view" class="analytics"></div>
+        </section>
+        <section id="panel-capsule" class="tab-panel capsule-panel" role="tabpanel">
+          <h2>Капсула времени</h2>
+          <div id="capsule-view" class="capsule-view"></div>
         </section>
         <section id="panel-profile" class="tab-panel" role="tabpanel">
           <h2>Профиль</h2>
@@ -111,6 +116,15 @@
       </div>
     </div>
 
+    <div id="capsule-open-overlay" class="capsule-open-overlay hidden">
+      <div class="capsule-open-content">
+        <h3>Капсула открыта</h3>
+        <div id="capsule-open-body"></div>
+        <button type="button" id="capsule-open-close" class="primary-btn">Закрыть</button>
+      </div>
+      <canvas id="capsule-confetti-canvas"></canvas>
+    </div>
+
     <div id="dialog-backdrop" class="backdrop hidden">
       <div class="dialog">
         <form id="dialog-form" novalidate>
@@ -126,6 +140,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>
