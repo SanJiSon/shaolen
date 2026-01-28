@@ -535,6 +535,24 @@ class Database:
             await db.execute("DELETE FROM habit_records WHERE habit_id = ?", (habit_id,))
             await db.commit()
 
+    async def get_todays_habit_titles(self, user_id: int) -> List[str]:
+        """Список названий привычек, отмеченных сегодня (хотя бы одно выполнение)."""
+        from datetime import date
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT h.title FROM habits h
+                JOIN habit_records hr ON h.id = hr.habit_id AND hr.date = ?
+                WHERE h.user_id = ?
+                ORDER BY h.title
+                """,
+                (today, user_id),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [str(row[0] or "").strip() for row in rows if row[0]]
+
     async def get_habit_completions_by_date(self, user_id: int, days: int = 30) -> List[Dict]:
         """По дням: дата и суммарное количество выполнений привычек за день (для графика)."""
         async with aiosqlite.connect(self.db_path) as db:

@@ -1,3 +1,5 @@
+import base64
+import io
 import os
 import re
 import json
@@ -566,8 +568,9 @@ class ProfileUpdate(BaseModel):
 
 
 class ShaolenAsk(BaseModel):
-    message: str
+    message: Optional[str] = ""  # текст или пусто, если отправлено голосовое (тогда используется транскрипция)
     image_base64: Optional[str] = None  # data:image/jpeg;base64,... или только base64
+    audio_base64: Optional[str] = None  # голосовое сообщение: base64 ogg/m4a/wav/webm (транскрибируется через Groq Whisper)
     history: Optional[List[Dict[str, Any]]] = None  # [{"role":"user"|"assistant","content":"..."}] — контекст диалога
 
 
@@ -880,46 +883,98 @@ def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> s
     return "\n".join(parts)
 
 
+def _is_stats_or_today_request(text: str) -> bool:
+    """Проверяет, спрашивает ли пользователь про статистику или выполнение за сегодня/неделю."""
+    if not text or len(text) < 5:
+        return False
+    low = (text or "").lower()
+    triggers = (
+        "статистик", "выполнил сегодня", "что сделал сегодня", "какие привычки", "что отмечено",
+        "покажи за неделю", "прогресс за неделю", "статистика за неделю", "за неделю",
+        "сколько выполнил", "какой прогресс", "моя статистика", "сводка за",
+    )
+    return any(t in low for t in triggers)
+
+
+async def _build_stats_context_for_shaolen(db: Database, user_id: int, text: str) -> str:
+    """
+    Если запрос про статистику/сегодня/неделю — возвращает блок для system-промпта
+    с актуальными данными (сегодня отмеченные привычки, аналитика за 7 дней).
+    Иначе пустая строка.
+    """
+    if not _is_stats_or_today_request(text):
+        return ""
+    try:
+        today_habits = await db.get_todays_habit_titles(user_id)
+        analytics_7 = await db.get_user_analytics(user_id, days=7)
+        streak = await db.get_habit_streak(user_id)
+        parts = [
+            "Данные по запросу пользователя (ответь на его вопрос, опираясь на эти цифры):",
+            "— Сегодня отмечены привычки: " + (", ".join(today_habits) if today_habits else "пока ни одной") + ".",
+            "— За последние 7 дней: миссий завершено {m_done} из {m_all}, целей {g_done} из {g_all}, "
+            "привычек отмечено {h_count} раз, серия дней подряд (стрик): {streak}.".format(
+                m_done=int(analytics_7.get("missions", {}).get("completed", 0)),
+                m_all=int(analytics_7.get("missions", {}).get("total", 0)),
+                g_done=int(analytics_7.get("goals", {}).get("completed", 0)),
+                g_all=int(analytics_7.get("goals", {}).get("total", 0)),
+                h_count=int(analytics_7.get("habits", {}).get("total_completions", 0)),
+                streak=streak,
+            ),
+        ]
+        return "\n".join(parts)
+    except Exception as e:
+        logger.warning("Ошибка формирования контекста статистики для Шаолень: %s", e)
+        return ""
+
+
+def _extract_title(s: str) -> str:
+    """Извлечь название: убрать обрамляющие кавычки и лишние пробелы."""
+    if not s:
+        return ""
+    s = s.strip()
+    if (len(s) >= 2 and s[0] == s[-1] and s[0] in "'\"") or (s.startswith("«") and "»" in s):
+        if s.startswith("«"):
+            return s[1:s.index("»")].strip()[:200]
+        return s[1:-1].strip()[:200]
+    return s.strip("'\"«»").strip()[:200]
+
+
 def _parse_add_intent(text: str):
     """
-    Если пользователь просит добавить привычку/цель/миссию — возвращаем
+    Если пользователь просит добавить привычку/цель/миссию/задачу — возвращаем
     ("habit"|"goal"|"mission", title, description, subgoals_list или []).
+    Поддержка кавычек: «добавь привычку 'пить воду'», текстом и голосом.
     Иначе None.
     """
     t = (text or "").strip()
     if len(t) < 4:
         return None
     low = t.lower()
-    # Привычка
-    m = re.search(
-        r"(?:добавь|добавить|создай|создать|хочу|заведи|завести|новая?)\s+привычк\w*\s*[:-]?\s*(.+)",
-        low,
-        re.IGNORECASE,
-    )
+    # Ключевые слова для «добавить»
+    add_triggers = r"(?:добавь|добавить|создай|создать|хочу|заведи|завести|запиши|внести|новая?)\s+"
+
+    # Привычка (в т.ч. "добавь привычку 'пить воду'")
+    m = re.search(add_triggers + r"привычк\w*\s*[:-]?\s*(.+)", low, re.IGNORECASE)
     if m:
-        title = m.group(1).strip().strip("'\"").strip()[:200]
+        title = _extract_title(m.group(1).strip())
         if title:
             return ("habit", title, "", [])
 
-    # Цель (цель, задача)
+    # Цель или задача (задача = цель в контексте приложения)
     m = re.search(
-        r"(?:добавь|добавить|создай|создать|хочу|новая?)\s+(?:цел\w*|задач\w*)\s*[:-]?\s*(.+)",
+        add_triggers + r"(?:цел\w*|задач\w*)\s*[:-]?\s*(.+)",
         low,
         re.IGNORECASE,
     )
     if m:
-        title = m.group(1).strip().strip("'\"").strip()[:200]
+        title = _extract_title(m.group(1).strip())
         if title:
             return ("goal", title, "", [])
 
     # Миссия (возможно с подцелями)
-    m = re.search(
-        r"(?:добавь|добавить|создай|создать|хочу|новая?)\s+мисси\w*\s*[:-]?\s*(.+)",
-        low,
-        re.IGNORECASE,
-    )
+    m = re.search(add_triggers + r"мисси\w*\s*[:-]?\s*(.+)", low, re.IGNORECASE)
     if m:
-        rest = m.group(1).strip().strip("'\"").strip()
+        rest = m.group(1).strip()
         subgoals = []
         title = rest
         sub_match = re.search(
@@ -928,12 +983,13 @@ def _parse_add_intent(text: str):
             re.IGNORECASE,
         )
         if sub_match:
-            title = rest[: sub_match.start()].strip().strip("'\"").strip()
+            title = rest[: sub_match.start()].strip()
             sub_str = sub_match.group(1).strip()
             for part in re.split(r"[,;]|\s+и\s+", sub_str):
                 s = part.strip().strip("'\"").strip()[:150]
                 if s:
                     subgoals.append(s)
+        title = _extract_title(title)
         if title:
             return ("mission", title[:200], "", subgoals)
     return None
@@ -1010,9 +1066,41 @@ def _normalize_image_url(img_b64: Optional[str]) -> Optional[str]:
     return "data:image/jpeg;base64," + s
 
 
+def _transcribe_audio_groq(client: "Groq", audio_b64: str, language: str = "ru") -> Optional[str]:
+    """Транскрибировать голосовое через Groq Whisper. audio_b64 — base64 без префикса data:."""
+    if not audio_b64 or not str(audio_b64).strip():
+        return None
+    s = str(audio_b64).strip()
+    if s.startswith("data:audio/") and ";base64," in s:
+        s = s.split(";base64,", 1)[-1]
+    if len(s) > 25 * 1024 * 1024 * 4 // 3:  # ~25 MB base64
+        return None
+    try:
+        raw = base64.b64decode(s, validate=True)
+    except Exception:
+        return None
+    if not raw or len(raw) > 25_000_000:
+        return None
+    try:
+        # Groq принимает (filename, bytes) или file-like; форматы: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
+        out = client.audio.transcriptions.create(
+            file=("audio.ogg", raw),
+            model="whisper-large-v3-turbo",
+            language=language,
+            response_format="text",
+            temperature=0.0,
+        )
+        if hasattr(out, "text"):
+            return (out.text or "").strip()
+        return (str(out) or "").strip()
+    except Exception as e:
+        logger.warning("Ошибка транскрипции голоса Groq: %s", e)
+        return None
+
+
 @app.post("/api/user/{user_id}/shaolen/ask", response_model=None)
 async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
-    """Запрос к мастеру Шаолень. Лимит 50 запросов в день. Поддержка картинки (оценка калорий и т.п.)."""
+    """Запрос к мастеру Шаолень. Лимит 50 запросов в день. Поддержка картинки и голосовых сообщений."""
     used = await db.get_shaolen_requests_today(user_id)
     if used >= LIMIT_SHAOLEN_PER_DAY:
         return JSONResponse(
@@ -1023,8 +1111,22 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
             },
         )
     text = str(payload.message or "").strip()
+    has_audio = bool(payload.audio_base64 and str(payload.audio_base64).strip())
+    if has_audio and Groq and GROQ_API_KEY:
+        client = Groq(api_key=GROQ_API_KEY)
+        transcribed = _transcribe_audio_groq(client, payload.audio_base64)
+        if transcribed:
+            text = (text + " " + transcribed).strip() if text else transcribed
+        elif not text:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Не удалось распознать голос. Попробуйте ещё раз или напишите текстом."},
+            )
     if not text:
-        return JSONResponse(status_code=400, content={"detail": "Сообщение не может быть пустым."})
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Напишите текст или отправьте голосовое сообщение."},
+        )
 
     if not Groq or not GROQ_API_KEY:
         logger.warning("Groq не настроен: нет GROQ_API_KEY или пакета groq")
@@ -1035,7 +1137,7 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
 
     image_url = _normalize_image_url(payload.image_base64)
     has_image = bool(image_url)
-    logger.info("shaolen/ask user_id=%s has_image=%s msg_len=%s", user_id, has_image, len(text))
+    logger.info("shaolen/ask user_id=%s has_image=%s has_audio=%s msg_len=%s", user_id, has_image, has_audio, len(text))
 
     created_what = None
     intent = _parse_add_intent(text)
@@ -1066,6 +1168,9 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
         [dict(g) for g in goals],
         [dict(h) for h in habits],
     )
+    stats_ctx = await _build_stats_context_for_shaolen(db, user_id, text)
+    if stats_ctx:
+        system_text += "\n\n" + stats_ctx
     if has_image:
         system_text += "\n\nПользователь может присылать фото еды — помогай оценивать калории и давать советы по питанию в рамках его целей."
     if created_what:
