@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from database import Database
@@ -717,11 +717,14 @@ async def api_get_time_capsule(user_id: int):
     open_at = cap.get("open_at")
     if hasattr(open_at, "isoformat"):
         open_at = open_at.isoformat()
+    open_at_s = str(open_at or "")
+    if open_at_s and "Z" not in open_at_s and "+" not in open_at_s[-6:]:
+        open_at_s = open_at_s + "Z"
     return JSONResponse(content={
         "capsule": {
             "title": cap.get("title") or "",
             "expected_result": cap.get("expected_result") or "",
-            "open_at": str(open_at or ""),
+            "open_at": open_at_s,
             "created_at": (cap.get("created_at").isoformat() if hasattr(cap.get("created_at"), "isoformat") else str(cap.get("created_at") or "")),
         },
         "can_edit": can_edit,
@@ -746,7 +749,7 @@ async def api_create_time_capsule(user_id: int, payload: TimeCapsuleCreate):
             status_code=400,
             content={"detail": "Укажите время открытия: хотя бы 1 день или 1 час"},
         )
-    open_at = datetime.now() + timedelta(hours=total_hours)
+    open_at = (datetime.now(timezone.utc) + timedelta(hours=total_hours)).replace(tzinfo=None)
     await db.create_time_capsule(
         user_id,
         title=title,
@@ -757,11 +760,14 @@ async def api_create_time_capsule(user_id: int, payload: TimeCapsuleCreate):
     open_at_s = cap.get("open_at")
     if hasattr(open_at_s, "isoformat"):
         open_at_s = open_at_s.isoformat()
+    open_at_s = str(open_at_s or "")
+    if open_at_s and "Z" not in open_at_s and "+" not in open_at_s[-6:]:
+        open_at_s = open_at_s + "Z"
     return JSONResponse(content={
         "capsule": {
             "title": cap.get("title") or "",
             "expected_result": cap.get("expected_result") or "",
-            "open_at": str(open_at_s or ""),
+            "open_at": open_at_s,
         },
         "can_edit": True,
     })
@@ -773,7 +779,7 @@ async def api_update_time_capsule(user_id: int, payload: TimeCapsuleUpdate):
     total_hours = max(0, int(round(float(payload.open_in_hours or 0)))) + 24 * max(0, int(payload.open_in_days or 0))
     if total_hours < 1:
         total_hours = 1
-    open_at = datetime.now() + timedelta(hours=total_hours)
+    open_at = (datetime.now(timezone.utc) + timedelta(hours=total_hours)).replace(tzinfo=None)
     ok = await db.update_time_capsule(user_id, payload.title or "Капсула", payload.expected_result or "", open_at)
     if not ok:
         return JSONResponse(status_code=403, content={"detail": "Капсула запечатана или отсутствует. Редактировать можно только в течение часа после создания/последнего изменения."})
@@ -781,8 +787,11 @@ async def api_update_time_capsule(user_id: int, payload: TimeCapsuleUpdate):
     open_at_s = cap.get("open_at")
     if hasattr(open_at_s, "isoformat"):
         open_at_s = open_at_s.isoformat()
+    open_at_s = str(open_at_s or "")
+    if open_at_s and "Z" not in open_at_s and "+" not in open_at_s[-6:]:
+        open_at_s = open_at_s + "Z"
     return JSONResponse(content={
-        "capsule": {"title": cap.get("title"), "expected_result": cap.get("expected_result"), "open_at": str(open_at_s or "")},
+        "capsule": {"title": cap.get("title"), "expected_result": cap.get("expected_result"), "open_at": open_at_s},
         "can_edit": True,
     })
 
