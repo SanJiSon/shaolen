@@ -728,16 +728,28 @@ async def api_get_time_capsule(user_id: int):
     })
 
 
+_DEFAULT_CAPSULE_TITLE = "Через 30 дней привычек я надеюсь…"
+
+
 @app.post("/api/user/{user_id}/time-capsule", response_model=None)
 async def api_create_time_capsule(user_id: int, payload: TimeCapsuleCreate):
-    """Создать капсулу времени. open_in_days и open_in_hours задают момент открытия от «сейчас»."""
-    hours = max(0, float(payload.open_in_hours or 0)) + 24 * max(0, int(payload.open_in_days or 0))
-    if hours < 1 / 60:
-        hours = 1 / 60
-    open_at = datetime.now() + timedelta(hours=hours)
+    """Создать капсулу времени. open_in_days и open_in_hours (целые) задают момент открытия от «сейчас»."""
+    title = (payload.title or "").strip()
+    if not title or title == _DEFAULT_CAPSULE_TITLE:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Необходимо добавить свой заголовок для капсулы времени"},
+        )
+    total_hours = max(0, int(round(float(payload.open_in_hours or 0)))) + 24 * max(0, int(payload.open_in_days or 0))
+    if total_hours < 1:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Укажите время открытия: хотя бы 1 день или 1 час"},
+        )
+    open_at = datetime.now() + timedelta(hours=total_hours)
     await db.create_time_capsule(
         user_id,
-        title=payload.title or "Капсула",
+        title=title,
         expected_result=payload.expected_result or "",
         open_at=open_at,
     )
@@ -758,10 +770,10 @@ async def api_create_time_capsule(user_id: int, payload: TimeCapsuleCreate):
 @app.patch("/api/user/{user_id}/time-capsule", response_model=None)
 async def api_update_time_capsule(user_id: int, payload: TimeCapsuleUpdate):
     """Обновить капсулу (только в течение часа после последнего редактирования)."""
-    hours = max(0, float(payload.open_in_hours or 0)) + 24 * max(0, int(payload.open_in_days or 0))
-    if hours < 1 / 60:
-        hours = 1 / 60
-    open_at = datetime.now() + timedelta(hours=hours)
+    total_hours = max(0, int(round(float(payload.open_in_hours or 0)))) + 24 * max(0, int(payload.open_in_days or 0))
+    if total_hours < 1:
+        total_hours = 1
+    open_at = datetime.now() + timedelta(hours=total_hours)
     ok = await db.update_time_capsule(user_id, payload.title or "Капсула", payload.expected_result or "", open_at)
     if not ok:
         return JSONResponse(status_code=403, content={"detail": "Капсула запечатана или отсутствует. Редактировать можно только в течение часа после создания/последнего изменения."})
