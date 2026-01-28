@@ -81,6 +81,18 @@ body {
   margin-bottom: 14px;
 }
 
+.app-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .app-header h1 {
   margin: 0 0 2px;
   font-size: 22px;
@@ -93,6 +105,121 @@ body {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.capsule-menu-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  line-height: 1;
+  background: var(--bg-elevated);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+}
+.capsule-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.capsule-icon-wrap .capsule-icon-img {
+  max-width: 28px;
+  max-height: 28px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.capsule-icon-wrap .capsule-icon-img.failed {
+  display: none;
+}
+.capsule-icon-wrap .capsule-icon-fallback {
+  display: none;
+}
+.capsule-icon-wrap .capsule-icon-img.failed + .capsule-icon-fallback {
+  display: inline;
+}
+.capsule-menu-btn:hover,
+.capsule-menu-btn:active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.capsule-menu-btn:active {
+  transform: scale(0.96);
+}
+
+.capsule-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.capsule-overlay.hidden {
+  display: none;
+}
+.capsule-overlay:not(.hidden) {
+  pointer-events: auto;
+}
+.capsule-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+.capsule-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 16px 24px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+}
+.capsule-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--muted-strong);
+}
+.capsule-overlay-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.capsule-overlay-close {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.capsule-overlay-close:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 /* Вкладки */
@@ -1258,9 +1385,6 @@ body {
 }
 
 /* Капсула времени */
-.capsule-panel .panel-header {
-  display: none;
-}
 .capsule-intro {
   margin-bottom: 16px;
   padding: 14px;
@@ -1345,9 +1469,6 @@ body {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-}
-.tab[data-tab="capsule"] {
-  font-size: 13px;
 }
 .capsule-top-bar {
   margin-bottom: 12px;

@@ -554,13 +554,25 @@ function parseOpenAt(s) {
 
 function capsuleCountdown(openAt) {
   var end = parseOpenAt(openAt);
-  if (!end) return { days: 0, hours: 0, totalMs: 0, opened: true };
+  if (!end) return { days: 0, hours: 0, minutes: 0, totalMs: 0, opened: true };
   var now = new Date();
   var totalMs = end.getTime() - now.getTime();
-  if (totalMs <= 0) return { days: 0, hours: 0, totalMs: 0, opened: true };
+  if (totalMs <= 0) return { days: 0, hours: 0, minutes: 0, totalMs: 0, opened: true };
   var days = Math.floor(totalMs / (24 * 60 * 60 * 1000));
-  var hours = Math.floor((totalMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-  return { days: days, hours: hours, totalMs: totalMs, opened: false };
+  var restMs = totalMs % (24 * 60 * 60 * 1000);
+  var hours = Math.floor(restMs / (60 * 60 * 1000));
+  var minutes = Math.floor((restMs % (60 * 60 * 1000)) / (60 * 1000));
+  return { days: days, hours: hours, minutes: minutes, totalMs: totalMs, opened: false };
+}
+
+function formatCapsuleCountdown(cd) {
+  if (cd.opened) return "";
+  var totalMs = cd.totalMs;
+  var h = 60 * 60 * 1000;
+  var d = 24 * h;
+  if (totalMs >= d) return cd.days + " дн. " + cd.hours + " ч.";
+  if (totalMs >= h) return cd.hours + " ч. " + cd.minutes + " мин.";
+  return cd.minutes + " мин.";
 }
 
 function runCapsuleConfetti() {
@@ -701,7 +713,7 @@ function renderCapsule() {
     return;
   }
 
-  var countdownText = "До открытия: " + cd.days + " дн. " + cd.hours + " ч.";
+  var countdownText = "До открытия: " + formatCapsuleCountdown(cd);
   var actionsHtml = "";
   if (canEdit) actionsHtml = "<div class=\"capsule-actions\"><button type=\"button\" class=\"secondary-btn capsule-edit-btn\">Редактировать</button> <button type=\"button\" class=\"secondary-btn capsule-delete-btn\">Удалить</button></div>";
 
@@ -723,35 +735,49 @@ function renderCapsule() {
 
 function openCapsuleCreateDialog() {
   var extra = "<label>Открыть через (дней)</label><input type=\"number\" id=\"cap-days\" class=\"input\" min=\"0\" value=\"30\" />" +
-    "<label>Открыть через (часов)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"0.5\" value=\"0\" placeholder=\"Только часы — укажите здесь\" />";
+    "<label>Открыть через (часов, только целые)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"1\" value=\"0\" placeholder=\"Только часы — укажите целое число\" />";
   openDialog({
     title: "Создать капсулу времени",
     extraHtml: extra,
     initialValues: { title: "Через 30 дней привычек я надеюсь…", description: "Опишите ожидаемый результат: как вы хотите себя чувствовать или выглядеть." },
     onSave: async function(p) {
+      var t = (p.title || "").trim();
+      var defaultTitle = "Через 30 дней привычек я надеюсь…";
+      if (!t || t === defaultTitle) {
+        if (tg) tg.showAlert("Необходимо добавить свой заголовок для капсулы времени"); else alert("Необходимо добавить свой заголовок для капсулы времени");
+        throw new Error("validate");
+      }
       var days = parseInt(document.getElementById("cap-days").value, 10) || 0;
-      var hours = parseFloat(document.getElementById("cap-hours").value) || 0;
+      var hours = parseInt(document.getElementById("cap-hours").value, 10) || 0;
+      if (days === 0 && hours === 0) {
+        if (tg) tg.showAlert("Укажите время открытия: хотя бы 1 день или 1 час"); else alert("Укажите время открытия: хотя бы 1 день или 1 час");
+        throw new Error("validate");
+      }
       await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: p.title, expected_result: p.description, open_in_days: days, open_in_hours: hours })
       });
       await loadAll();
-      if (tg) tg.showAlert("Капсула создана");
+      if (tg) tg.showAlert("Капсула обновлена");
     }
   });
 }
 
 function openCapsuleEditDialog(cap) {
   var extra = "<label>Открыть через (дней)</label><input type=\"number\" id=\"cap-days\" class=\"input\" min=\"0\" value=\"0\" />" +
-    "<label>Открыть через (часов)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"0.5\" value=\"24\" />";
+    "<label>Открыть через (часов, только целые)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"1\" value=\"24\" />";
   openDialog({
     title: "Редактировать капсулу",
     extraHtml: extra,
     initialValues: { title: cap.title || "", description: cap.expected_result || "" },
     onSave: async function(p) {
       var days = parseInt(document.getElementById("cap-days").value, 10) || 0;
-      var hours = parseFloat(document.getElementById("cap-hours").value) || 0;
+      var hours = parseInt(document.getElementById("cap-hours").value, 10) || 0;
+      if (days === 0 && hours === 0) {
+        if (tg) tg.showAlert("Укажите хотя бы 1 час или 1 день"); else alert("Укажите хотя бы 1 час или 1 день");
+        throw new Error("validate");
+      }
       await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/time-capsule", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1246,14 +1272,27 @@ function sendShaolenMessage() {
     .finally(function() { if (sendBtn) sendBtn.disabled = false; });
 }
 
+function openCapsuleOverlay() {
+  var ov = $("#capsule-overlay");
+  if (ov) { ov.classList.remove("hidden"); renderCapsule(); }
+}
+
+function closeCapsuleOverlay() {
+  var ov = $("#capsule-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
 function bindEvents() {
   var tabEls = $all(".tab");
   tabEls.forEach(function(btn) {
-    btn.addEventListener("click", function() {
-      switchTab(btn.dataset.tab);
-      if (btn.dataset.tab === "capsule") renderCapsule();
-    });
+    btn.addEventListener("click", function() { switchTab(btn.dataset.tab); });
   });
+  var capsuleMenuBtn = document.getElementById("capsule-menu-btn");
+  if (capsuleMenuBtn) capsuleMenuBtn.addEventListener("click", openCapsuleOverlay);
+  var capsuleOverlayClose = document.getElementById("capsule-overlay-close");
+  if (capsuleOverlayClose) capsuleOverlayClose.addEventListener("click", closeCapsuleOverlay);
+  var capsuleBackdrop = $(".capsule-overlay-backdrop");
+  if (capsuleBackdrop) capsuleBackdrop.addEventListener("click", closeCapsuleOverlay);
   var capsuleCloseBtn = document.getElementById("capsule-open-close");
   if (capsuleCloseBtn) capsuleCloseBtn.addEventListener("click", function() {
     closeCapsuleOverlayAndArchive().catch(function() {});
@@ -1522,7 +1561,7 @@ document.addEventListener("DOMContentLoaded", async function() {
   bindEvents();
   await loadAll();
   var hash = window.location.hash || "";
-  if (hash === "#capsule") switchTab("capsule");
-  if (hash === "#capsule-history") { switchTab("capsule"); showCapsuleHistory(); }
+  if (hash === "#capsule") openCapsuleOverlay();
+  if (hash === "#capsule-history") { openCapsuleOverlay(); showCapsuleHistory(); }
 });
 
