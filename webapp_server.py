@@ -3,6 +3,7 @@ import re
 import json
 import hmac
 import hashlib
+import subprocess
 from contextlib import asynccontextmanager
 from urllib.parse import unquote
 from dotenv import load_dotenv
@@ -24,6 +25,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 LIMIT_SHAOLEN_PER_DAY = 50
 SHAOLEN_MODEL = "llama-3.3-70b-versatile"
 SHAOLEN_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
@@ -56,12 +58,19 @@ def validate_telegram_init_data(init_data: str) -> Optional[dict]:
         return None
     return data
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Настройка логирования (консоль + файл для админки и просмотра логов)
+_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_log_dir, exist_ok=True)
+_log_file = os.path.join(_log_dir, "webapp.log")
+_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+logging.basicConfig(level=logging.INFO, format=_fmt)
 logger = logging.getLogger(__name__)
+try:
+    _fh = logging.FileHandler(_log_file, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter(_fmt))
+    logging.getLogger().addHandler(_fh)
+except Exception:
+    pass
 
 db = Database()
 
@@ -962,6 +971,176 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
     if from_groq or (intent and created_what):
         out["created"] = from_groq[0][0] if from_groq else intent[0]
     return JSONResponse(content=out)
+
+
+def _admin_token(request: Request) -> bool:
+    token = request.headers.get("X-Admin-Token") or request.query_params.get("token") or ""
+    return bool(ADMIN_TOKEN and token.strip() == ADMIN_TOKEN.strip())
+
+
+def _admin_required(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+
+
+# === Админ-API (требует ADMIN_TOKEN в заголовке X-Admin-Token или ?token=...) ===
+@app.get("/api/admin/status")
+async def api_admin_status(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    base = os.path.dirname(os.path.abspath(__file__))
+    log_bot = os.path.join(base, "logs", "bot.log")
+    log_webapp = os.path.join(base, "logs", "webapp.log")
+    bot_ok = os.path.isfile(log_bot)
+    webapp_ok = os.path.isfile(log_webapp)
+    try:
+        r = subprocess.run(
+            ["systemctl", "is-active", "goals-bot"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=base,
+        )
+        bot_active = r.returncode == 0 and (r.stdout or "").strip() == "active"
+    except Exception:
+        bot_active = None
+    try:
+        r = subprocess.run(
+            ["systemctl", "is-active", "goals-webapp"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=base,
+        )
+        webapp_active = r.returncode == 0 and (r.stdout or "").strip() == "active"
+    except Exception:
+        webapp_active = None
+    return JSONResponse(content={
+        "bot": "active" if bot_active else ("inactive" if bot_active is False else "unknown"),
+        "webapp": "active" if webapp_active else ("inactive" if webapp_active is False else "unknown"),
+    })
+
+
+@app.post("/api/admin/bot/start")
+async def api_admin_bot_start(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    try:
+        subprocess.run(["systemctl", "start", "goals-bot"], capture_output=True, text=True, timeout=5)
+        return JSONResponse(content={"ok": True, "message": "Команда start отправлена"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/admin/bot/stop")
+async def api_admin_bot_stop(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    try:
+        subprocess.run(["systemctl", "stop", "goals-bot"], capture_output=True, text=True, timeout=5)
+        return JSONResponse(content={"ok": True, "message": "Команда stop отправлена"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/admin/webapp/start")
+async def api_admin_webapp_start(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    try:
+        subprocess.run(["systemctl", "start", "goals-webapp"], capture_output=True, text=True, timeout=5)
+        return JSONResponse(content={"ok": True, "message": "Команда start отправлена"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/admin/webapp/stop")
+async def api_admin_webapp_stop(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    try:
+        subprocess.run(["systemctl", "stop", "goals-webapp"], capture_output=True, text=True, timeout=5)
+        return JSONResponse(content={"ok": True, "message": "Команда stop отправлена"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.get("/api/admin/logs")
+async def api_admin_logs(request: Request, source: str = "bot", n: int = 500):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    base = os.path.dirname(os.path.abspath(__file__))
+    name = "bot.log" if source == "bot" else "webapp.log"
+    path = os.path.join(base, "logs", name)
+    if not os.path.isfile(path):
+        return JSONResponse(content={"lines": [], "path": path})
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        tail = lines[-n:] if n else lines
+        return JSONResponse(content={"lines": tail, "path": path})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.get("/api/admin/users")
+async def api_admin_users(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    try:
+        rows = await db.get_all_users_with_stats()
+        out = []
+        for r in rows:
+            created = r.get("created_at")
+            out.append({
+                "user_id": r.get("user_id"),
+                "username": r.get("username") or "",
+                "first_name": r.get("first_name") or "",
+                "last_name": r.get("last_name") or "",
+                "display_name": r.get("display_name") or "",
+                "created_at": created.isoformat() if hasattr(created, "isoformat") else str(created or ""),
+                "missions_count": r.get("missions_count") or 0,
+                "goals_count": r.get("goals_count") or 0,
+                "habits_count": r.get("habits_count") or 0,
+                "shaolen_requests": r.get("shaolen_requests") or 0,
+            })
+        total = len(out)
+        with_requests = sum(1 for x in out if (x.get("shaolen_requests") or 0) > 0)
+        return JSONResponse(content={
+            "users": out,
+            "total_users": total,
+            "users_with_shaolen_requests": with_requests,
+        })
+    except Exception as e:
+        logger.exception("admin users: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.get("/api/admin/shaolen-requests")
+async def api_admin_shaolen_requests(request: Request, limit: int = 200, offset: int = 0):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+    try:
+        rows = await db.get_shaolen_history_for_admin(limit=min(limit, 500), offset=offset)
+        out = []
+        for r in rows:
+            created = r.get("created_at")
+            out.append({
+                "id": r.get("id"),
+                "user_id": r.get("user_id"),
+                "username": r.get("username") or "",
+                "first_name": r.get("first_name") or "",
+                "last_name": r.get("last_name") or "",
+                "display_name": r.get("display_name") or "",
+                "created_at": created.isoformat() if hasattr(created, "isoformat") else str(created or ""),
+                "user_message": r.get("user_message") or "",
+                "assistant_reply": r.get("assistant_reply") or "",
+                "has_image": bool(r.get("has_image")),
+            })
+        return JSONResponse(content={"requests": out})
+    except Exception as e:
+        logger.exception("admin shaolen-requests: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 if __name__ == "__main__":

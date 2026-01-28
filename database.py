@@ -689,3 +689,33 @@ class Database:
             ) as c:
                 rows = await c.fetchall()
                 return [dict(r) for r in rows]
+
+    async def get_all_users_with_stats(self) -> List[Dict]:
+        """Для админки: все пользователи и агрегаты (число миссий, целей, привычек, запросов к Шаолень)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT u.user_id, u.username, u.first_name, u.last_name, u.display_name, u.created_at,
+                          (SELECT COUNT(*) FROM missions m WHERE m.user_id = u.user_id) AS missions_count,
+                          (SELECT COUNT(*) FROM goals g WHERE g.user_id = u.user_id) AS goals_count,
+                          (SELECT COUNT(*) FROM habits h WHERE h.user_id = u.user_id) AS habits_count,
+                          (SELECT COUNT(*) FROM shaolen_history sh WHERE sh.user_id = u.user_id) AS shaolen_requests
+                   FROM users u ORDER BY u.user_id"""
+            ) as c:
+                rows = await c.fetchall()
+                return [dict(r) for r in rows]
+
+    async def get_shaolen_history_for_admin(self, limit: int = 200, offset: int = 0) -> List[Dict]:
+        """Для админки: последние запросы к Шаолень с данными пользователя."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT sh.id, sh.user_id, sh.created_at, sh.user_message, sh.assistant_reply, sh.has_image,
+                          u.username, u.first_name, u.last_name, u.display_name
+                   FROM shaolen_history sh
+                   LEFT JOIN users u ON u.user_id = sh.user_id
+                   ORDER BY sh.created_at DESC LIMIT ? OFFSET ?""",
+                (limit, offset),
+            ) as c:
+                rows = await c.fetchall()
+                return [dict(r) for r in rows]

@@ -30,12 +30,19 @@ from database import Database
 # Загрузка переменных окружения
 load_dotenv()
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Настройка логирования (консоль + файл для круглосуточной работы и админки)
+_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_log_dir, exist_ok=True)
+_log_file = os.path.join(_log_dir, "bot.log")
+_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+logging.basicConfig(format=_format, level=logging.INFO)
 logger = logging.getLogger(__name__)
+try:
+    _fh = logging.FileHandler(_log_file, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter(_format))
+    logging.getLogger().addHandler(_fh)
+except Exception:
+    pass
 
 # Состояния для ConversationHandler
 (WAITING_TITLE, WAITING_DESCRIPTION, WAITING_DEADLINE, WAITING_PRIORITY,
