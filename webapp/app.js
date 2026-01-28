@@ -733,21 +733,26 @@ async function loadAll() {
 function openShaolenChat() {
   var overlay = $("#shaolen-overlay");
   var chatEl = $("#shaolen-chat");
+  var fab = $("#shaolen-fab");
   if (!overlay) return;
   overlay.classList.remove("hidden");
+  if (fab) fab.classList.add("shaolen-fab--hidden");
   if (chatEl) chatEl.classList.remove("shaolen-chat--fullscreen");
   state.shaolenFullscreen = false;
   var restoreBtn = $(".shaolen-restore-btn");
   var fullscreenBtn = $(".shaolen-fullscreen-btn");
   if (restoreBtn) restoreBtn.classList.add("hidden");
   if (fullscreenBtn) fullscreenBtn.classList.remove("hidden");
-  $("#shaolen-history-panel").classList.add("hidden");
+  var hp = $("#shaolen-history-panel");
+  if (hp) hp.classList.add("hidden");
   fetchShaolenUsage().then(function() { renderShaolenChat(); });
 }
 
 function closeShaolenChat() {
   var overlay = $("#shaolen-overlay");
+  var fab = $("#shaolen-fab");
   if (overlay) overlay.classList.add("hidden");
+  if (fab) fab.classList.remove("shaolen-fab--hidden");
 }
 
 function fetchShaolenUsage() {
@@ -922,6 +927,7 @@ function sendShaolenMessage() {
       state.shaolenMessages.push({ role: "assistant", content: res.reply || "Нет ответа." });
       state.shaolenUsage = res.usage || state.shaolenUsage;
       renderShaolenChat();
+      if (res.created) loadAll();
     })
     .catch(function(err) {
       var msg = "Не удалось получить ответ.";
