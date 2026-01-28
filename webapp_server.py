@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
 import logging
 
 from database import Database
@@ -131,6 +132,24 @@ class GoalUpdate(BaseModel):
 class HabitUpdate(BaseModel):
     title: str
     description: Optional[str] = ""
+
+
+class TimeCapsuleCreate(BaseModel):
+    title: str
+    expected_result: str
+    open_in_days: int = 0
+    open_in_hours: float = 24.0
+
+
+class TimeCapsuleUpdate(BaseModel):
+    title: str
+    expected_result: str
+    open_in_days: int = 0
+    open_in_hours: float = 24.0
+
+
+class CapsuleReflectionBody(BaseModel):
+    reflection: str = ""
 
 
 # Инициализация БД теперь в lifespan выше
@@ -673,6 +692,130 @@ async def api_shaolen_history(user_id: int, limit: int = 50):
             "has_image": bool(r.get("has_image")),
         })
     return JSONResponse(content=out)
+
+
+def _parse_iso(s: Any) -> Optional[datetime]:
+    if s is None:
+        return None
+    if hasattr(s, "isoformat"):
+        return s
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "").strip())
+    except Exception:
+        return None
+
+
+@app.get("/api/user/{user_id}/time-capsule", response_model=None)
+async def api_get_time_capsule(user_id: int):
+    """Капсула времени: одна на пользователя. can_edit — можно ли редактировать (в течение часа после последнего редактирования)."""
+    cap = await db.get_time_capsule(user_id)
+    if not cap:
+        return JSONResponse(content={"capsule": None, "can_edit": False})
+    now = datetime.now()
+    last = _parse_iso(cap.get("last_edited_at") or cap.get("created_at")) or now
+    can_edit = (now - last).total_seconds() < 3600
+    open_at = cap.get("open_at")
+    if hasattr(open_at, "isoformat"):
+        open_at = open_at.isoformat()
+    return JSONResponse(content={
+        "capsule": {
+            "title": cap.get("title") or "",
+            "expected_result": cap.get("expected_result") or "",
+            "open_at": str(open_at or ""),
+            "created_at": (cap.get("created_at").isoformat() if hasattr(cap.get("created_at"), "isoformat") else str(cap.get("created_at") or "")),
+        },
+        "can_edit": can_edit,
+    })
+
+
+@app.post("/api/user/{user_id}/time-capsule", response_model=None)
+async def api_create_time_capsule(user_id: int, payload: TimeCapsuleCreate):
+    """Создать капсулу времени. open_in_days и open_in_hours задают момент открытия от «сейчас»."""
+    hours = max(0, float(payload.open_in_hours or 0)) + 24 * max(0, int(payload.open_in_days or 0))
+    if hours < 1 / 60:
+        hours = 1 / 60
+    open_at = datetime.now() + timedelta(hours=hours)
+    await db.create_time_capsule(
+        user_id,
+        title=payload.title or "Капсула",
+        expected_result=payload.expected_result or "",
+        open_at=open_at,
+    )
+    cap = await db.get_time_capsule(user_id)
+    open_at_s = cap.get("open_at")
+    if hasattr(open_at_s, "isoformat"):
+        open_at_s = open_at_s.isoformat()
+    return JSONResponse(content={
+        "capsule": {
+            "title": cap.get("title") or "",
+            "expected_result": cap.get("expected_result") or "",
+            "open_at": str(open_at_s or ""),
+        },
+        "can_edit": True,
+    })
+
+
+@app.patch("/api/user/{user_id}/time-capsule", response_model=None)
+async def api_update_time_capsule(user_id: int, payload: TimeCapsuleUpdate):
+    """Обновить капсулу (только в течение часа после последнего редактирования)."""
+    hours = max(0, float(payload.open_in_hours or 0)) + 24 * max(0, int(payload.open_in_days or 0))
+    if hours < 1 / 60:
+        hours = 1 / 60
+    open_at = datetime.now() + timedelta(hours=hours)
+    ok = await db.update_time_capsule(user_id, payload.title or "Капсула", payload.expected_result or "", open_at)
+    if not ok:
+        return JSONResponse(status_code=403, content={"detail": "Капсула запечатана или отсутствует. Редактировать можно только в течение часа после создания/последнего изменения."})
+    cap = await db.get_time_capsule(user_id)
+    open_at_s = cap.get("open_at")
+    if hasattr(open_at_s, "isoformat"):
+        open_at_s = open_at_s.isoformat()
+    return JSONResponse(content={
+        "capsule": {"title": cap.get("title"), "expected_result": cap.get("expected_result"), "open_at": str(open_at_s or "")},
+        "can_edit": True,
+    })
+
+
+@app.delete("/api/user/{user_id}/time-capsule", response_model=None)
+async def api_delete_time_capsule(user_id: int):
+    """Удалить капсулу времени."""
+    await db.delete_time_capsule(user_id)
+    return JSONResponse(content={"ok": True})
+
+
+@app.post("/api/user/{user_id}/time-capsule/archive", response_model=None)
+async def api_archive_time_capsule(user_id: int):
+    """Перенести открытую капсулу в историю и разрешить создание новой."""
+    ok = await db.archive_time_capsule(user_id)
+    return JSONResponse(content={"ok": ok, "capsule": None})
+
+
+@app.get("/api/user/{user_id}/time-capsule/history", response_model=None)
+async def api_get_capsule_history(user_id: int):
+    """История открытых капсул (для саморефлексии)."""
+    rows = await db.get_time_capsule_history(user_id)
+    out = []
+    for r in rows:
+        viewed = r.get("viewed_at")
+        if hasattr(viewed, "isoformat"):
+            viewed = viewed.isoformat()
+        out.append({
+            "id": r.get("id"),
+            "title": r.get("title") or "",
+            "expected_result": r.get("expected_result") or "",
+            "open_at": str(r.get("open_at") or ""),
+            "viewed_at": str(viewed or ""),
+            "reflection": (r.get("reflection") or "").strip() or None,
+        })
+    return JSONResponse(content=out)
+
+
+@app.patch("/api/user/{user_id}/time-capsule/history/{history_id}/reflection", response_model=None)
+async def api_add_capsule_reflection(user_id: int, history_id: int, payload: CapsuleReflectionBody):
+    """Один раз добавить впечатления к капсуле в истории."""
+    ok = await db.add_capsule_reflection(history_id, user_id, payload.reflection or "")
+    if not ok:
+        return JSONResponse(status_code=400, content={"detail": "Запись не найдена или впечатления уже добавлены."})
+    return JSONResponse(content={"ok": True})
 
 
 def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> str:

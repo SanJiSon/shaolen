@@ -414,15 +414,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Главное меню
     if data == "main_menu":
-        await query.edit_message_text(
-            "🏠 Главное меню",
-            reply_markup=InlineKeyboardMarkup([[
+        menu_rows = [
+            [
                 InlineKeyboardButton("🎯 Миссии", callback_data="missions"),
                 InlineKeyboardButton("✅ Цели", callback_data="goals")
             ], [
                 InlineKeyboardButton("🔄 Привычки", callback_data="habits"),
                 InlineKeyboardButton("📊 Аналитика", callback_data="analytics")
-            ]])
+            ]
+        ]
+        web_url = _webapp_url()
+        if web_url:
+            menu_rows.append([InlineKeyboardButton("⏳ Капсула времени", web_app=WebAppInfo(url=web_url + "#capsule"))])
+            menu_rows.append([InlineKeyboardButton("📜 История капсул", web_app=WebAppInfo(url=web_url + "#capsule-history"))])
+        await query.edit_message_text(
+            "🏠 Главное меню",
+            reply_markup=InlineKeyboardMarkup(menu_rows)
         )
     
     # Миссии

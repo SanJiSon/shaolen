@@ -147,6 +147,33 @@ class Database:
                 )
             """)
 
+            # Капсула времени — одна на пользователя (активная)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS time_capsule (
+                    user_id INTEGER PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    expected_result TEXT NOT NULL,
+                    open_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+            # История капсул после открытия (для саморефлексии)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS time_capsule_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    expected_result TEXT NOT NULL,
+                    open_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP,
+                    viewed_at TIMESTAMP NOT NULL,
+                    reflection TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
             await db.commit()
 
     async def add_user(
@@ -719,3 +746,130 @@ class Database:
             ) as c:
                 rows = await c.fetchall()
                 return [dict(r) for r in rows]
+
+    # === КАПСУЛА ВРЕМЕНИ (одна на пользователя) ===
+    async def get_time_capsule(self, user_id: int) -> Optional[Dict]:
+        """Получить капсулу пользователя, если есть."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM time_capsule WHERE user_id = ?", (user_id,)
+            ) as c:
+                row = await c.fetchone()
+                return dict(row) if row else None
+
+    async def create_time_capsule(
+        self,
+        user_id: int,
+        title: str,
+        expected_result: str,
+        open_at: datetime,
+    ) -> None:
+        """Создать капсулу (одна на пользователя, заменяет существующую при повторе)."""
+        now = datetime.now()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT OR REPLACE INTO time_capsule
+                   (user_id, title, expected_result, open_at, created_at, last_edited_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, title.strip(), expected_result.strip(), open_at, now, now),
+            )
+            await db.commit()
+
+    async def update_time_capsule(
+        self,
+        user_id: int,
+        title: str,
+        expected_result: str,
+        open_at: datetime,
+    ) -> bool:
+        """Обновить капсулу; возвращает False, если капсулы нет или она уже «запечатана» (час после последнего редактирования прошёл)."""
+        now = datetime.now()
+        cap = await self.get_time_capsule(user_id)
+        if not cap:
+            return False
+        last = cap.get("last_edited_at") or cap.get("created_at")
+        if isinstance(last, str):
+            try:
+                last = datetime.fromisoformat(last.replace("Z", "").strip())
+            except Exception:
+                last = now
+        if last is None:
+            last = now
+        if (now - last).total_seconds() >= 3600:
+            return False
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """UPDATE time_capsule
+                   SET title = ?, expected_result = ?, open_at = ?, last_edited_at = ?
+                   WHERE user_id = ?""",
+                (title.strip(), expected_result.strip(), open_at, now, user_id),
+            )
+            await db.commit()
+        return True
+
+    async def delete_time_capsule(self, user_id: int) -> bool:
+        """Удалить капсулу пользователя."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cur = await db.execute("DELETE FROM time_capsule WHERE user_id = ?", (user_id,))
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def archive_time_capsule(self, user_id: int) -> bool:
+        """Перенести открытую капсулу в историю и удалить из активных. Возвращает True, если была капсула."""
+        cap = await self.get_time_capsule(user_id)
+        if not cap:
+            return False
+        now = datetime.now()
+        open_at = cap.get("open_at")
+        created_at = cap.get("created_at") or now
+        if hasattr(open_at, "isoformat"):
+            open_at = open_at.isoformat() if open_at else None
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat() if created_at else None
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO time_capsule_history
+                   (user_id, title, expected_result, open_at, created_at, viewed_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id,
+                    cap.get("title") or "",
+                    cap.get("expected_result") or "",
+                    str(open_at or ""),
+                    str(created_at or ""),
+                    now,
+                ),
+            )
+            await db.execute("DELETE FROM time_capsule WHERE user_id = ?", (user_id,))
+            await db.commit()
+        return True
+
+    async def get_time_capsule_history(self, user_id: int) -> List[Dict]:
+        """Список капсул в истории (от новых к старым)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT id, user_id, title, expected_result, open_at, created_at, viewed_at, reflection
+                   FROM time_capsule_history WHERE user_id = ? ORDER BY viewed_at DESC""",
+                (user_id,),
+            ) as c:
+                rows = await c.fetchall()
+                return [dict(r) for r in rows]
+
+    async def add_capsule_reflection(self, history_id: int, user_id: int, reflection: str) -> bool:
+        """Добавить впечатления к капсуле в истории (только раз, если ещё пусто)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT id, reflection FROM time_capsule_history WHERE id = ? AND user_id = ?",
+                (history_id, user_id),
+            ) as c:
+                row = await c.fetchone()
+            if not row or (row[1] and str(row[1]).strip()):
+                return False
+            await db.execute(
+                "UPDATE time_capsule_history SET reflection = ? WHERE id = ? AND user_id = ?",
+                ((reflection or "").strip(), history_id, user_id),
+            )
+            await db.commit()
+        return True
