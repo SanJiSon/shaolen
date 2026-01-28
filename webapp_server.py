@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import logging
 
 from database import Database
@@ -539,6 +539,7 @@ class ProfileUpdate(BaseModel):
 class ShaolenAsk(BaseModel):
     message: str
     image_base64: Optional[str] = None  # data:image/jpeg;base64,... или только base64
+    history: Optional[List[Dict[str, Any]]] = None  # [{"role":"user"|"assistant","content":"..."}] — контекст диалога
 
 
 @app.get("/api/user/{user_id}/profile", response_model=None)
@@ -763,14 +764,22 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
         user_content = text[:2000]
         model = SHAOLEN_MODEL
 
+    # Собираем контекст диалога (последние 20 сообщений), чтобы ответы учитывали уточняющие вопросы
+    messages_for_groq = [{"role": "system", "content": system_text}]
+    raw_history = payload.history or []
+    for h in raw_history[-20:]:
+        role = (h.get("role") or "").strip().lower()
+        content = (h.get("content") or "").strip()[:1200]
+        if not content or role not in ("user", "assistant"):
+            continue
+        messages_for_groq.append({"role": role, "content": content})
+    messages_for_groq.append({"role": "user", "content": user_content})
+
     try:
         client = Groq(api_key=GROQ_API_KEY)
         chat = client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": system_text},
-                {"role": "user", "content": user_content},
-            ],
+            messages=messages_for_groq,
             max_tokens=800,
             temperature=0.7,
         )
