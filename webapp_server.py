@@ -1067,10 +1067,17 @@ def _normalize_image_url(img_b64: Optional[str]) -> Optional[str]:
 
 
 def _transcribe_audio_groq(client: "Groq", audio_b64: str, language: str = "ru") -> Optional[str]:
-    """Транскрибировать голосовое через Groq Whisper. audio_b64 — base64 без префикса data:."""
+    """Транскрибировать голосовое через Groq Whisper. audio_b64 — base64 или data:audio/...;base64,..."""
     if not audio_b64 or not str(audio_b64).strip():
         return None
     s = str(audio_b64).strip()
+    ext = "ogg"
+    if "webm" in s.lower():
+        ext = "webm"
+    elif "m4a" in s.lower() or "mp4" in s.lower():
+        ext = "m4a"
+    elif "mp3" in s.lower() or "mpeg" in s.lower():
+        ext = "mp3"
     if s.startswith("data:audio/") and ";base64," in s:
         s = s.split(";base64,", 1)[-1]
     if len(s) > 25 * 1024 * 1024 * 4 // 3:  # ~25 MB base64
@@ -1082,9 +1089,9 @@ def _transcribe_audio_groq(client: "Groq", audio_b64: str, language: str = "ru")
     if not raw or len(raw) > 25_000_000:
         return None
     try:
-        # Groq принимает (filename, bytes) или file-like; форматы: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
+        # Groq принимает (filename, bytes); форматы: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
         out = client.audio.transcriptions.create(
-            file=("audio.ogg", raw),
+            file=("audio." + ext, raw),
             model="whisper-large-v3-turbo",
             language=language,
             response_format="text",
