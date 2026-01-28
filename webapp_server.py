@@ -739,6 +739,7 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
 
     image_url = _normalize_image_url(payload.image_base64)
     has_image = bool(image_url)
+    logger.info("shaolen/ask user_id=%s has_image=%s msg_len=%s", user_id, has_image, len(text))
 
     missions = await db.get_missions(user_id, include_completed=True)
     goals = await db.get_goals(user_id, include_completed=True)
@@ -776,6 +777,9 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
         reply = (chat.choices[0].message.content or "").strip() if chat.choices else ""
     except Exception as e:
         logger.exception("Ошибка вызова Groq для user_id=%s: %s", user_id, e)
+        await db.add_shaolen_history(
+            user_id, text, "[Ошибка: не удалось получить ответ от советника]", has_image=has_image
+        )
         return JSONResponse(
             status_code=502,
             content={"detail": "Не удалось получить ответ от советника. Попробуйте позже."},
