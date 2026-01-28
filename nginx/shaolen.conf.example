@@ -33,6 +33,8 @@ server {
 
     # ——— Для Telegram WebApp: API бота (FastAPI на порту 8000) ———
     location /api/ {
+        # Лимит тела запроса 10 МБ — для отправки фото в чат Шаолень (base64)
+        client_max_body_size 10m;
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
