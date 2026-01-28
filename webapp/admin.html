@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Админ — Goals Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #0f172a; color: #e2e8f0; }
+    h1 { margin: 0 0 16px; font-size: 20px; }
+    .token-row { margin-bottom: 16px; }
+    .token-row input { width: 300px; padding: 8px; margin-right: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; }
+    .token-row button { padding: 8px 14px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+    section { margin-bottom: 24px; }
+    section h2 { font-size: 16px; margin: 0 0 10px; color: #94a3b8; }
+    .status-box { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+    .proc { padding: 10px 16px; background: #1e293b; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+    .proc .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .proc .dot.active { background: #22c55e; }
+    .proc .dot.inactive { background: #f43f5e; }
+    .proc .dot.unknown { background: #94a3b8; }
+    .proc button { padding: 6px 12px; font-size: 12px; background: #334155; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    .proc button:hover { background: #475569; }
+    .logs-toolbar { margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+    .logs-toolbar select { padding: 6px 10px; background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; }
+    .logs-box { background: #0c0e14; border: 1px solid #334155; border-radius: 8px; padding: 12px; max-height: 400px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #1e293b; border-radius: 8px; overflow: hidden; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    th { background: #0f172a; color: #94a3b8; font-weight: 600; }
+    .summary { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .summary span { padding: 8px 14px; background: #1e293b; border-radius: 6px; }
+    .req-row { cursor: pointer; }
+    .req-row.expanded { background: #0f172a; }
+    .req-full { padding: 10px; background: #0c0e14; border-radius: 6px; margin-top: 6px; font-size: 12px; white-space: pre-wrap; max-height: 200px; overflow: auto; }
+    .copy-btn { padding: 4px 8px; font-size: 11px; background: #7c3aed; color: #fff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; }
+    .copy-btn:hover { background: #8b5cf6; }
+    .err { color: #f43f5e; }
+  </style>
+</head>
+<body>
+  <h1>Админ-панель Goals Bot</h1>
+  <div class="token-row">
+    <input type="password" id="token-inp" placeholder="ADMIN_TOKEN из .env" />
+    <button type="button" id="token-save">Сохранить и загрузить</button>
+    <span id="token-msg"></span>
+  </div>
+
+  <section id="sec-status">
+    <h2>Процессы</h2>
+    <div class="status-box">
+      <div class="proc" id="proc-bot"><span class="dot unknown" id="dot-bot"></span><span>bot.py</span><span id="status-bot">—</span><button id="btn-bot-start">Запустить</button><button id="btn-bot-stop">Остановить</button></div>
+      <div class="proc" id="proc-webapp"><span class="dot unknown" id="dot-webapp"></span><span>webapp_server.py</span><span id="status-webapp">—</span><button id="btn-webapp-start">Запустить</button><button id="btn-webapp-stop">Остановить</button></div>
+    </div>
+  </section>
+
+  <section id="sec-logs">
+    <h2>Логи (режим реального времени)</h2>
+    <div class="logs-toolbar">
+      <select id="logs-source"><option value="bot">bot.log</option><option value="webapp">webapp.log</option></select>
+      <button type="button" id="logs-refresh">Обновить</button>
+      <label><input type="checkbox" id="logs-auto" /> обновлять каждые 3 сек</label>
+    </div>
+    <div class="logs-box" id="logs-box"></div>
+  </section>
+
+  <section id="sec-users">
+    <h2>Пользователи</h2>
+    <div class="summary" id="users-summary"></div>
+    <div style="overflow-x: auto;"><table id="users-table"><thead><tr><th>user_id</th><th>Имя</th><th>@username</th><th>Миссии</th><th>Цели</th><th>Привычки</th><th>Запросов Шаолень</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="sec-requests">
+    <h2>Запросы к мастеру Шаолень</h2>
+    <div style="overflow-x: auto;"><table id="requests-table"><thead><tr><th>Дата</th><th>Пользователь</th><th>Запрос</th><th>Фото</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <script>
+(function() {
+  var BASE = window.location.origin + (window.location.pathname.replace(/\/[^/]*$/, '') || '');
+  if (BASE.endsWith('/')) BASE = BASE.slice(0, -1);
+  var token = localStorage.getItem('admin_token') || (new URLSearchParams(window.location.search).get('token') || '');
+
+  function headers() {
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h['X-Admin-Token'] = token;
+    return h;
+  }
+  function q(s) { return document.querySelector(s); }
+  function qs(s) { return document.querySelectorAll(s); }
+
+  function api(path, opts) {
+    opts = opts || {};
+    var url = BASE + path + (token && path.indexOf('?') === -1 ? '?token=' + encodeURIComponent(token) : '');
+    return fetch(url, { headers: headers(), method: opts.method || 'GET', body: opts.body }).then(function(r) {
+      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      return r.json();
+    });
+  }
+
+  function showMsg(el, text, isErr) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = isErr ? 'err' : '';
+  }
+
+  // Token
+  var tokenInp = q('#token-inp');
+  var tokenMsg = q('#token-msg');
+  if (token) tokenInp.value = token;
+  q('#token-save').onclick = function() {
+    token = (tokenInp.value || '').trim();
+    if (!token) { showMsg(tokenMsg, 'Введите токен', true); return; }
+    localStorage.setItem('admin_token', token);
+    showMsg(tokenMsg, 'Сохранено');
+    loadStatus(); loadLogs(); loadUsers(); loadRequests();
+  };
+
+  function loadStatus() {
+    if (!token) return;
+    api('/api/admin/status').then(function(d) {
+      var b = d.bot || 'unknown', w = d.webapp || 'unknown';
+      q('#status-bot').textContent = b === 'active' ? 'запущен' : (b === 'inactive' ? 'остановлен' : '?');
+      q('#status-webapp').textContent = w === 'active' ? 'запущен' : (w === 'inactive' ? 'остановлен' : '?');
+      q('#dot-bot').className = 'dot ' + b;
+      q('#dot-webapp').className = 'dot ' + w;
+    }).catch(function(e) { q('#status-bot').textContent = 'ошибка'; q('#status-webapp').textContent = 'ошибка'; });
+  }
+  function postControl(what, action) {
+    if (!token) return;
+    api('/api/admin/' + what + '/' + action, { method: 'POST' }).then(function() { loadStatus(); }).catch(function(e) { alert(e.message || 'Ошибка'); });
+  }
+  q('#btn-bot-start').onclick = function() { postControl('bot', 'start'); };
+  q('#btn-bot-stop').onclick = function() { postControl('bot', 'stop'); };
+  q('#btn-webapp-start').onclick = function() { postControl('webapp', 'start'); };
+  q('#btn-webapp-stop').onclick = function() { postControl('webapp', 'stop'); };
+
+  function loadLogs() {
+    if (!token) return;
+    var src = q('#logs-source').value;
+    api('/api/admin/logs?source=' + src + '&n=500').then(function(d) {
+      q('#logs-box').textContent = (d.lines || []).join('');
+      q('#logs-box').scrollTop = q('#logs-box').scrollHeight;
+    }).catch(function(e) { q('#logs-box').textContent = 'Ошибка: ' + e.message; });
+  }
+  q('#logs-refresh').onclick = loadLogs;
+  q('#logs-source').onchange = loadLogs;
+  setInterval(function() { if (q('#logs-auto') && q('#logs-auto').checked && token) loadLogs(); }, 3000);
+
+  function loadUsers() {
+    if (!token) return;
+    api('/api/admin/users').then(function(d) {
+      var users = d.users || [];
+      q('#users-summary').innerHTML = '<span>Всего пользователей: ' + (d.total_users || 0) + '</span><span>Сделали запросы к Шаолень: ' + (d.users_with_shaolen_requests || 0) + '</span>';
+      var t = q('#users-table tbody');
+      t.innerHTML = '';
+      users.forEach(function(u) {
+        var name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.display_name || '—';
+        var un = u.username ? '@' + u.username : '—';
+        t.innerHTML += '<tr><td>' + u.user_id + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(un) + '</td><td>' + (u.missions_count||0) + '</td><td>' + (u.goals_count||0) + '</td><td>' + (u.habits_count||0) + '</td><td>' + (u.shaolen_requests||0) + '</td></tr>';
+      });
+    }).catch(function(e) { q('#users-summary').textContent = 'Ошибка: ' + e.message; });
+  }
+  function escapeHtml(s) {
+    if (s == null) return '';
+    var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
+  }
+
+  function loadRequests() {
+    if (!token) return;
+    api('/api/admin/shaolen-requests?limit=200').then(function(d) {
+      var list = d.requests || [];
+      var t = q('#requests-table tbody');
+      t.innerHTML = '';
+      list.forEach(function(r) {
+        var name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.display_name || '—';
+        if (r.username) name += ' @' + r.username;
+        var msgShort = (r.user_message || '').slice(0, 80);
+        if ((r.user_message || '').length > 80) msgShort += '…';
+        var dateStr = (r.created_at || '').slice(0, 16).replace('T', ' ');
+        var row = '<tr class="req-row" data-id="' + r.id + '"><td>' + escapeHtml(dateStr) + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(msgShort) + '</td><td>' + (r.has_image ? '📷' : '—') + '</td></tr>';
+        row += '<tr class="req-detail" id="req-detail-' + r.id + '" style="display:none"><td colspan="4"><div class="req-full"><strong>Запрос:</strong> ' + escapeHtml(r.user_message || '') + '</div><div class="req-full"><strong>Ответ:</strong> ' + escapeHtml(r.assistant_reply || '') + '</div><button class="copy-btn" data-msg="' + escapeHtml(JSON.stringify({ request: r.user_message, reply: r.assistant_reply }).replace(/"/g, '&quot;')) + '">Скопировать запрос в буфер</button></td></tr>';
+        t.innerHTML += row;
+      });
+      t.parentElement.querySelectorAll('.req-row').forEach(function(row) {
+        row.onclick = function() {
+          var id = row.dataset.id;
+          var detail = document.getElementById('req-detail-' + id');
+          if (!detail) return;
+          detail.style.display = detail.style.display === 'none' ? 'table-row' : 'none';
+          row.classList.toggle('expanded', detail.style.display !== 'none');
+        };
+      });
+      t.parentElement.querySelectorAll('.copy-btn').forEach(function(btn) {
+        btn.onclick = function(e) { e.stopPropagation(); var tr = document.getElementById('req-detail-' + btn.dataset.id); if (!tr) return; var reqDiv = tr.querySelector('.req-req'), ansDiv = tr.querySelector('.req-ans'); var reqT = reqDiv ? reqDiv.textContent.replace(/^Запрос:\s*/, '').trim() : ''; var ansT = ansDiv ? ansDiv.textContent.replace(/^Ответ:\s*/, '').trim() : ''; var full = reqT + '\n\n--- Ответ ---\n' + ansT; navigator.clipboard.writeText(full).then(function(){ btn.textContent = 'Скопировано'; setTimeout(function(){ btn.textContent = 'Скопировать запрос в буфер'; }, 1500); }); };
+      });
+    }).catch(function(e) { q('#requests-table tbody').innerHTML = '<tr><td colspan="4">Ошибка: ' + e.message + '</td></tr>'; });
+  }
+
+  if (token) { loadStatus(); loadLogs(); loadUsers(); loadRequests(); }
+  setInterval(loadStatus, 10000);
+})();
+  </script>
+</body>
+</html>

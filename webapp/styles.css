@@ -1076,6 +1076,37 @@ body {
   color: var(--muted);
   line-height: 1.4;
 }
+.shaolen-history-toggle {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-left: 4px;
+}
+.shaolen-history-item {
+  cursor: pointer;
+}
+.shaolen-history-full {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 12px;
+}
+.shaolen-history-full-req,
+.shaolen-history-full-ans {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+.shaolen-history-copy {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 4px 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
 .shaolen-messages {
   flex: 1;
   min-height: 200px;

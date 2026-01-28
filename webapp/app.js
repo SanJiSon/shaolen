@@ -821,11 +821,44 @@ function openShaolenHistory() {
         if ((r.user_message || "").length > 80) userShort += "…";
         var replyShort = (r.assistant_reply || "").slice(0, 120);
         if ((r.assistant_reply || "").length > 120) replyShort += "…";
-        html += "<div class=\"shaolen-history-item\"><div class=\"shaolen-history-date\">" + escapeHtml(dateStr) + (r.has_image ? " 📷" : "") + "</div>";
+        var userFull = escapeHtml(r.user_message || "");
+        var replyFull = escapeHtml(r.assistant_reply || "");
+        html += "<div class=\"shaolen-history-item\" data-idx=\"" + i + "\">";
+        html += "<div class=\"shaolen-history-date\">" + escapeHtml(dateStr) + (r.has_image ? " 📷" : "") + " <span class=\"shaolen-history-toggle\">▼</span></div>";
         html += "<div class=\"shaolen-history-user\">" + escapeHtml(userShort) + "</div>";
-        html += "<div class=\"shaolen-history-reply\">" + escapeHtml(replyShort) + "</div></div>";
+        html += "<div class=\"shaolen-history-reply\">" + escapeHtml(replyShort) + "</div>";
+        html += "<div class=\"shaolen-history-full\" style=\"display:none\"><div class=\"shaolen-history-full-req\">" + userFull + "</div><div class=\"shaolen-history-full-ans\">" + replyFull + "</div><button type=\"button\" class=\"shaolen-history-copy link-btn\">Скопировать запрос в буфер</button></div>";
+        html += "</div>";
       }
       listEl.innerHTML = html;
+      listEl.querySelectorAll(".shaolen-history-item").forEach(function(el) {
+        var idx = parseInt(el.dataset.idx, 10);
+        var r = state.shaolenHistory[idx];
+        if (!r) return;
+        var toggle = el.querySelector(".shaolen-history-toggle");
+        var full = el.querySelector(".shaolen-history-full");
+        var copyBtn = el.querySelector(".shaolen-history-copy");
+        function openFull() {
+          if (full.style.display === "none") {
+            full.style.display = "block";
+            if (toggle) toggle.textContent = "▲";
+          } else {
+            full.style.display = "none";
+            if (toggle) toggle.textContent = "▼";
+          }
+        }
+        el.addEventListener("click", function(ev) {
+          if (ev.target.closest(".shaolen-history-copy")) return;
+          openFull();
+        });
+        if (copyBtn) copyBtn.addEventListener("click", function(ev) {
+          ev.stopPropagation();
+          var t = (r.user_message || "") + "\n\n--- Ответ ---\n" + (r.assistant_reply || "");
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(function() { if (tg) tg.showAlert("Скопировано"); });
+          }
+        });
+      });
     })
     .catch(function() { listEl.innerHTML = "<div class=\"shaolen-history-empty\">Не удалось загрузить</div>"; });
 }
