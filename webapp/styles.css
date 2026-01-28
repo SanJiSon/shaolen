@@ -118,13 +118,13 @@ body {
   font-size: 24px;
   line-height: 1;
   background: var(--bg-elevated);
-  border: 2px solid var(--accent);
+  border: 2px solid #60a5fa;
   border-radius: 12px;
-  color: var(--accent);
+  color: #38bdf8;
   cursor: pointer;
   transition: background 0.2s, color 0.2s, transform 0.15s;
   -webkit-tap-highlight-color: transparent;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.35);
 }
 .capsule-icon-wrap {
   display: flex;
@@ -151,7 +151,7 @@ body {
 }
 .capsule-menu-btn:hover,
 .capsule-menu-btn:active {
-  background: var(--accent-soft);
+  background: rgba(56, 189, 248, 0.15);
   color: var(--text);
 }
 .capsule-menu-btn:active {

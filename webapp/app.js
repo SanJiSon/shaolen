@@ -547,7 +547,9 @@ function renderProfile() {
 function parseOpenAt(s) {
   if (!s) return null;
   try {
-    var d = new Date(String(s).replace("Z", "").trim());
+    var str = String(s).trim();
+    if (!str) return null;
+    var d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
   } catch (e) { return null; }
 }
@@ -734,6 +736,7 @@ function renderCapsule() {
 }
 
 function openCapsuleCreateDialog() {
+  closeCapsuleOverlay();
   var extra = "<label>Открыть через (дней)</label><input type=\"number\" id=\"cap-days\" class=\"input\" min=\"0\" value=\"30\" />" +
     "<label>Открыть через (часов, только целые)</label><input type=\"number\" id=\"cap-hours\" class=\"input\" min=\"0\" step=\"1\" value=\"0\" placeholder=\"Только часы — укажите целое число\" />";
   openDialog({
