@@ -672,6 +672,11 @@ def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> s
         "Отвечай кратко и по-русски. Опирайся на миссии, цели и привычки пользователя: предлагай советы в духе «Вижу, вы хотите… — вот как это делать правильно» или «Учитывая вашу цель …, советую …».",
         "Не придумывай то, чего нет в списке ниже. Если списков нет — просто поддержи и дай общий совет по постановке целей.",
         "",
+        "ВАЖНО: когда пользователь просит подобрать или добавить привычки/цели/миссии (например «хочу похудеть, добавь привычки» или «подбери цели») — в ответе ты предлагаешь конкретные названия. Чтобы бот их реально создал, в самом конце ответа добавь ровно одну строку:",
+        "__ДОБАВИТЬ__ привычки: то, что ты перечислил в тексте, через запятую",
+        "Пример: если написал «предлагаю привычки: контроль питания, пить воду, сон 8 часов» — в конец добавь строку: __ДОБАВИТЬ__ привычки: контроль питания, пить воду, сон 8 часов",
+        "Для целей: __ДОБАВИТЬ__ цели: цель1, цель2. Для миссий: __ДОБАВИТЬ__ миссии: Миссия (подцели: а, б). Можно несколько блоков через |: привычки: а, б | цели: в. Эту строку пользователь не увидит.",
+        "",
         "Миссии пользователя (долгосрочные цели с подцелями):",
     ]
     if missions:
@@ -759,6 +764,63 @@ def _parse_add_intent(text: str):
         if title:
             return ("mission", title[:200], "", subgoals)
     return None
+
+
+def _parse_groq_add_block(reply: str):
+    """
+    Ищет в ответе Groq строку __ДОБАВИТЬ__ ... и извлекает привычки/цели/миссии.
+    Возвращает (reply_без_этой_строки, [(typ, title, subgoals), ...]),
+    где typ in ("habit","goal","mission").
+    """
+    if not reply or "__ДОБАВИТЬ__" not in reply:
+        return reply.strip(), []
+    lines = reply.split("\n")
+    cleaned = []
+    add_line = None
+    for line in lines:
+        if "__ДОБАВИТЬ__" in line:
+            add_line = line
+            continue
+        cleaned.append(line)
+    reply_clean = "\n".join(cleaned).strip()
+    if not add_line:
+        return reply_clean, []
+
+    to_add = []
+    rest = add_line.split("__ДОБАВИТЬ__", 1)[-1].strip()
+    for part in re.split(r"\s*\|\s*", rest):
+        part = part.strip()
+        m = re.match(r"привычки?\s*[:-]\s*(.+)", part, re.IGNORECASE)
+        if m:
+            for s in re.split(r"[,;]", m.group(1)):
+                t = s.strip().strip("'\"").strip()[:200]
+                if t:
+                    to_add.append(("habit", t, []))
+            continue
+        m = re.match(r"цели?\s*[:-]\s*(.+)", part, re.IGNORECASE)
+        if m:
+            for s in re.split(r"[,;]", m.group(1)):
+                t = s.strip().strip("'\"").strip()[:200]
+                if t:
+                    to_add.append(("goal", t, []))
+            continue
+        m = re.match(r"мисси\w*\s*[:-]\s*(.+)", part, re.IGNORECASE)
+        if m:
+            block = m.group(1).strip()
+            for chunk in re.split(r"(?<=\))\s*,\s*|,\s*(?=[^()]*(?:\(|$))", block):
+                chunk = chunk.strip().strip("'\"").strip()
+                subgoals = []
+                subm = re.search(r"\s*\(подцели?\s*[:-]\s*([^)]+)\)", chunk, re.IGNORECASE)
+                if subm:
+                    for s in re.split(r"[,;]|\s+и\s+", subm.group(1)):
+                        t = s.strip().strip("'\"").strip()[:150]
+                        if t:
+                            subgoals.append(t)
+                    chunk = chunk[: subm.start()].strip().strip("'\"").strip()
+                if chunk:
+                    to_add.append(("mission", chunk[:200], subgoals[:10]))
+            continue
+    return reply_clean, to_add
 
 
 def _normalize_image_url(img_b64: Optional[str]) -> Optional[str]:
@@ -877,12 +939,28 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
             content={"detail": "Не удалось получить ответ от советника. Попробуйте позже."},
         )
 
+    reply_clean, from_groq = _parse_groq_add_block(reply)
+    reply = reply_clean
+    for item in from_groq:
+        typ, title, subgoals = item[0], item[1], (item[2] if len(item) > 2 else [])
+        try:
+            if typ == "habit":
+                await db.add_habit(user_id, title, "")
+            elif typ == "goal":
+                await db.add_goal(user_id, title, "", None, 1)
+            elif typ == "mission":
+                mid = await db.add_mission(user_id, title, "", None)
+                for sg in subgoals:
+                    await db.add_subgoal(mid, sg, "")
+        except Exception as e:
+            logger.warning("Не удалось создать из ответа Groq typ=%s title=%s: %s", typ, title, e)
+
     await db.increment_shaolen_requests(user_id)
     await db.add_shaolen_history(user_id, text, reply, has_image=has_image)
     new_used = used + 1
     out = {"reply": reply, "usage": {"used": new_used, "limit": LIMIT_SHAOLEN_PER_DAY}}
-    if intent and created_what:
-        out["created"] = intent[0]
+    if from_groq or (intent and created_what):
+        out["created"] = from_groq[0][0] if from_groq else intent[0]
     return JSONResponse(content=out)
 
 
