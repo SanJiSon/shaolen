@@ -222,11 +222,13 @@ body {
   color: var(--text);
 }
 
-/* Вкладки */
+/* Вкладки — равные промежутки между названиями */
 .tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
+  justify-content: space-evenly;
+  align-items: center;
+  gap: 0;
+  padding: 4px 6px;
   background: var(--bg-elevated);
   border-radius: var(--radius-lg);
   margin-bottom: 14px;
@@ -238,19 +240,20 @@ body {
 .tabs::-webkit-scrollbar { display: none; }
 
 .tab {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   border: none;
   background: transparent;
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
-  padding: 10px 8px;
+  padding: 10px 4px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   -webkit-tap-highlight-color: transparent;
   white-space: nowrap;
+  text-align: center;
 }
 
 .tab:hover {
@@ -268,7 +271,7 @@ body {
 }
 
 .tab-profile {
-  flex: 0 0 auto;
+  flex: 1 1 0;
 }
 
 .tab-content {
