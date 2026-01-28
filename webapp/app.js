@@ -904,6 +904,8 @@ function sendShaolenMessage() {
   input.value = "";
   var bodyToSend = { message: text || (hasImage ? "Что на фото? Оцени калории и дай краткий совет." : "") };
   if (state.shaolenImageData) bodyToSend.image_base64 = state.shaolenImageData;
+  var prev = state.shaolenMessages.slice(0, -1).slice(-20);
+  bodyToSend.history = prev.map(function(m) { return { role: m.role, content: (m.content || "").slice(0, 1200) }; });
   clearShaolenImage();
   renderShaolenChat();
   if (sendBtn) sendBtn.disabled = true;
