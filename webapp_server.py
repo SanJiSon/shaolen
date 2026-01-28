@@ -980,14 +980,36 @@ def _admin_token(request: Request) -> bool:
 
 def _admin_required(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
+
+
+def _admin_403_body() -> dict:
+    """Подсказка при 403: видит ли сервер ADMIN_TOKEN (без раскрытия значения)."""
+    body = {"detail": "Неверный или отсутствующий ADMIN_TOKEN"}
+    t = (ADMIN_TOKEN or "").strip()
+    if not t:
+        body["hint"] = "ADMIN_TOKEN на сервере пустой или не задан — проверьте .env и EnvironmentFile в systemd"
+    else:
+        body["hint"] = f"На сервере токен задан (длина {len(t)}). Сверьте токен в ссылке/заголовке с .env"
+    return body
+
+
+# === Отладка 403: без авторизации, только смотреть, видит ли процесс ADMIN_TOKEN ===
+@app.get("/api/admin/check-env")
+async def api_admin_check_env():
+    """Проверка: задан ли ADMIN_TOKEN на сервере (длина без раскрытия значения)."""
+    t = (ADMIN_TOKEN or "").strip()
+    return JSONResponse(content={
+        "token_loaded": bool(t),
+        "token_length": len(t),
+    })
 
 
 # === Админ-API (требует ADMIN_TOKEN в заголовке X-Admin-Token или ?token=...) ===
 @app.get("/api/admin/status")
 async def api_admin_status(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     base = os.path.dirname(os.path.abspath(__file__))
     log_bot = os.path.join(base, "logs", "bot.log")
     log_webapp = os.path.join(base, "logs", "webapp.log")
@@ -1024,7 +1046,7 @@ async def api_admin_status(request: Request):
 @app.post("/api/admin/bot/start")
 async def api_admin_bot_start(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     try:
         subprocess.run(["systemctl", "start", "goals-bot"], capture_output=True, text=True, timeout=5)
         return JSONResponse(content={"ok": True, "message": "Команда start отправлена"})
@@ -1035,7 +1057,7 @@ async def api_admin_bot_start(request: Request):
 @app.post("/api/admin/bot/stop")
 async def api_admin_bot_stop(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     try:
         subprocess.run(["systemctl", "stop", "goals-bot"], capture_output=True, text=True, timeout=5)
         return JSONResponse(content={"ok": True, "message": "Команда stop отправлена"})
@@ -1046,7 +1068,7 @@ async def api_admin_bot_stop(request: Request):
 @app.post("/api/admin/webapp/start")
 async def api_admin_webapp_start(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     try:
         subprocess.run(["systemctl", "start", "goals-webapp"], capture_output=True, text=True, timeout=5)
         return JSONResponse(content={"ok": True, "message": "Команда start отправлена"})
@@ -1057,7 +1079,7 @@ async def api_admin_webapp_start(request: Request):
 @app.post("/api/admin/webapp/stop")
 async def api_admin_webapp_stop(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     try:
         subprocess.run(["systemctl", "stop", "goals-webapp"], capture_output=True, text=True, timeout=5)
         return JSONResponse(content={"ok": True, "message": "Команда stop отправлена"})
@@ -1068,7 +1090,7 @@ async def api_admin_webapp_stop(request: Request):
 @app.get("/api/admin/logs")
 async def api_admin_logs(request: Request, source: str = "bot", n: int = 500):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     base = os.path.dirname(os.path.abspath(__file__))
     name = "bot.log" if source == "bot" else "webapp.log"
     path = os.path.join(base, "logs", name)
@@ -1086,7 +1108,7 @@ async def api_admin_logs(request: Request, source: str = "bot", n: int = 500):
 @app.get("/api/admin/users")
 async def api_admin_users(request: Request):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     try:
         rows = await db.get_all_users_with_stats()
         out = []
@@ -1119,7 +1141,7 @@ async def api_admin_users(request: Request):
 @app.get("/api/admin/shaolen-requests")
 async def api_admin_shaolen_requests(request: Request, limit: int = 200, offset: int = 0):
     if not _admin_token(request):
-        return JSONResponse(status_code=403, content={"detail": "Неверный или отсутствующий ADMIN_TOKEN"})
+        return JSONResponse(status_code=403, content=_admin_403_body())
     try:
         rows = await db.get_shaolen_history_for_admin(limit=min(limit, 500), offset=offset)
         out = []
