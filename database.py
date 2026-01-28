@@ -123,6 +123,17 @@ class Database:
                 )
             """)
 
+            # Лимит запросов к «мастеру Шаолень» по пользователю и дню
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS shaolen_daily_requests (
+                    user_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    request_count INTEGER DEFAULT 0,
+                    PRIMARY KEY (user_id, date),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
             await db.commit()
 
     async def add_user(
@@ -615,3 +626,29 @@ class Database:
         d2 = (date.today() + timedelta(days=30)).isoformat()
         await self.add_goal(user_id, "Пройти 5 км без остановки", "Постепенно увеличивать дистанцию", d1, 2)
         await self.add_goal(user_id, "Прочитать одну книгу", "Выбрать книгу и читать по 15 минут в день", d2, 1)
+
+    # === Мастер Шаолень (лимит запросов в день) ===
+    async def get_shaolen_requests_today(self, user_id: int) -> int:
+        """Количество запросов к Шаолень за сегодня."""
+        from datetime import date
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT request_count FROM shaolen_daily_requests WHERE user_id = ? AND date = ?",
+                (user_id, today),
+            ) as c:
+                row = await c.fetchone()
+                return int(row[0]) if row else 0
+
+    async def increment_shaolen_requests(self, user_id: int) -> None:
+        """Увеличить счётчик запросов к Шаолень на сегодня на 1."""
+        from datetime import date
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO shaolen_daily_requests (user_id, date, request_count)
+                   VALUES (?, ?, 1)
+                   ON CONFLICT(user_id, date) DO UPDATE SET request_count = request_count + 1""",
+                (user_id, today),
+            )
+            await db.commit()

@@ -14,9 +14,17 @@ import logging
 
 from database import Database
 
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+LIMIT_SHAOLEN_PER_DAY = 50
+SHAOLEN_MODEL = "llama-3.3-70b-versatile"
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[dict]:
@@ -527,6 +535,10 @@ class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
 
 
+class ShaolenAsk(BaseModel):
+    message: str
+
+
 @app.get("/api/user/{user_id}/profile", response_model=None)
 async def api_get_profile(user_id: int):
     """Профиль пользователя: имя, отображаемое имя, статистика."""
@@ -623,6 +635,107 @@ async def api_get_analytics(user_id: int, period: str = "month"):
             "habit_chart": {"labels": [], "values": []}
         }
         return JSONResponse(content=error_result)
+
+
+@app.get("/api/user/{user_id}/shaolen/usage", response_model=None)
+async def api_shaolen_usage(user_id: int):
+    """Лимит запросов к мастеру Шаолень: использовано сегодня и лимит в день."""
+    used = await db.get_shaolen_requests_today(user_id)
+    return JSONResponse(content={"used": used, "limit": LIMIT_SHAOLEN_PER_DAY})
+
+
+def _build_shaolen_system_prompt(missions: list, goals: list, habits: list) -> str:
+    parts = [
+        "Ты — мастер Шаолень, мудрый и доброжелательный помощник в приложении для целей, миссий и привычек.",
+        "Отвечай кратко и по-русски. Опирайся на миссии, цели и привычки пользователя: предлагай советы в духе «Вижу, вы хотите… — вот как это делать правильно» или «Учитывая вашу цель …, советую …».",
+        "Не придумывай то, чего нет в списке ниже. Если списков нет — просто поддержи и дай общий совет по постановке целей.",
+        "",
+        "Миссии пользователя (долгосрочные цели с подцелями):",
+    ]
+    if missions:
+        for m in missions:
+            title = (m.get("title") or "").strip()
+            if title:
+                parts.append(f"  • {title}")
+    else:
+        parts.append("  (пока нет)")
+    parts.append("")
+    parts.append("Цели пользователя:")
+    if goals:
+        for g in goals:
+            title = (g.get("title") or "").strip()
+            if title:
+                parts.append(f"  • {title}")
+    else:
+        parts.append("  (пока нет)")
+    parts.append("")
+    parts.append("Привычки пользователя:")
+    if habits:
+        for h in habits:
+            title = (h.get("title") or "").strip()
+            if title:
+                parts.append(f"  • {title}")
+    else:
+        parts.append("  (пока нет)")
+    return "\n".join(parts)
+
+
+@app.post("/api/user/{user_id}/shaolen/ask", response_model=None)
+async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
+    """Запрос к мастеру Шаолень. Лимит 50 запросов в день на пользователя."""
+    used = await db.get_shaolen_requests_today(user_id)
+    if used >= LIMIT_SHAOLEN_PER_DAY:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Сегодня достигнут лимит запросов (50 в день). Заходите завтра.",
+                "usage": {"used": used, "limit": LIMIT_SHAOLEN_PER_DAY},
+            },
+        )
+    if not payload.message or not str(payload.message).strip():
+        return JSONResponse(status_code=400, content={"detail": "Сообщение не может быть пустым."})
+
+    if not Groq or not GROQ_API_KEY:
+        logger.warning("Groq не настроен: нет GROQ_API_KEY или пакета groq")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Советник временно недоступен. Добавьте GROQ_API_KEY в настройки сервера."},
+        )
+
+    missions = await db.get_missions(user_id, include_completed=True)
+    goals = await db.get_goals(user_id, include_completed=True)
+    habits = await db.get_habits(user_id, active_only=False)
+    system_text = _build_shaolen_system_prompt(
+        [dict(m) for m in missions],
+        [dict(g) for g in goals],
+        [dict(h) for h in habits],
+    )
+
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+        chat = client.chat.completions.create(
+            model=SHAOLEN_MODEL,
+            messages=[
+                {"role": "system", "content": system_text},
+                {"role": "user", "content": str(payload.message).strip()[:2000]},
+            ],
+            max_tokens=800,
+            temperature=0.7,
+        )
+        reply = (chat.choices[0].message.content or "").strip() if chat.choices else ""
+    except Exception as e:
+        logger.exception("Ошибка вызова Groq для user_id=%s: %s", user_id, e)
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Не удалось получить ответ от советника. Попробуйте позже."},
+        )
+
+    await db.increment_shaolen_requests(user_id)
+    new_used = used + 1
+    return JSONResponse(content={
+        "reply": reply,
+        "usage": {"used": new_used, "limit": LIMIT_SHAOLEN_PER_DAY},
+    })
 
 
 if __name__ == "__main__":
