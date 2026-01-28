@@ -1226,8 +1226,15 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
 
     reply_clean, from_groq = _parse_groq_add_block(reply)
     reply = reply_clean
+    # Не дублировать: если уже создали по интенту из фразы («добавь задачу X»), не создавать то же из ответа Groq
+    intent_key = None
+    if intent and created_what:
+        intent_action, intent_title = intent[0], (intent[1] or "").strip().lower()
+        intent_key = (intent_action, intent_title)
     for item in from_groq:
         typ, title, subgoals = item[0], item[1], (item[2] if len(item) > 2 else [])
+        if intent_key and typ == intent_key[0] and (title or "").strip().lower() == intent_key[1]:
+            continue
         try:
             if typ == "habit":
                 await db.add_habit(user_id, title, "")
