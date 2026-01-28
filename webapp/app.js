@@ -201,14 +201,23 @@ function openDialog({ title, extraHtml = "", onSave, initialValues }) {
     };
     var fail = function(err) {
       console.error("Ошибка сохранения:", err);
-      if (tg) tg.showAlert("Не удалось сохранить. Проверьте подключение.");
+      if (sb) { sb.disabled = false; sb.textContent = "Сохранить"; }
+      if (err && (err.message === "validate" || err.name === "validate")) {
+        /* сообщение уже показано в onSave */
+      } else {
+        if (tg) tg.showAlert("Не удалось сохранить. Проверьте подключение.");
+      }
+    };
+    var restoreBtn = function() {
       if (sb) { sb.disabled = false; sb.textContent = "Сохранить"; }
     };
     try {
       var p = onSave({ title: t, description: d });
-      (p && typeof p.then === "function" ? p : Promise.resolve()).then(done).catch(fail);
+      var promise = (p && typeof p.then === "function" ? p : Promise.resolve());
+      promise.then(done, fail).finally(restoreBtn);
     } catch (e) {
       fail(e);
+      restoreBtn();
     }
   }
   if (cb) cb.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); cancel(ev); };
@@ -549,6 +558,10 @@ function parseOpenAt(s) {
   try {
     var str = String(s).trim();
     if (!str) return null;
+    // Бэкенд отдаёт время в UTC с суффиксом "Z". Если суффикса нет — считаем UTC, иначе парсер может принять как local.
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str) && str.indexOf("Z") === -1 && !/[-+]\d{2}:?\d{2}$/.test(str)) {
+      str = str.replace(/(\.\d+)?$/, "$1Z");
+    }
     var d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
   } catch (e) { return null; }
