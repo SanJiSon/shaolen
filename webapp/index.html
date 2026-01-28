@@ -5,7 +5,7 @@
     <title>Goals WebApp</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0f172a" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=7" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
@@ -82,15 +82,27 @@
     <button type="button" id="shaolen-fab" class="shaolen-fab" aria-label="Спросить совета у мастера Шаолень">Спросить совета у мастера Шаолень</button>
 
     <div id="shaolen-overlay" class="shaolen-overlay hidden">
-      <div class="shaolen-chat">
-        <div class="shaolen-chat-header">
+      <div id="shaolen-chat" class="shaolen-chat">
+        <div class="shaolen-chat-header shaolen-swipe-area">
           <h3>Мастер Шаолень</h3>
           <span class="shaolen-usage"></span>
+          <button type="button" class="shaolen-history-btn" aria-label="История запросов" title="История запросов">📜</button>
+          <button type="button" class="shaolen-fullscreen-btn" aria-label="На весь экран" title="На весь экран">⛶</button>
+          <button type="button" class="shaolen-restore-btn hidden" aria-label="Вернуть" title="Вернуть положение">↘</button>
           <button type="button" class="shaolen-close" aria-label="Закрыть">&times;</button>
+        </div>
+        <div id="shaolen-history-panel" class="shaolen-history-panel hidden">
+          <div class="shaolen-history-header"><span>История запросов</span><button type="button" class="shaolen-history-close">&times;</button></div>
+          <div class="shaolen-history-list"></div>
         </div>
         <div class="shaolen-messages"></div>
         <div class="shaolen-input-wrap">
-          <textarea id="shaolen-input" class="shaolen-input" placeholder="Напишите вопрос или попросите совет…" rows="2"></textarea>
+          <div class="shaolen-attach-row">
+            <input type="file" id="shaolen-image-input" class="shaolen-image-input" accept="image/*" aria-label="Прикрепить фото" />
+            <button type="button" class="shaolen-attach-btn" aria-label="Фото" title="Прикрепить фото">📷</button>
+            <span class="shaolen-image-preview"></span>
+          </div>
+          <textarea id="shaolen-input" class="shaolen-input" placeholder="Напишите вопрос или попросите совет… Например: оцени калории по фото еды" rows="2"></textarea>
           <button type="button" id="shaolen-send" class="shaolen-send primary-btn">Отправить</button>
         </div>
       </div>
@@ -111,6 +123,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
   </body>
 </html>

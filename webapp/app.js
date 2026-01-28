@@ -7,6 +7,9 @@ const state = {
   analyticsPeriod: "month",
   shaolenMessages: [],
   shaolenUsage: { used: 0, limit: 50 },
+  shaolenHistory: [],
+  shaolenFullscreen: false,
+  shaolenImageData: null,
 };
 
 function initUser() {
@@ -729,8 +732,16 @@ async function loadAll() {
 
 function openShaolenChat() {
   var overlay = $("#shaolen-overlay");
+  var chatEl = $("#shaolen-chat");
   if (!overlay) return;
   overlay.classList.remove("hidden");
+  if (chatEl) chatEl.classList.remove("shaolen-chat--fullscreen");
+  state.shaolenFullscreen = false;
+  var restoreBtn = $(".shaolen-restore-btn");
+  var fullscreenBtn = $(".shaolen-fullscreen-btn");
+  if (restoreBtn) restoreBtn.classList.add("hidden");
+  if (fullscreenBtn) fullscreenBtn.classList.remove("hidden");
+  $("#shaolen-history-panel").classList.add("hidden");
   fetchShaolenUsage().then(function() { renderShaolenChat(); });
 }
 
@@ -758,10 +769,68 @@ function renderShaolenChat() {
   for (var i = 0; i < msgs.length; i++) {
     var m = msgs[i];
     var cls = m.role === "user" ? "shaolen-msg-user" : "shaolen-msg-assistant";
-    html += "<div class=\"shaolen-msg " + cls + "\">" + escapeHtml(m.content || "") + "</div>";
+    var body = escapeHtml(m.content || "");
+    if (m.imagePreview) body = "<img class=\"shaolen-msg-img\" src=\"" + escapeHtml(m.imagePreview) + "\" alt=\"\" />" + body;
+    html += "<div class=\"shaolen-msg " + cls + "\">" + body + "</div>";
   }
   messagesEl.innerHTML = html;
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function setShaolenFullscreen(on) {
+  state.shaolenFullscreen = !!on;
+  var chatEl = $("#shaolen-chat");
+  var overlay = $("#shaolen-overlay");
+  var restoreBtn = $(".shaolen-restore-btn");
+  var fullscreenBtn = $(".shaolen-fullscreen-btn");
+  if (chatEl) chatEl.classList.toggle("shaolen-chat--fullscreen", state.shaolenFullscreen);
+  if (overlay) overlay.classList.toggle("shaolen-overlay--fullscreen", state.shaolenFullscreen);
+  if (restoreBtn) restoreBtn.classList.toggle("hidden", !state.shaolenFullscreen);
+  if (fullscreenBtn) fullscreenBtn.classList.toggle("hidden", state.shaolenFullscreen);
+}
+
+function openShaolenHistory() {
+  var panel = $("#shaolen-history-panel");
+  if (!panel || !state.userId) return;
+  panel.classList.remove("hidden");
+  var listEl = panel.querySelector(".shaolen-history-list");
+  if (!listEl) return;
+  listEl.innerHTML = "<div class=\"shaolen-history-loading\">Загрузка…</div>";
+  fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/shaolen/history?limit=50")
+    .then(function(rows) {
+      state.shaolenHistory = rows || [];
+      if (!state.shaolenHistory.length) {
+        listEl.innerHTML = "<div class=\"shaolen-history-empty\">История пуста</div>";
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < state.shaolenHistory.length; i++) {
+        var r = state.shaolenHistory[i];
+        var dateStr = (r.created_at || "").slice(0, 16).replace("T", " ");
+        var userShort = (r.user_message || "").slice(0, 80);
+        if ((r.user_message || "").length > 80) userShort += "…";
+        var replyShort = (r.assistant_reply || "").slice(0, 120);
+        if ((r.assistant_reply || "").length > 120) replyShort += "…";
+        html += "<div class=\"shaolen-history-item\"><div class=\"shaolen-history-date\">" + escapeHtml(dateStr) + (r.has_image ? " 📷" : "") + "</div>";
+        html += "<div class=\"shaolen-history-user\">" + escapeHtml(userShort) + "</div>";
+        html += "<div class=\"shaolen-history-reply\">" + escapeHtml(replyShort) + "</div></div>";
+      }
+      listEl.innerHTML = html;
+    })
+    .catch(function() { listEl.innerHTML = "<div class=\"shaolen-history-empty\">Не удалось загрузить</div>"; });
+}
+
+function closeShaolenHistory() {
+  var panel = $("#shaolen-history-panel");
+  if (panel) panel.classList.add("hidden");
+}
+
+function clearShaolenImage() {
+  state.shaolenImageData = null;
+  var preview = $(".shaolen-image-preview");
+  var input = $("#shaolen-image-input");
+  if (preview) preview.innerHTML = "";
+  if (input) input.value = "";
 }
 
 function sendShaolenMessage() {
@@ -769,19 +838,28 @@ function sendShaolenMessage() {
   var sendBtn = $("#shaolen-send");
   if (!input || !state.userId) return;
   var text = (input.value || "").trim();
-  if (!text) return;
+  var hasImage = !!state.shaolenImageData;
+  if (!text && !hasImage) return;
   var u = state.shaolenUsage || { used: 0, limit: 50 };
   if (u.used >= u.limit) {
     if (tg) tg.showAlert("Достигнут лимит запросов на сегодня (50). Заходите завтра.");
     return;
   }
-  state.shaolenMessages.push({ role: "user", content: text });
+  var displayContent = text || (hasImage ? "[Фото]" : "");
+  state.shaolenMessages.push({
+    role: "user",
+    content: displayContent,
+    imagePreview: hasImage ? (state.shaolenImageData.indexOf("data:") === 0 ? state.shaolenImageData : "data:image/jpeg;base64," + state.shaolenImageData) : null,
+  });
   input.value = "";
+  var bodyToSend = { message: text || (hasImage ? "Что на фото? Оцени калории и дай краткий совет." : "") };
+  if (state.shaolenImageData) bodyToSend.image_base64 = state.shaolenImageData;
+  clearShaolenImage();
   renderShaolenChat();
   if (sendBtn) sendBtn.disabled = true;
   fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/shaolen/ask", {
     method: "POST",
-    body: JSON.stringify({ message: text }),
+    body: JSON.stringify(bodyToSend),
   })
     .then(function(res) {
       state.shaolenMessages.push({ role: "assistant", content: res.reply || "Нет ответа." });
@@ -814,12 +892,56 @@ function bindEvents() {
   });
   var shaolenClose = $(".shaolen-close");
   if (shaolenClose) shaolenClose.addEventListener("click", closeShaolenChat);
+  var shaolenHistoryBtn = $(".shaolen-history-btn");
+  if (shaolenHistoryBtn) shaolenHistoryBtn.addEventListener("click", openShaolenHistory);
+  var shaolenHistoryClose = $(".shaolen-history-close");
+  if (shaolenHistoryClose) shaolenHistoryClose.addEventListener("click", closeShaolenHistory);
+  var shaolenFullscreenBtn = $(".shaolen-fullscreen-btn");
+  if (shaolenFullscreenBtn) shaolenFullscreenBtn.addEventListener("click", function() { setShaolenFullscreen(true); });
+  var shaolenRestoreBtn = $(".shaolen-restore-btn");
+  if (shaolenRestoreBtn) shaolenRestoreBtn.addEventListener("click", function() { setShaolenFullscreen(false); });
+  var shaolenSwipeArea = $(".shaolen-swipe-area");
+  if (shaolenSwipeArea) {
+    var startY = 0;
+    shaolenSwipeArea.addEventListener("touchstart", function(e) { startY = e.touches[0].clientY; }, { passive: true });
+    shaolenSwipeArea.addEventListener("touchend", function(e) {
+      var endY = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : startY;
+      if (startY - endY > 50) setShaolenFullscreen(true);
+    }, { passive: true });
+  }
   var shaolenSend = $("#shaolen-send");
   if (shaolenSend) shaolenSend.addEventListener("click", sendShaolenMessage);
   var shaolenInput = $("#shaolen-input");
   if (shaolenInput) shaolenInput.addEventListener("keydown", function(e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendShaolenMessage(); }
   });
+  var shaolenAttachBtn = $(".shaolen-attach-btn");
+  var shaolenImageInput = $("#shaolen-image-input");
+  if (shaolenAttachBtn && shaolenImageInput) {
+    shaolenAttachBtn.addEventListener("click", function() { shaolenImageInput.click(); });
+    shaolenImageInput.addEventListener("change", function() {
+      var f = shaolenImageInput.files && shaolenImageInput.files[0];
+      if (!f || !f.type.match(/^image\//)) return;
+      var reader = new FileReader();
+      reader.onload = function() {
+        var data = reader.result;
+        if (typeof data !== "string") return;
+        var base64 = data.indexOf("base64,") >= 0 ? data.split("base64,")[1] : data;
+        if (base64.length > 5400000) {
+          if (tg) tg.showAlert("Фото слишком большое. Выберите до ~4 МБ.");
+          return;
+        }
+        state.shaolenImageData = data.indexOf("data:") === 0 ? data : "data:image/jpeg;base64," + base64;
+        var preview = $(".shaolen-image-preview");
+        if (preview) {
+          preview.innerHTML = "<span class=\"shaolen-preview-thumb\">📷</span> <button type=\"button\" class=\"shaolen-preview-remove link-btn\">удалить</button>";
+          var removeBtn = preview.querySelector(".shaolen-preview-remove");
+          if (removeBtn) removeBtn.addEventListener("click", function() { clearShaolenImage(); });
+        }
+      };
+      reader.readAsDataURL(f);
+    });
+  }
   var shaolenOverlay = $("#shaolen-overlay");
   if (shaolenOverlay) shaolenOverlay.addEventListener("click", function(e) {
     if (e.target === shaolenOverlay) closeShaolenChat();

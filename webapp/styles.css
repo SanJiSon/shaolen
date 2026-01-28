@@ -886,6 +886,7 @@ body {
   }
 }
 .shaolen-chat {
+  position: relative;
   width: 100%;
   max-width: 480px;
   max-height: 85vh;
@@ -902,13 +903,18 @@ body {
     max-height: 80vh;
   }
 }
+.shaolen-swipe-area {
+  cursor: grab;
+  user-select: none;
+}
 .shaolen-chat-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   padding: 14px 16px;
   background: var(--bg-elevated);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-wrap: wrap;
 }
 [data-theme="light"] .shaolen-chat-header {
   border-bottom-color: rgba(0, 0, 0, 0.08);
@@ -916,13 +922,35 @@ body {
 .shaolen-chat-header h3 {
   margin: 0;
   flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 700;
   color: var(--text);
 }
 .shaolen-usage {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
+}
+.shaolen-history-btn,
+.shaolen-fullscreen-btn,
+.shaolen-restore-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.shaolen-history-btn:hover,
+.shaolen-fullscreen-btn:hover,
+.shaolen-restore-btn:hover {
+  color: var(--text);
+  background: var(--accent-soft);
 }
 .shaolen-close {
   width: 36px;
@@ -939,6 +967,93 @@ body {
 .shaolen-close:hover {
   color: var(--text);
   background: var(--accent-soft);
+}
+
+/* Полноэкранный режим чата */
+.shaolen-overlay--fullscreen .shaolen-chat.shaolen-chat--fullscreen {
+  max-width: none;
+  max-height: 100vh;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+.shaolen-chat--fullscreen .shaolen-messages {
+  max-height: none;
+  flex: 1;
+}
+
+/* Панель истории запросов */
+.shaolen-history-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shaolen-history-panel.hidden {
+  display: none;
+}
+.shaolen-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.shaolen-history-header span { font-weight: 600; color: var(--text); }
+.shaolen-history-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.shaolen-history-close:hover { color: var(--text); background: var(--accent-soft); }
+.shaolen-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.shaolen-history-loading,
+.shaolen-history-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.shaolen-history-item {
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+[data-theme="light"] .shaolen-history-item {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.shaolen-history-date {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.shaolen-history-user {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.shaolen-history-reply {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 .shaolen-messages {
   flex: 1;
@@ -975,14 +1090,61 @@ body {
   padding: 12px 16px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: flex-end;
 }
 [data-theme="light"] .shaolen-input-wrap {
   border-top-color: rgba(0, 0, 0, 0.08);
 }
+.shaolen-attach-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shaolen-image-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.shaolen-attach-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 20px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.shaolen-attach-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.shaolen-image-preview {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shaolen-preview-remove.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
 .shaolen-input {
   flex: 1;
+  min-width: 120px;
   min-height: 44px;
   padding: 10px 14px;
   font-size: 14px;
@@ -1000,4 +1162,11 @@ body {
   flex-shrink: 0;
   padding: 10px 18px;
   font-size: 14px;
+}
+.shaolen-msg-img {
+  display: block;
+  max-width: 180px;
+  max-height: 120px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
 }
