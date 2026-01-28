@@ -765,13 +765,18 @@ function renderShaolenChat() {
   var u = state.shaolenUsage || { used: 0, limit: 50 };
   if (usageEl) usageEl.textContent = "Запросов сегодня: " + u.used + " / " + u.limit;
   var msgs = state.shaolenMessages || [];
+  var avatarSrc = "images/shaolen-avatar.png";
   var html = "";
   for (var i = 0; i < msgs.length; i++) {
     var m = msgs[i];
     var cls = m.role === "user" ? "shaolen-msg-user" : "shaolen-msg-assistant";
     var body = escapeHtml(m.content || "");
     if (m.imagePreview) body = "<img class=\"shaolen-msg-img\" src=\"" + escapeHtml(m.imagePreview) + "\" alt=\"\" />" + body;
-    html += "<div class=\"shaolen-msg " + cls + "\">" + body + "</div>";
+    if (m.role === "assistant") {
+      html += "<div class=\"shaolen-msg-row shaolen-msg-row-assistant\"><img src=\"" + escapeHtml(avatarSrc) + "\" alt=\"\" class=\"shaolen-msg-avatar\" /><div class=\"shaolen-msg " + cls + "\">" + body + "</div></div>";
+    } else {
+      html += "<div class=\"shaolen-msg-row shaolen-msg-row-user\"><div class=\"shaolen-msg " + cls + "\">" + body + "</div></div>";
+    }
   }
   messagesEl.innerHTML = html;
   messagesEl.scrollTop = messagesEl.scrollHeight;

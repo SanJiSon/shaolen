@@ -840,29 +840,36 @@ body {
   }
 }
 
-/* Кнопка «Спросить совета у мастера Шаолень» */
+/* Кнопка «Спросить совета у мастера Шаолень» — круглая, со своей картинкой (images/shaolen-avatar.png) */
 .shaolen-fab {
   position: fixed;
-  bottom: 20px;
-  right: 16px;
-  z-index: 100;
-  max-width: calc(100vw - 32px);
-  padding: 12px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  background: var(--accent);
+  bottom: 22px;
+  right: 18px;
+  z-index: 350;
+  width: 56px;
+  height: 56px;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: pointer;
-  transition: background 0.2s, transform 0.15s;
+  transition: transform 0.15s, box-shadow 0.2s;
 }
 .shaolen-fab:hover {
-  background: var(--accent-hover);
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 .shaolen-fab:active {
   transform: scale(0.98);
+}
+.shaolen-fab-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }
 
 /* Окно чата Шаолень */
@@ -918,6 +925,17 @@ body {
 }
 [data-theme="light"] .shaolen-chat-header {
   border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+.shaolen-header-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center;
+  background: #fff;
+  padding: 2px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .shaolen-chat-header h3 {
   margin: 0;
@@ -1065,26 +1083,52 @@ body {
   flex-direction: column;
   gap: 12px;
 }
+.shaolen-msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: 100%;
+}
+.shaolen-msg-row-user {
+  flex-direction: row-reverse;
+}
+.shaolen-msg-row-assistant {
+  flex-direction: row;
+}
+.shaolen-msg-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center;
+  background: #fff;
+  padding: 2px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
 .shaolen-msg {
   padding: 10px 14px;
   border-radius: var(--radius-md);
   font-size: 14px;
   line-height: 1.5;
-  max-width: 90%;
+  max-width: 85%;
 }
 .shaolen-msg-user {
-  align-self: flex-end;
   background: var(--accent);
   color: var(--text);
 }
 .shaolen-msg-assistant {
-  align-self: flex-start;
   background: var(--bg-elevated);
   color: var(--text-soft);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 [data-theme="light"] .shaolen-msg-assistant {
   border-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .shaolen-msg-avatar,
+[data-theme="light"] .shaolen-header-avatar {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 .shaolen-input-wrap {
   padding: 14px 16px 18px;
