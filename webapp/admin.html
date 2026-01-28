@@ -21,6 +21,9 @@
     .proc .dot.unknown { background: #94a3b8; }
     .proc button { padding: 6px 12px; font-size: 12px; background: #334155; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     .proc button:hover { background: #475569; }
+    .proc button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .token-row.token-ok { margin-bottom: 8px; }
+    .token-row.token-ok .token-compact { color: #22c55e; }
     .logs-toolbar { margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
     .logs-toolbar select { padding: 6px 10px; background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; }
     .logs-box { background: #0c0e14; border: 1px solid #334155; border-radius: 8px; padding: 12px; max-height: 400px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
@@ -39,9 +42,12 @@
 </head>
 <body>
   <h1>Админ-панель Goals Bot</h1>
-  <div class="token-row">
-    <input type="password" id="token-inp" placeholder="ADMIN_TOKEN из .env" />
-    <button type="button" id="token-save">Сохранить и загрузить</button>
+  <div class="token-row" id="token-row">
+    <span class="token-compact" id="token-compact" style="display:none;"></span>
+    <span class="token-enter" id="token-enter">
+      <input type="password" id="token-inp" placeholder="ADMIN_TOKEN из .env или вставьте ссылку с ?token=..." />
+      <button type="button" id="token-save">Сохранить и загрузить</button>
+    </span>
     <span id="token-msg"></span>
   </div>
 
@@ -76,9 +82,10 @@
 
   <script>
 (function() {
-  var BASE = window.location.origin + (window.location.pathname.replace(/\/[^/]*$/, '') || '');
-  if (BASE.endsWith('/')) BASE = BASE.slice(0, -1);
-  var token = localStorage.getItem('admin_token') || (new URLSearchParams(window.location.search).get('token') || '');
+  var BASE = window.location.origin;
+  var urlToken = (new URLSearchParams(window.location.search).get('token') || '').trim();
+  var token = urlToken || (localStorage.getItem('admin_token') || '').trim();
+  if (urlToken) { localStorage.setItem('admin_token', urlToken); }
 
   function headers() {
     var h = { 'Content-Type': 'application/json' };
@@ -103,15 +110,35 @@
     el.className = isErr ? 'err' : '';
   }
 
-  // Token
+  function updateTokenUI() {
+    var row = q('#token-row');
+    var compact = q('#token-compact');
+    var enter = q('#token-enter');
+    if (token) {
+      row.classList.add('token-ok');
+      compact.style.display = '';
+      compact.innerHTML = 'Токен из ссылки ✓' + (urlToken ? '' : ' (сохранён)') + ' <button type="button" id="token-change" style="margin-left:8px;padding:4px 8px;font-size:12px;background:#334155;color:#fff;border:none;border-radius:4px;cursor:pointer;">Изменить</button>';
+      enter.style.display = 'none';
+      q('#token-change').onclick = function() { token = ''; localStorage.removeItem('admin_token'); compact.style.display = 'none'; enter.style.display = ''; row.classList.remove('token-ok'); showMsg(q('#token-msg'), ''); };
+    } else {
+      row.classList.remove('token-ok');
+      compact.style.display = 'none';
+      enter.style.display = '';
+    }
+  }
+
   var tokenInp = q('#token-inp');
   var tokenMsg = q('#token-msg');
   if (token) tokenInp.value = token;
+  updateTokenUI();
   q('#token-save').onclick = function() {
-    token = (tokenInp.value || '').trim();
-    if (!token) { showMsg(tokenMsg, 'Введите токен', true); return; }
+    var v = (tokenInp.value || '').trim();
+    var fromUrl = v.indexOf('token=') !== -1 ? (new URLSearchParams((v.split('?')[1] || '')).get('token') || '').trim() : '';
+    token = fromUrl || v;
+    if (!token) { showMsg(tokenMsg, 'Введите токен или ссылку с ?token=...', true); return; }
     localStorage.setItem('admin_token', token);
     showMsg(tokenMsg, 'Сохранено');
+    updateTokenUI();
     loadStatus(); loadLogs(); loadUsers(); loadRequests();
   };
 
@@ -123,7 +150,11 @@
       q('#status-webapp').textContent = w === 'active' ? 'запущен' : (w === 'inactive' ? 'остановлен' : '?');
       q('#dot-bot').className = 'dot ' + b;
       q('#dot-webapp').className = 'dot ' + w;
-    }).catch(function(e) { q('#status-bot').textContent = 'ошибка'; q('#status-webapp').textContent = 'ошибка'; });
+      q('#btn-bot-start').disabled = b === 'active';
+      q('#btn-bot-stop').disabled = b === 'inactive';
+      q('#btn-webapp-start').disabled = w === 'active';
+      q('#btn-webapp-stop').disabled = w === 'inactive';
+    }).catch(function(e) { q('#status-bot').textContent = 'ошибка'; q('#status-webapp').textContent = 'ошибка'; q('#dot-bot').className = 'dot unknown'; q('#dot-webapp').className = 'dot unknown'; });
   }
   function postControl(what, action) {
     if (!token) return;
@@ -178,20 +209,29 @@
         if ((r.user_message || '').length > 80) msgShort += '…';
         var dateStr = (r.created_at || '').slice(0, 16).replace('T', ' ');
         var row = '<tr class="req-row" data-id="' + r.id + '"><td>' + escapeHtml(dateStr) + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(msgShort) + '</td><td>' + (r.has_image ? '📷' : '—') + '</td></tr>';
-        row += '<tr class="req-detail" id="req-detail-' + r.id + '" style="display:none"><td colspan="4"><div class="req-full"><strong>Запрос:</strong> ' + escapeHtml(r.user_message || '') + '</div><div class="req-full"><strong>Ответ:</strong> ' + escapeHtml(r.assistant_reply || '') + '</div><button class="copy-btn" data-msg="' + escapeHtml(JSON.stringify({ request: r.user_message, reply: r.assistant_reply }).replace(/"/g, '&quot;')) + '">Скопировать запрос в буфер</button></td></tr>';
+        row += '<tr class="req-detail" id="req-detail-' + r.id + '" style="display:none"><td colspan="4"><div class="req-full req-req"><strong>Запрос:</strong> ' + escapeHtml(r.user_message || '') + '</div><div class="req-full req-ans"><strong>Ответ:</strong> ' + escapeHtml(r.assistant_reply || '') + '</div><button class="copy-btn">Скопировать в буфер</button></td></tr>';
         t.innerHTML += row;
       });
-      t.parentElement.querySelectorAll('.req-row').forEach(function(row) {
-        row.onclick = function() {
-          var id = row.dataset.id;
-          var detail = document.getElementById('req-detail-' + id');
+      t.parentElement.querySelectorAll('.req-row').forEach(function(rowEl) {
+        rowEl.onclick = function() {
+          var id = rowEl.dataset.id;
+          var detail = document.getElementById('req-detail-' + id);
           if (!detail) return;
           detail.style.display = detail.style.display === 'none' ? 'table-row' : 'none';
-          row.classList.toggle('expanded', detail.style.display !== 'none');
+          rowEl.classList.toggle('expanded', detail.style.display !== 'none');
         };
       });
       t.parentElement.querySelectorAll('.copy-btn').forEach(function(btn) {
-        btn.onclick = function(e) { e.stopPropagation(); var tr = document.getElementById('req-detail-' + btn.dataset.id); if (!tr) return; var reqDiv = tr.querySelector('.req-req'), ansDiv = tr.querySelector('.req-ans'); var reqT = reqDiv ? reqDiv.textContent.replace(/^Запрос:\s*/, '').trim() : ''; var ansT = ansDiv ? ansDiv.textContent.replace(/^Ответ:\s*/, '').trim() : ''; var full = reqT + '\n\n--- Ответ ---\n' + ansT; navigator.clipboard.writeText(full).then(function(){ btn.textContent = 'Скопировано'; setTimeout(function(){ btn.textContent = 'Скопировать запрос в буфер'; }, 1500); }); };
+        btn.onclick = function(e) {
+          e.stopPropagation();
+          var tr = btn.closest('tr');
+          if (!tr) return;
+          var reqDiv = tr.querySelector('.req-req'), ansDiv = tr.querySelector('.req-ans');
+          var reqT = reqDiv ? reqDiv.textContent.replace(/^\s*Запрос:\s*/i, '').trim() : '';
+          var ansT = ansDiv ? ansDiv.textContent.replace(/^\s*Ответ:\s*/i, '').trim() : '';
+          var full = reqT + '\n\n--- Ответ ---\n' + ansT;
+          navigator.clipboard.writeText(full).then(function(){ btn.textContent = 'Скопировано'; setTimeout(function(){ btn.textContent = 'Скопировать в буфер'; }, 1500); });
+        };
       });
     }).catch(function(e) { q('#requests-table tbody').innerHTML = '<tr><td colspan="4">Ошибка: ' + e.message + '</td></tr>'; });
   }
