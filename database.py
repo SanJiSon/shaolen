@@ -339,13 +339,13 @@ class Database:
             await db.commit()
 
     # === ЦЕЛИ ===
-    async def add_goal(self, user_id: int, title: str, description: str = "", 
-                      deadline: Optional[str] = None, priority: int = 1) -> int:
-        """Добавление цели"""
+    async def add_goal(self, user_id: int, title: str, description: str = "",
+                      deadline: Optional[str] = None, priority: int = 1, is_example: int = 0) -> int:
+        """Добавление цели. is_example=1 — предустановленный пример."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT INTO goals (user_id, title, description, deadline, priority) VALUES (?, ?, ?, ?, ?)",
-                (user_id, title, description, deadline, priority)
+                "INSERT INTO goals (user_id, title, description, deadline, priority, is_example) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, title, description, deadline, priority, 1 if is_example else 0)
             )
             await db.commit()
             return cursor.lastrowid
@@ -398,12 +398,12 @@ class Database:
             await db.commit()
 
     # === ПРИВЫЧКИ ===
-    async def add_habit(self, user_id: int, title: str, description: str = "") -> int:
-        """Добавление привычки"""
+    async def add_habit(self, user_id: int, title: str, description: str = "", is_example: int = 0) -> int:
+        """Добавление привычки. is_example=1 — предустановленный пример."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT INTO habits (user_id, title, description) VALUES (?, ?, ?)",
-                (user_id, title, description)
+                "INSERT INTO habits (user_id, title, description, is_example) VALUES (?, ?, ?, ?)",
+                (user_id, title, description, 1 if is_example else 0)
             )
             await db.commit()
             return cursor.lastrowid
@@ -713,6 +713,7 @@ class Database:
         if await self.user_has_examples(user_id):
             await self._mark_examples_seeded(user_id)
             return
+        await self.add_user(user_id)
         await self.seed_user_examples(user_id)
         await self._mark_examples_seeded(user_id)
 
