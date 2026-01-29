@@ -506,6 +506,44 @@ function renderAnalytics(data) {
     "<div class=\"metric-row\"><span>Серия</span><span>" + streak + " дн.</span></div></div>";
 }
 
+function bmi(weightKg, heightM) {
+  if (!weightKg || !heightM || heightM <= 0) return null;
+  return Math.round((weightKg / (heightM * heightM)) * 10) / 10;
+}
+function devineIdealKg(gender, heightCm) {
+  if (!heightCm || heightCm <= 0) return null;
+  var heightIn = heightCm / 2.54;
+  if (heightIn < 60) heightIn = 60;
+  return gender === "f" ? 45.5 + 2.3 * (heightIn - 60) : 50 + 2.3 * (heightIn - 60);
+}
+
+function drawWeightChart(container, data, targetWeight, opts) {
+  opts = opts || {};
+  if (!container || !Array.isArray(data)) return;
+  var w = opts.width || 280;
+  var h = opts.height || 120;
+  var pad = { top: 8, right: 8, bottom: 20, left: 36 };
+  var vals = data.map(function(d) { return Number(d.weight); });
+  var minW = Math.min.apply(null, vals.concat(targetWeight ? [targetWeight] : [])) - 2;
+  var maxW = Math.max.apply(null, vals.concat(targetWeight ? [targetWeight] : [])) + 2;
+  if (minW >= maxW) { minW = minW - 5; maxW = maxW + 5; }
+  var xs = data.map(function(_, i) { return pad.left + (i / Math.max(1, data.length - 1)) * (w - pad.left - pad.right); });
+  var scaleY = function(v) { return pad.top + (1 - (v - minW) / (maxW - minW)) * (h - pad.top - pad.bottom); };
+  var pathD = data.map(function(d, i) { return (i === 0 ? "M" : "L") + xs[i] + "," + scaleY(d.weight); }).join(" ");
+  var targetY = targetWeight != null ? scaleY(targetWeight) : null;
+  var svg = "<svg width=\"" + w + "\" height=\"" + h + "\" class=\"weight-chart-svg\">";
+  if (targetY != null) {
+    svg += "<line x1=\"" + pad.left + "\" y1=\"" + targetY + "\" x2=\"" + (w - pad.right) + "\" y2=\"" + targetY + "\" class=\"weight-chart-goal\" stroke-dasharray=\"4,2\"/>";
+    svg += "<text x=\"" + (w - pad.right - 2) + "\" y=\"" + (targetY - 4) + "\" class=\"weight-chart-goal-label\" text-anchor=\"end\">Цель " + targetWeight + " кг</text>";
+  }
+  svg += "<path d=\"" + pathD + "\" class=\"weight-chart-line\" fill=\"none\"/>";
+  data.forEach(function(d, i) {
+    svg += "<circle cx=\"" + xs[i] + "\" cy=\"" + scaleY(d.weight) + "\" r=\"3\" class=\"weight-chart-dot\"/>";
+  });
+  svg += "</svg>";
+  container.innerHTML = svg;
+}
+
 function renderProfile() {
   const root = $("#profile-view");
   if (!root) return;
@@ -516,6 +554,12 @@ function renderProfile() {
   var name = displayName || [firstName, lastName].filter(Boolean).join(" ").trim() || "Пользователь";
   var initial = (name && name.charAt(0)) ? name.charAt(0).toUpperCase() : "?";
   var username = (p.username && String(p.username).trim()) ? "@" + escapeHtml(String(p.username).trim()) : "";
+  var gender = (p.gender || "").trim() || "";
+  var weight = p.weight != null ? Number(p.weight) : null;
+  var height = p.height != null ? Number(p.height) : null;
+  var age = p.age != null ? Number(p.age) : null;
+  var targetWeight = p.target_weight != null ? Number(p.target_weight) : null;
+  var weightHistory = state.cache.weightHistory || [];
   const missions = state.cache.missions || [];
   const goals = state.cache.goals || [];
   const habits = state.cache.habits || [];
@@ -523,6 +567,13 @@ function renderProfile() {
   const missionsTotal = parseInt(a?.missions?.total || 0) || missions.length;
   const goalsTotal = parseInt(a?.goals?.total || 0) || goals.length;
   const habitsTotal = parseInt(a?.habits?.total || 0) || habits.length;
+
+  var currentWeight = weightHistory.length ? weightHistory[weightHistory.length - 1].weight : weight;
+  var heightM = height ? height / 100 : null;
+  var bmiVal = bmi(currentWeight || weight, heightM);
+  var idealKg = devineIdealKg(gender, height);
+  var idealBmi = idealKg != null && heightM ? bmi(idealKg, heightM) : null;
+
   root.innerHTML = `
     <div class="profile-avatar">${escapeHtml(initial)}</div>
     <div class="profile-name">${escapeHtml(name)}</div>
@@ -530,7 +581,52 @@ function renderProfile() {
     <div class="profile-edit-name">
       <label class="profile-edit-label">Как к вам обращаться?</label>
       <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
-      <button type="button" class="primary-btn profile-save-name-btn">Сохранить имя</button>
+    </div>
+    <div class="profile-fields">
+      <label>Пол</label>
+      <select id="profile-gender" class="input">
+        <option value="">—</option>
+        <option value="m" ${gender === "m" ? "selected" : ""}>М</option>
+        <option value="f" ${gender === "f" ? "selected" : ""}>Ж</option>
+      </select>
+      <label>Вес (кг)</label>
+      <input type="number" id="profile-weight" class="input" step="0.1" min="0" placeholder="—" value="${weight != null ? weight : ""}" />
+      <label>Рост (см)</label>
+      <input type="number" id="profile-height" class="input" min="0" placeholder="—" value="${height != null ? height : ""}" />
+      <label>Возраст</label>
+      <input type="number" id="profile-age" class="input" min="0" placeholder="—" value="${age != null ? age : ""}" />
+      <label>Целевой вес (кг)</label>
+      <input type="number" id="profile-target-weight" class="input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
+      <button type="button" class="primary-btn profile-save-fields-btn">Сохранить</button>
+    </div>
+    ${(currentWeight != null || weightHistory.length) ? `
+    <div class="profile-weight-card weight-trend-card" id="profile-weight-trend-card">
+      <div class="weight-card-header">
+        <span class="weight-card-title">Вес</span>
+        <span class="weight-card-date">${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" })}</span>
+      </div>
+      <div class="weight-card-value">${(currentWeight != null ? currentWeight : weight).toFixed(1)} кг</div>
+      ${weightHistory.length ? `
+      <div class="weight-card-trend">
+        <span class="weight-trend-link" id="weight-trend-link">Тенденции &gt;</span>
+        <div id="profile-weight-chart-mini" class="weight-chart-mini"></div>
+      </div>
+      ` : ""}
+    </div>
+    ` : ""}
+    ${(currentWeight != null || weight) && heightM ? `
+    <div class="profile-bmi-block">
+      <div class="profile-bmi-row">
+        <span>ИМТ</span>
+        <span>${bmiVal != null ? bmiVal : "—"}</span>
+      </div>
+      ${idealBmi != null ? `<div class="profile-bmi-row profile-bmi-ideal">Идеальный ИМТ (Девин): ${idealBmi.toFixed(1)}</div>` : ""}
+    </div>
+    ` : ""}
+    <div class="profile-water-row">
+      <button type="button" class="icon-btn profile-water-btn" id="profile-water-btn" aria-label="Норма воды" title="Рассчитать норму воды в день">💧</button>
+      <button type="button" class="icon-btn profile-water-help-btn" id="profile-water-help-btn" aria-label="Справка: как считается норма воды" title="Как считается норма воды">?</button>
+      <button type="button" class="secondary-btn profile-add-weight-btn" id="profile-add-weight-btn">+ Добавить вес</button>
     </div>
     <div class="profile-stats">
       <div class="profile-stat-row"><span>Миссий</span><span>${missionsTotal}</span></div>
@@ -538,25 +634,181 @@ function renderProfile() {
       <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
     </div>
   `;
-  var saveBtn = root.querySelector(".profile-save-name-btn");
-  var inputEl = root.querySelector("#profile-display-name-input");
-  if (saveBtn && inputEl) {
-    saveBtn.addEventListener("click", async function() {
-      var val = (inputEl.value || "").trim();
+
+  var saveFieldsBtn = root.querySelector(".profile-save-fields-btn");
+  var inputNameEl2 = root.querySelector("#profile-display-name-input");
+  if (saveFieldsBtn) {
+    saveFieldsBtn.addEventListener("click", async function() {
+      var dn = (inputNameEl2 && inputNameEl2.value || "").trim();
+      var g = (root.querySelector("#profile-gender") && root.querySelector("#profile-gender").value) || null;
+      var w = parseFloat(root.querySelector("#profile-weight") && root.querySelector("#profile-weight").value);
+      var h = parseFloat(root.querySelector("#profile-height") && root.querySelector("#profile-height").value);
+      var ag = parseInt(root.querySelector("#profile-age") && root.querySelector("#profile-age").value, 10);
+      var tw = parseFloat(root.querySelector("#profile-target-weight") && root.querySelector("#profile-target-weight").value);
       try {
         await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
           method: "PUT",
-          body: JSON.stringify({ display_name: val })
+          body: JSON.stringify({
+            display_name: dn || undefined,
+            gender: g || undefined,
+            weight: isNaN(w) ? undefined : w,
+            height: isNaN(h) ? undefined : h,
+            age: isNaN(ag) ? undefined : ag,
+            target_weight: isNaN(tw) ? undefined : tw
+          })
         });
-        state.cache.profile = (state.cache.profile || {});
-        state.cache.profile.display_name = val;
-        renderProfile();
-        if (tg) tg.showAlert("Имя сохранено");
+        await loadAll();
+        if (tg) tg.showAlert("Профиль сохранён");
       } catch (err) {
         if (tg) tg.showAlert("Не удалось сохранить");
       }
     });
   }
+
+  if (weightHistory.length) {
+    var miniChart = root.querySelector("#profile-weight-chart-mini");
+    if (miniChart) drawWeightChart(miniChart, weightHistory, targetWeight, { width: 260, height: 80 });
+    var trendLink = root.querySelector("#weight-trend-link");
+    if (trendLink) trendLink.addEventListener("click", function() { openWeightTrendOverlay(); });
+    var card = root.querySelector("#profile-weight-trend-card");
+    if (card) card.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
+  }
+
+  var waterBtn = root.querySelector("#profile-water-btn");
+  if (waterBtn) waterBtn.addEventListener("click", function() { openWaterFlow(); });
+  var waterHelpBtn = root.querySelector("#profile-water-help-btn");
+  if (waterHelpBtn) waterHelpBtn.addEventListener("click", function() { showWaterHelp(); });
+  var addWeightBtn = root.querySelector("#profile-add-weight-btn");
+  if (addWeightBtn) addWeightBtn.addEventListener("click", function() { openAddWeightDialog(); });
+}
+
+async function openWeightTrendOverlay() {
+  var overlay = $("#weight-trend-overlay");
+  var periodSelect = $("#weight-trend-period");
+  var chartEl = $("#weight-trend-chart");
+  if (!overlay || !chartEl) return;
+  overlay.classList.remove("hidden");
+  var period = (periodSelect && periodSelect.value) || "week";
+  try {
+    var res = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/weight-history?period=" + period);
+    var data = (res && res.data) ? res.data : [];
+    var targetWeight = (state.cache.profile && state.cache.profile.target_weight != null) ? Number(state.cache.profile.target_weight) : null;
+    drawWeightChart(chartEl, data, targetWeight, { width: 320, height: 220 });
+  } catch (e) {
+    chartEl.innerHTML = "<p class=\"weight-trend-error\">Не удалось загрузить данные</p>";
+  }
+}
+function closeWeightTrendOverlay() {
+  var overlay = $("#weight-trend-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function openAddWeightDialog() {
+  var today = new Date().toISOString().slice(0, 10);
+  var extra = "<label>Дата</label><input type=\"date\" id=\"dialog-weight-date\" class=\"input\" value=\"" + today + "\" /><label>Вес (кг)</label><input type=\"number\" id=\"dialog-weight-value\" class=\"input\" step=\"0.1\" min=\"0.1\" placeholder=\"кг\" />";
+  openDialog({
+    title: "Добавить вес",
+    extraHtml: extra,
+    initialValues: { title: "Добавить вес", description: "" },
+    onSave: async function() {
+      var dateEl = document.getElementById("dialog-weight-date");
+      var valueEl = document.getElementById("dialog-weight-value");
+      var date = dateEl ? dateEl.value : today;
+      var value = valueEl ? parseFloat(valueEl.value) : NaN;
+      if (isNaN(value) || value <= 0) {
+        if (tg) tg.showAlert("Введите вес");
+        throw { name: "validate" };
+      }
+      await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/weight", {
+        method: "POST",
+        body: JSON.stringify({ date: date, weight: value })
+      });
+      await loadAll();
+      if (tg) tg.showAlert("Вес сохранён");
+    }
+  });
+  setTimeout(function() {
+    var titleInput = $("#dialog-title-input");
+    var descInput = $("#dialog-description-input");
+    var titleLabel = titleInput && titleInput.closest ? titleInput.closest("label") : null;
+    if (titleInput) { titleInput.style.display = "none"; titleInput.value = "Добавить вес"; }
+    if (titleLabel) titleLabel.style.display = "none";
+    if (descInput) { descInput.style.display = "none"; descInput.closest("label") && (descInput.closest("label").style.display = "none"); }
+    var dateEl = document.getElementById("dialog-weight-date");
+    var valueEl = document.getElementById("dialog-weight-value");
+    if (dateEl) dateEl.value = today;
+    if (valueEl) valueEl.focus();
+  }, 50);
+}
+
+function openWaterFlow() {
+  var msg = "Даёте согласие на определение вашего города по IP для учёта погоды при расчёте нормы воды?";
+  var useGeo = (typeof confirm !== "undefined") ? confirm(msg) : false;
+  if (!useGeo) {
+    var cityInput = prompt("Введите город (например: Москва):", "");
+    var countryInput = prompt("Введите страну (например: Россия):", "");
+    runWaterCalculate(false, cityInput || "", countryInput || "");
+  } else {
+    runWaterCalculate(true);
+  }
+}
+async function runWaterCalculate(useGeo, city, country) {
+  try {
+    var body = { use_geo: !!useGeo, activity_minutes: 0 };
+    if (!useGeo && (city || country)) {
+      body.city = (city || "").trim();
+      body.country = (country || "").trim();
+    }
+    var res = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/water-calculate", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    var liters = res && res.liters;
+    var formula = res && res.formula;
+    if (liters == null) {
+      if (tg) tg.showAlert("Укажите вес в профиле");
+      return;
+    }
+    var createHabit = (typeof confirm !== "undefined") ? confirm("Сформировать привычку «Пить воду» на основе расчёта?") : false;
+    if (createHabit) {
+      await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/water-habit", {
+        method: "POST",
+        body: JSON.stringify({ liters_per_day: liters })
+      });
+      await loadAll();
+      if (tg) tg.showAlert("Привычка добавлена. Рекомендуемая норма: " + liters + " л в день.");
+    } else {
+      if (tg) tg.showAlert("Рекомендуемая норма воды: " + liters + " л в день. Формула: " + (formula || ""));
+    }
+  } catch (e) {
+    if (e && e.status === 400 && (e.body || "").indexOf("вес") >= 0) {
+      if (tg) tg.showAlert("Укажите вес в профиле"); else alert("Укажите вес в профиле");
+      return;
+    }
+    if (useGeo && (e && (e.status === 404 || e.status === 502))) {
+      if (tg) tg.showAlert("Не удалось определить погоду по IP. Введите город вручную."); else alert("Не удалось определить погоду по IP. Введите город вручную.");
+      var cityInput = prompt("Введите город (например: Москва):", "");
+      var countryInput = prompt("Введите страну (например: Россия):", "");
+      if (cityInput) runWaterCalculate(false, cityInput, countryInput);
+      return;
+    }
+    if (!useGeo) {
+      var cityInput = prompt("Введите город (например: Москва):", "");
+      var countryInput = prompt("Введите страну (например: Россия):", "");
+      if (cityInput) runWaterCalculate(false, cityInput, countryInput);
+      return;
+    }
+    if (tg) tg.showAlert("Не удалось рассчитать. Попробуйте ввести город вручную."); else alert("Не удалось рассчитать.");
+  }
+}
+
+function showProfileHelpBmi() {
+  var text = "ИМТ = вес (кг) / рост² (м). Идеальный ИМТ рассчитан по формуле Девина (идеальная масса тела по полу и росту). Формула Девина — самая распространённая в клинической практике (подбор доз, диетология).";
+  if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
+}
+function showWaterHelp() {
+  var text = "Вода (л) = (Вес_кг × 30 мл) + (Активность_мин × 15 мл) + климатическая поправка (ВОЗ/Mayo). 15 мл/мин — коэффициент потери жидкости при умеренной активности (MyFitnessPal, WaterMinder, Samsung Health).";
+  if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
 }
 
 function parseOpenAt(s) {
@@ -944,7 +1196,7 @@ async function loadAll() {
       username: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username) || "",
       display_name: ""
     };
-    const [missions, goals, habits, analytics, profile] = await Promise.all([
+    const [missions, goals, habits, analytics, profile, weightHistoryRes] = await Promise.all([
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
@@ -953,7 +1205,8 @@ async function loadAll() {
         console.error("❌ Аналитика:", e.message);
         return { period: "month", missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
       }),
-      fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; })
+      fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; }),
+      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; })
     ]);
     
     console.log('✅ Данные получены:');
@@ -977,6 +1230,7 @@ async function loadAll() {
     state.cache.habits = habitsList;
     state.cache.analytics = analyticsData;
     state.cache.profile = (profile && typeof profile === "object") ? profile : profileFallback;
+    state.cache.weightHistory = (weightHistoryRes && Array.isArray(weightHistoryRes.data)) ? weightHistoryRes.data : [];
 
     state.cache.subgoalsByMission = {};
     if (missionsList.length) {
@@ -1726,6 +1980,27 @@ function bindEvents() {
         await loadAll();
       },
     });
+  });
+
+  var profileHelpBtn = $("#profile-help-btn");
+  if (profileHelpBtn) profileHelpBtn.addEventListener("click", showProfileHelpBmi);
+  var weightTrendClose = $("#weight-trend-close");
+  if (weightTrendClose) weightTrendClose.addEventListener("click", closeWeightTrendOverlay);
+  var weightTrendBackdrop = document.querySelector(".weight-trend-backdrop");
+  if (weightTrendBackdrop) weightTrendBackdrop.addEventListener("click", closeWeightTrendOverlay);
+  var weightTrendPeriod = $("#weight-trend-period");
+  if (weightTrendPeriod) weightTrendPeriod.addEventListener("change", async function() {
+    var period = weightTrendPeriod.value;
+    var chartEl = $("#weight-trend-chart");
+    if (!chartEl || !state.userId) return;
+    try {
+      var res = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/weight-history?period=" + period);
+      var data = (res && res.data) ? res.data : [];
+      var targetWeight = (state.cache.profile && state.cache.profile.target_weight != null) ? Number(state.cache.profile.target_weight) : null;
+      drawWeightChart(chartEl, data, targetWeight, { width: 320, height: 220 });
+    } catch (e) {
+      chartEl.innerHTML = "<p class=\"weight-trend-error\">Не удалось загрузить данные</p>";
+    }
   });
 }
 

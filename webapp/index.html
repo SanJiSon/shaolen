@@ -78,7 +78,10 @@
           <div id="analytics-view" class="analytics"></div>
         </section>
         <section id="panel-profile" class="tab-panel" role="tabpanel">
-          <h2>Профиль</h2>
+          <div class="profile-header-row">
+            <h2>Профиль</h2>
+            <button type="button" id="profile-help-btn" class="icon-btn profile-help-btn" aria-label="Справка ИМТ" title="Как считается ИМТ (формула Девина)">?</button>
+          </div>
           <div id="profile-view" class="profile-view"></div>
         </section>
       </main>
@@ -138,6 +141,23 @@
         <button type="button" id="capsule-open-close" class="primary-btn">Закрыть</button>
       </div>
       <canvas id="capsule-confetti-canvas"></canvas>
+    </div>
+
+    <div id="weight-trend-overlay" class="weight-trend-overlay hidden">
+      <div class="weight-trend-backdrop"></div>
+      <div class="weight-trend-panel">
+        <div class="weight-trend-header">
+          <h3>Тенденция веса</h3>
+          <select id="weight-trend-period" class="weight-trend-period" aria-label="Период">
+            <option value="week">Неделя</option>
+            <option value="month">Месяц</option>
+            <option value="6months">Полгода</option>
+            <option value="year">Год</option>
+          </select>
+          <button type="button" id="weight-trend-close" class="weight-trend-close" aria-label="Закрыть">&times;</button>
+        </div>
+        <div id="weight-trend-chart" class="weight-trend-chart"></div>
+      </div>
     </div>
 
     <div id="dialog-backdrop" class="backdrop hidden">
