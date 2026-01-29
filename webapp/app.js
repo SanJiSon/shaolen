@@ -522,6 +522,21 @@ function bmi(weightKg, heightM) {
   if (!weightKg || !heightM || heightM <= 0) return null;
   return Math.round((weightKg / (heightM * heightM)) * 10) / 10;
 }
+/** Категория ИМТ по ВОЗ: подпись, в норме ли, CSS-класс */
+function bmiCategory(bmiVal) {
+  if (bmiVal == null || isNaN(bmiVal)) return null;
+  if (bmiVal < 18.5) return { label: "Недостаток веса", inNorm: false, className: "bmi-under" };
+  if (bmiVal <= 24.9) return { label: "Норма", inNorm: true, className: "bmi-normal" };
+  if (bmiVal <= 29.9) return { label: "Избыточный вес", inNorm: false, className: "bmi-over" };
+  return { label: "Ожирение", inNorm: false, className: "bmi-obese" };
+}
+/** Идеальный диапазон веса по ВОЗ (ИМТ 18.5–24.9), кг */
+function idealWeightRange(heightM) {
+  if (!heightM || heightM <= 0) return null;
+  var minKg = Math.round(18.5 * heightM * heightM * 10) / 10;
+  var maxKg = Math.round(24.9 * heightM * heightM * 10) / 10;
+  return { minKg: minKg, maxKg: maxKg };
+}
 function devineIdealKg(gender, heightCm) {
   if (!heightCm || heightCm <= 0) return null;
   var heightIn = heightCm / 2.54;
@@ -581,8 +596,11 @@ function renderProfile() {
   const habitsTotal = parseInt(a?.habits?.total || 0) || habits.length;
 
   var currentWeight = weightHistory.length ? weightHistory[weightHistory.length - 1].weight : weight;
+  var weightForBmi = currentWeight != null ? currentWeight : weight;
   var heightM = height ? height / 100 : null;
-  var bmiVal = bmi(currentWeight || weight, heightM);
+  var bmiVal = bmi(weightForBmi, heightM);
+  var bmiCat = bmiVal != null ? bmiCategory(bmiVal) : null;
+  var idealRange = heightM ? idealWeightRange(heightM) : null;
   var idealKg = devineIdealKg(gender, height);
   var idealBmi = idealKg != null && heightM ? bmi(idealKg, heightM) : null;
 
@@ -590,11 +608,13 @@ function renderProfile() {
   var selectedCity = (p.city || "").trim() ? escapeHtml((p.city || "").trim()) : "";
   var selectedCountry = (p.country || "").trim() ? escapeHtml((p.country || "").trim()) : "";
 
+  var identityEl = document.getElementById("profile-identity");
+  if (identityEl) {
+    identityEl.innerHTML = "<div class=\"profile-avatar\">" + escapeHtml(initial) + "</div><div class=\"profile-name\">" + escapeHtml(name) + "</div>" + (username ? "<div class=\"profile-username\">" + username + "</div>" : "");
+  }
+
   root.innerHTML = `
     <div id="profile-panel-person" class="profile-panel ${state.profileSubTab === "person" ? "active" : ""}">
-      <div class="profile-avatar">${escapeHtml(initial)}</div>
-      <div class="profile-name">${escapeHtml(name)}</div>
-      ${username ? `<div class="profile-username">${username}</div>` : ""}
       <div class="profile-edit-name">
         <label class="profile-edit-label">Как к вам обращаться?</label>
         <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
@@ -614,7 +634,10 @@ function renderProfile() {
         <input type="number" id="profile-age" class="input" min="0" placeholder="—" value="${age != null ? age : ""}" />
         <label>Целевой вес (кг)</label>
         <input type="number" id="profile-target-weight" class="input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
-        <button type="button" class="primary-btn profile-save-fields-btn">Сохранить</button>
+      </div>
+      <div id="profile-bmi-live-preview" class="profile-bmi-live-preview"></div>
+      <div class="profile-save-block">
+        <button type="button" class="primary-btn profile-save-fields-btn">Сохранить изменения</button>
       </div>
       ${(currentWeight != null || weightHistory.length) ? `
       <div class="profile-weight-card weight-trend-card" id="profile-weight-trend-card">
@@ -646,6 +669,8 @@ function renderProfile() {
           <span>Текущий ИМТ</span>
           <span>${bmiVal != null ? bmiVal : "—"}</span>
         </div>
+        ${bmiCat ? `<div class="profile-bmi-row profile-bmi-status ${bmiCat.className}"><span>Оценка</span><span>${escapeHtml(bmiCat.label)}${bmiCat.inNorm ? " ✓" : ""}</span></div>` : ""}
+        ${idealRange ? `<div class="profile-bmi-row profile-bmi-ideal-range"><span>Идеальный диапазон веса</span><span>${idealRange.minKg} – ${idealRange.maxKg} кг</span></div>` : ""}
         ${idealBmi != null ? `<div class="profile-bmi-row profile-bmi-ideal">Идеальный ИМТ (Девин): ${idealBmi.toFixed(1)}</div>` : ""}
       </div>
       ` : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек» для расчёта ИМТ.</p>"}
@@ -716,6 +741,31 @@ function renderProfile() {
 
   var addWeightBtn = root.querySelector("#profile-add-weight-btn");
   if (addWeightBtn) addWeightBtn.addEventListener("click", function() { openAddWeightDialog(); });
+  function updateBmiLivePreview() {
+    var el = document.getElementById("profile-bmi-live-preview");
+    if (!el) return;
+    var wInput = document.getElementById("profile-weight");
+    var hInput = document.getElementById("profile-height");
+    if (!wInput || !hInput) return;
+    var w = parseFloat(wInput.value);
+    var h = parseFloat(hInput.value);
+    var heightM = h && h > 0 ? h / 100 : null;
+    var bmiVal = (w && heightM) ? bmi(w, heightM) : null;
+    var cat = bmiVal != null ? bmiCategory(bmiVal) : null;
+    var range = heightM ? idealWeightRange(heightM) : null;
+    if (bmiVal == null || !heightM) {
+      el.innerHTML = "<span class=\"profile-bmi-preview-hint\">Укажите вес и рост для расчёта ИМТ</span>";
+      el.className = "profile-bmi-live-preview";
+      return;
+    }
+    el.className = "profile-bmi-live-preview " + (cat ? cat.className : "");
+    el.innerHTML = "ИМТ: " + bmiVal + " — " + (cat ? escapeHtml(cat.label) : "") + (cat && cat.inNorm ? " ✓" : "") + (range ? " · Диапазон нормы: " + range.minKg + "–" + range.maxKg + " кг" : "");
+  }
+  updateBmiLivePreview();
+  var wInput = root.querySelector("#profile-weight");
+  var hInput = root.querySelector("#profile-height");
+  if (wInput) { wInput.addEventListener("input", updateBmiLivePreview); wInput.addEventListener("change", updateBmiLivePreview); }
+  if (hInput) { hInput.addEventListener("input", updateBmiLivePreview); hInput.addEventListener("change", updateBmiLivePreview); }
   var bmiHelpBtn = root.querySelector(".profile-bmi-help");
   if (bmiHelpBtn) bmiHelpBtn.addEventListener("click", function() { showProfileHelpBmi(); });
   var waterHelpBtn = root.querySelector("#profile-water-help-btn");
@@ -804,12 +854,13 @@ function openWaterFlow() {
     openCityPicker();
   }
 }
-async function runWaterCalculate(useGeo, city, country) {
+async function runWaterCalculate(useGeo, city, country, countryCode) {
   try {
     var body = { use_geo: !!useGeo, activity_minutes: 0 };
-    if (!useGeo && (city || country)) {
+    if (!useGeo && (city || country || countryCode)) {
       body.city = (city || "").trim();
       body.country = (country || "").trim();
+      if ((countryCode || "").trim().length === 2) body.country_code = (countryCode || "").trim().toUpperCase();
     }
     var res = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/water-calculate", {
       method: "POST",
@@ -862,7 +913,7 @@ async function runWaterCalculate(useGeo, city, country) {
 }
 
 function showProfileHelpBmi() {
-  var text = "ИМТ = вес (кг) / рост² (м). Идеальный ИМТ рассчитан по формуле Девина (идеальная масса тела по полу и росту). Формула Девина — самая распространённая в клинической практике (подбор доз, диетология).";
+  var text = "ИМТ = вес (кг) / рост² (м). Оценка по ВОЗ: <18.5 — недостаток веса; 18.5–24.9 — норма; 25–29.9 — избыточный вес; ≥30 — ожирение. Идеальный диапазон веса — вес при ИМТ 18.5–24.9 для вашего роста. Идеальный ИМТ по формуле Девина (пол и рост) — золотой стандарт в клинической практике.";
   if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
 }
 function showWaterHelp() {
@@ -897,20 +948,23 @@ function openCityPicker() {
           }
           listEl.innerHTML = results.map(function(r) {
             var label = (r.name || "") + (r.country ? ", " + r.country : "");
-            return "<button type=\"button\" class=\"city-picker-item\" data-name=\"" + escapeHtml(r.name || "") + "\" data-country=\"" + escapeHtml(r.country || "") + "\">" + escapeHtml(label) + "</button>";
+            var code = (r.country_code || "").trim();
+            return "<button type=\"button\" class=\"city-picker-item\" data-name=\"" + escapeHtml(r.name || "") + "\" data-country=\"" + escapeHtml(r.country || "") + "\" data-country-code=\"" + escapeHtml(code) + "\">" + escapeHtml(label) + "</button>";
           }).join("");
           listEl.querySelectorAll(".city-picker-item").forEach(function(btn) {
             btn.addEventListener("click", async function() {
               var name = btn.dataset.name || "";
               var country = btn.dataset.country || "";
+              var countryCode = (btn.dataset.countryCode || "").trim();
               try {
                 await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
                   method: "PUT",
-                  body: JSON.stringify({ city: name, country: country })
+                  body: JSON.stringify({ city: name, country: country, country_code: countryCode || undefined })
                 });
                 state.cache.profile = state.cache.profile || {};
                 state.cache.profile.city = name;
                 state.cache.profile.country = country;
+                state.cache.profile.country_code = countryCode;
                 closeCityPicker();
                 renderProfile();
                 if (tg) tg.showAlert("Город сохранён: " + name + (country ? ", " + country : ""));

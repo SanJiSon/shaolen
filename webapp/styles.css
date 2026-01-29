@@ -911,7 +911,6 @@ body {
 .profile-fields { margin-top: 12px; }
 .profile-fields label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; margin-top: 10px; }
 .profile-fields .input { margin-bottom: 6px; width: 100%; max-width: 200px; }
-.profile-save-fields-btn { margin-top: 12px; }
 
 .profile-weight-card {
   margin-top: 16px;
@@ -935,6 +934,18 @@ body {
 .profile-bmi-block { margin-top: 14px; padding: 12px; background: var(--accent-soft); border-radius: var(--radius-md); }
 .profile-bmi-row { display: flex; justify-content: space-between; font-size: 13px; }
 .profile-bmi-ideal { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.profile-bmi-status { margin-top: 6px; font-weight: 600; }
+.profile-bmi-status.bmi-normal { color: var(--success, #2e7d32); }
+.profile-bmi-status.bmi-under { color: var(--warning, #ed6c02); }
+.profile-bmi-status.bmi-over { color: var(--warning, #ed6c02); }
+.profile-bmi-status.bmi-obese { color: var(--danger, #c62828); }
+.profile-bmi-ideal-range { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.profile-bmi-live-preview { margin-top: 10px; padding: 8px 10px; font-size: 13px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.profile-bmi-live-preview.bmi-normal { background: rgba(46, 125, 50, 0.15); color: var(--success, #2e7d32); }
+.profile-bmi-live-preview.bmi-under,
+.profile-bmi-live-preview.bmi-over { background: rgba(237, 108, 2, 0.15); color: var(--warning, #ed6c02); }
+.profile-bmi-live-preview.bmi-obese { background: rgba(198, 40, 40, 0.15); color: var(--danger, #c62828); }
+.profile-bmi-preview-hint { color: var(--muted); font-size: 12px; }
 
 .profile-subtabs {
   display: flex;
