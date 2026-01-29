@@ -226,6 +226,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
     await db.add_user(user.id, user.username)
+    await db.ensure_user_examples(user.id)
 
     welcome_text = f"""
 👋 Привет, {user.first_name}!

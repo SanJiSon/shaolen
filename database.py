@@ -46,6 +46,11 @@ class Database:
                 await db.execute("ALTER TABLE missions ADD COLUMN deadline TEXT")
             except Exception:
                 pass
+            for col, default in [("is_example", "0")]:
+                try:
+                    await db.execute(f"ALTER TABLE missions ADD COLUMN {col} INTEGER DEFAULT {default}")
+                except Exception:
+                    pass
 
             # Таблица подцелей (подцели миссий)
             await db.execute("""
@@ -76,6 +81,10 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )
             """)
+            try:
+                await db.execute("ALTER TABLE goals ADD COLUMN is_example INTEGER DEFAULT 0")
+            except Exception:
+                pass
 
             # Таблица привычек
             await db.execute("""
@@ -89,6 +98,10 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )
             """)
+            try:
+                await db.execute("ALTER TABLE habits ADD COLUMN is_example INTEGER DEFAULT 0")
+            except Exception:
+                pass
 
             # Таблица записей привычек (трекинг выполнения)
             await db.execute("""
@@ -130,6 +143,14 @@ class Database:
                     date TEXT NOT NULL,
                     request_count INTEGER DEFAULT 0,
                     PRIMARY KEY (user_id, date),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
+            # Пользователи, которым уже выдавались примеры (если удалили — не добавлять снова)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_examples_seeded (
+                    user_id INTEGER PRIMARY KEY,
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )
             """)
@@ -216,12 +237,12 @@ class Database:
             await db.commit()
 
     # === МИССИИ ===
-    async def add_mission(self, user_id: int, title: str, description: str = "", deadline: Optional[str] = None) -> int:
-        """Добавление миссии"""
+    async def add_mission(self, user_id: int, title: str, description: str = "", deadline: Optional[str] = None, is_example: int = 0) -> int:
+        """Добавление миссии. is_example=1 — предустановленный пример."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT INTO missions (user_id, title, description, deadline) VALUES (?, ?, ?, ?)",
-                (user_id, title, description or "", deadline)
+                "INSERT INTO missions (user_id, title, description, deadline, is_example) VALUES (?, ?, ?, ?, ?)",
+                (user_id, title, description or "", deadline, 1 if is_example else 0)
             )
             await db.commit()
             return cursor.lastrowid
@@ -256,10 +277,10 @@ class Database:
             await db.commit()
 
     async def update_mission(self, mission_id: int, title: str, description: str = "", deadline: Optional[str] = None) -> bool:
-        """Обновление миссии"""
+        """Обновление миссии. После сохранения пользователем снимается метка «пример»."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "UPDATE missions SET title = ?, description = ?, deadline = ? WHERE id = ?",
+                "UPDATE missions SET title = ?, description = ?, deadline = ?, is_example = 0 WHERE id = ?",
                 (title, description or "", deadline, mission_id)
             )
             await db.commit()
@@ -360,10 +381,10 @@ class Database:
 
     async def update_goal(self, goal_id: int, title: str, description: str = "",
                          deadline: Optional[str] = None, priority: int = 1) -> bool:
-        """Обновление цели"""
+        """Обновление цели. После сохранения пользователем снимается метка «пример»."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?
+                """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?, is_example = 0
                    WHERE id = ?""",
                 (title, description or "", deadline, priority, goal_id)
             )
@@ -388,10 +409,10 @@ class Database:
             return cursor.lastrowid
 
     async def update_habit(self, habit_id: int, title: str, description: str = "") -> bool:
-        """Обновление привычки"""
+        """Обновление привычки. После сохранения пользователем снимается метка «пример»."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "UPDATE habits SET title = ?, description = ? WHERE id = ?",
+                "UPDATE habits SET title = ?, description = ?, is_example = 0 WHERE id = ?",
                 (title, description or "", habit_id)
             )
             await db.commit()
@@ -651,16 +672,52 @@ class Database:
                 }
             }
 
-    async def seed_user_examples(self, user_id: int) -> None:
-        """Добавляет примеры миссий, целей и привычек для нового пользователя."""
+    async def user_examples_were_seeded_once(self, user_id: int) -> bool:
+        """Были ли этому пользователю уже когда-то выданы примеры (если удалил — не добавлять снова)."""
         async with aiosqlite.connect(self.db_path) as db:
-            # Проверяем, есть ли уже данные
-            for table, col in [("missions", "user_id"), ("goals", "user_id"), ("habits", "user_id")]:
-                async with db.execute(
-                    f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (user_id,)
-                ) as c:
-                    if (await c.fetchone())[0] > 0:
-                        return  # уже есть данные, не дублируем
+            async with db.execute(
+                "SELECT 1 FROM user_examples_seeded WHERE user_id = ? LIMIT 1",
+                (user_id,),
+            ) as c:
+                return (await c.fetchone()) is not None
+
+    async def user_has_examples(self, user_id: int) -> bool:
+        """Есть ли у пользователя сейчас предустановленные примеры (миссии/цели/привычки с is_example=1)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            for table in ["missions", "goals", "habits"]:
+                try:
+                    async with db.execute(
+                        f"SELECT 1 FROM {table} WHERE user_id = ? AND is_example = 1 LIMIT 1",
+                        (user_id,),
+                    ) as c:
+                        if (await c.fetchone()) is not None:
+                            return True
+                except Exception:
+                    pass  # колонка is_example может отсутствовать в старых БД
+        return False
+
+    async def _mark_examples_seeded(self, user_id: int) -> None:
+        """Отметить, что этому пользователю уже выдавались примеры (чтобы при удалении не добавлять снова)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO user_examples_seeded (user_id) VALUES (?)",
+                (user_id,),
+            )
+            await db.commit()
+
+    async def ensure_user_examples(self, user_id: int) -> None:
+        """Добавить предустановленные примеры только если пользователь новый (никогда не получал примеры).
+        Если пользователь когда-то удалил примеры — повторно не добавляем."""
+        if await self.user_examples_were_seeded_once(user_id):
+            return
+        if await self.user_has_examples(user_id):
+            await self._mark_examples_seeded(user_id)
+            return
+        await self.seed_user_examples(user_id)
+        await self._mark_examples_seeded(user_id)
+
+    async def seed_user_examples(self, user_id: int) -> None:
+        """Добавляет предустановленные примеры миссий, целей и привычек (с меткой is_example=1)."""
         # Примеры привычек
         examples_habits = [
             ("Пить воду", "Стакан воды утром и в течение дня"),
@@ -669,12 +726,14 @@ class Database:
             ("Прогулка", "Пройти 5000+ шагов"),
         ]
         for title, desc in examples_habits:
-            await self.add_habit(user_id, title, desc)
+            await self.add_habit(user_id, title, desc, is_example=1)
         # Пример миссии с подцелями
         mid = await self.add_mission(
             user_id,
             "Здоровый образ жизни",
             "Регулярные привычки и цели на месяц",
+            None,
+            is_example=1,
         )
         for title, _ in [("Настроить режим сна", ""), ("Добавить привычки в приложение", ""), ("Первый отчёт через неделю", "")]:
             await self.add_subgoal(mid, title, "")
@@ -682,8 +741,8 @@ class Database:
         from datetime import date, timedelta
         d1 = (date.today() + timedelta(days=7)).isoformat()
         d2 = (date.today() + timedelta(days=30)).isoformat()
-        await self.add_goal(user_id, "Пройти 5 км без остановки", "Постепенно увеличивать дистанцию", d1, 2)
-        await self.add_goal(user_id, "Прочитать одну книгу", "Выбрать книгу и читать по 15 минут в день", d2, 1)
+        await self.add_goal(user_id, "Пройти 5 км без остановки", "Постепенно увеличивать дистанцию", d1, 2, is_example=1)
+        await self.add_goal(user_id, "Прочитать одну книгу", "Выбрать книгу и читать по 15 минут в день", d2, 1, is_example=1)
 
     # === Мастер Шаолень (лимит запросов в день) ===
     async def get_shaolen_requests_today(self, user_id: int) -> int:

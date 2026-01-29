@@ -614,6 +614,13 @@ async def api_seed_user(user_id: int):
     return JSONResponse(content={"ok": True, "message": "Примеры добавлены или уже были"})
 
 
+@app.post("/api/user/{user_id}/ensure-examples")
+async def api_ensure_user_examples(user_id: int):
+    """Убедиться, что у пользователя есть предустановленные примеры (для новых и без примеров)."""
+    await db.ensure_user_examples(user_id)
+    return JSONResponse(content={"ok": True})
+
+
 @app.get("/api/user/{user_id}/analytics", response_model=None)
 async def api_get_analytics(user_id: int, period: str = "month"):
     """Получение аналитики пользователя. period: week (7 дн.), month (30 дн.), all (365 дн.)"""
