@@ -582,6 +582,7 @@ class ProfileUpdate(BaseModel):
     target_weight: Optional[float] = None
     city: Optional[str] = None
     country: Optional[str] = None
+    country_code: Optional[str] = None  # ISO 2 буквы для геокодинга (Москва → RU)
     geo_consent: Optional[bool] = None
 
 
@@ -606,6 +607,7 @@ def _profile_out(user: dict) -> dict:
         "target_weight": user.get("target_weight"),
         "city": (user.get("city") or "").strip() or None,
         "country": (user.get("country") or "").strip() or None,
+        "country_code": (user.get("country_code") or "").strip().upper() or None,
         "geo_consent": bool(user.get("geo_consent")),
     }
 
@@ -633,6 +635,7 @@ async def api_update_profile(user_id: int, payload: ProfileUpdate):
         target_weight=payload.target_weight,
         city=payload.city,
         country=payload.country,
+        country_code=payload.country_code,
         geo_consent=payload.geo_consent,
     )
     if payload.weight is not None and payload.weight > 0:
@@ -734,13 +737,17 @@ async def _weather_by_coords(lat: float, lon: float) -> Optional[Dict[str, Any]]
         return None
 
 
-async def _geocode_city(city: str, country: str = "") -> Optional[Dict[str, Any]]:
-    """Геокодинг города (Open-Meteo): lat, lon, name."""
+async def _geocode_city(city: str, country: str = "", country_code: str = "") -> Optional[Dict[str, Any]]:
+    """Геокодинг города (Open-Meteo): lat, lon, name. country_code — ISO 2 буквы для однозначного выбора (напр. Москва, RU)."""
     try:
+        params = {"name": city.strip(), "count": 10, "language": "ru"}
+        code = (country_code or "").strip().upper()
+        if len(code) == 2:
+            params["countryCode"] = code  # Open-Meteo API: camelCase
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(
                 "https://geocoding-api.open-meteo.com/v1/search",
-                params={"name": city, "count": 1, "language": "ru"},
+                params=params,
             )
             if r.status_code != 200:
                 return None
@@ -748,36 +755,53 @@ async def _geocode_city(city: str, country: str = "") -> Optional[Dict[str, Any]
             results = data.get("results") or []
             if not results:
                 return None
+            # Берём первый результат (при фильтре по стране — нужный город)
             r0 = results[0]
-            return {"lat": r0.get("latitude"), "lon": r0.get("longitude"), "name": r0.get("name"), "country": r0.get("country_code") or r0.get("country")}
+            return {"lat": r0.get("latitude"), "lon": r0.get("longitude"), "name": r0.get("name"), "country": r0.get("country") or r0.get("country_code")}
     except Exception as e:
         logger.warning("Геокодинг %s: %s", city, e)
         return None
 
 
 async def _geocode_search(query: str, count: int = 10) -> List[Dict[str, Any]]:
-    """Поиск городов по запросу (Open-Meteo): список {name, country, lat, lon}."""
+    """Поиск городов по запросу (Open-Meteo): список {name, country, country_code, lat, lon}, сортировка по населению, полное название страны."""
     if not (query or "").strip():
         return []
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(
                 "https://geocoding-api.open-meteo.com/v1/search",
-                params={"name": query.strip(), "count": min(count, 15), "language": "ru"},
+                params={"name": query.strip(), "count": 20, "language": "ru"},
             )
             if r.status_code != 200:
                 return []
             data = r.json()
-            results = data.get("results") or []
-            return [
-                {
-                    "name": r.get("name") or "",
-                    "country": r.get("country_code") or r.get("country") or "",
+            raw = data.get("results") or []
+            # Сортировка по населению (сначала крупные города — реальные столицы/мегаполисы)
+            raw.sort(key=lambda x: -(x.get("population") or 0))
+            seen = set()
+            out = []
+            for r in raw:
+                name = (r.get("name") or "").strip()
+                # Полное название страны (API возвращает локализованное имя страны)
+                country_full = (r.get("country") or "").strip()
+                country_code = (r.get("country_code") or "").strip().upper()
+                if not name:
+                    continue
+                key = (name, country_code)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({
+                    "name": name,
+                    "country": country_full or country_code,
+                    "country_code": country_code,
                     "lat": r.get("latitude"),
                     "lon": r.get("longitude"),
-                }
-                for r in results
-            ]
+                })
+                if len(out) >= min(count, 15):
+                    break
+            return out
     except Exception as e:
         logger.warning("Поиск городов %s: %s", query, e)
         return []
@@ -830,11 +854,11 @@ async def api_geocode_search(q: str = ""):
 
 
 @app.get("/api/weather/by-city", response_model=None)
-async def api_weather_by_city(city: str, country: str = ""):
-    """Погода по названию города (и опционально стране)."""
+async def api_weather_by_city(city: str, country: str = "", country_code: str = ""):
+    """Погода по названию города. country_code — ISO 2 буквы (предпочтительно для однозначного выбора)."""
     if not (city or "").strip():
         raise HTTPException(status_code=400, detail="Укажите город")
-    loc = await _geocode_city(city.strip(), country.strip())
+    loc = await _geocode_city(city.strip(), country.strip(), country_code.strip())
     if not loc:
         return JSONResponse(content={"error": "Город не найден"}, status_code=404)
     weather = await _weather_by_coords(loc["lat"], loc["lon"])
@@ -848,6 +872,7 @@ class WaterCalculateBody(BaseModel):
     use_geo: Optional[bool] = True  # получить город по IP и погоду
     city: Optional[str] = None
     country: Optional[str] = None
+    country_code: Optional[str] = None  # ISO 2 буквы для однозначного геокодинга
     temp: Optional[float] = None  # если уже есть погода
     humidity: Optional[float] = None
 
@@ -881,7 +906,10 @@ async def api_water_calculate(user_id: int, request: Request, payload: WaterCalc
                     temp = w.get("temp")
                     humidity = w.get("humidity")
     if temp is None and (payload.city or "").strip():
-        loc = await _geocode_city((payload.city or "").strip(), (payload.country or "").strip())
+        code = (payload.country_code or user.get("country_code") or "").strip().upper()
+        if len(code) != 2:
+            code = ""
+        loc = await _geocode_city((payload.city or "").strip(), (payload.country or "").strip(), code)
         if loc:
             w = await _weather_by_coords(loc["lat"], loc["lon"])
             if w:
@@ -910,17 +938,18 @@ class WaterHabitBody(BaseModel):
 
 @app.post("/api/user/{user_id}/water-habit", response_model=None)
 async def api_water_habit(user_id: int, payload: WaterHabitBody):
-    """Создать привычку «Пить воду» (без точного количества в названии), с плашкой «Рассчитана автоматически»."""
+    """Создать привычку «Пить воду Xл» с плашкой «Рассчитана автоматически»."""
     if payload.liters_per_day <= 0:
         raise HTTPException(status_code=400, detail="Укажите объём воды в день")
-    title = "Пить воду"
-    desc = f"Рекомендуемая норма: {payload.liters_per_day:.1f} л в день. "
+    liters = payload.liters_per_day
+    title = f"Пить воду {liters:.0f}л" if liters == int(liters) else f"Пить воду {liters:.1f}л"
+    desc = f"Рекомендуемая норма: {liters:.1f} л в день. "
     if payload.formula_note:
         desc += payload.formula_note
     else:
         desc += "По формуле с учётом веса, активности и погоды (ВОЗ/Mayo)."
     hid = await db.add_habit(user_id, title, desc, is_example=0, is_water_calculated=1)
-    return JSONResponse(content={"ok": True, "habit_id": hid, "title": title, "liters_per_day": payload.liters_per_day})
+    return JSONResponse(content={"ok": True, "habit_id": hid, "title": title, "liters_per_day": liters})
 
 
 @app.post("/api/user/{user_id}/seed")

@@ -29,7 +29,7 @@ class Database:
                     pass
             for col, typ in [
                 ("gender", "TEXT"), ("weight", "REAL"), ("height", "REAL"), ("age", "INTEGER"),
-                ("target_weight", "REAL"), ("city", "TEXT"), ("country", "TEXT"), ("geo_consent", "INTEGER"),
+                ("target_weight", "REAL"), ("city", "TEXT"), ("country", "TEXT"), ("country_code", "TEXT"), ("geo_consent", "INTEGER"),
             ]:
                 try:
                     await db.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
@@ -269,9 +269,10 @@ class Database:
         target_weight: Optional[float] = None,
         city: Optional[str] = None,
         country: Optional[str] = None,
+        country_code: Optional[str] = None,
         geo_consent: Optional[int] = None,
     ) -> None:
-        """Обновить расширенные поля профиля (пол, вес, рост, возраст, цель, город, страна, согласие на гео)."""
+        """Обновить расширенные поля профиля (пол, вес, рост, возраст, цель, город, страна, код страны, согласие на гео)."""
         async with aiosqlite.connect(self.db_path) as db:
             updates, vals = [], []
             if gender is not None:
@@ -295,6 +296,10 @@ class Database:
             if country is not None:
                 updates.append("country = ?")
                 vals.append((country or "").strip() or None)
+            if country_code is not None:
+                code = (country_code or "").strip().upper()
+                updates.append("country_code = ?")
+                vals.append(code if len(code) == 2 else None)
             if geo_consent is not None:
                 updates.append("geo_consent = ?")
                 vals.append(1 if geo_consent else 0)
