@@ -27,6 +27,25 @@ class Database:
                     await db.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
                 except Exception:
                     pass
+            for col, typ in [
+                ("gender", "TEXT"), ("weight", "REAL"), ("height", "REAL"), ("age", "INTEGER"),
+                ("target_weight", "REAL"), ("city", "TEXT"), ("country", "TEXT"), ("geo_consent", "INTEGER"),
+            ]:
+                try:
+                    await db.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
+            # История веса (одна запись на пользователя на дату; только день, без времени суток)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS weight_history (
+                    user_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    weight REAL NOT NULL,
+                    PRIMARY KEY (user_id, date),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
 
             # Таблица миссий
             await db.execute("""
@@ -235,6 +254,110 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("UPDATE users SET display_name = ? WHERE user_id = ?", (dn, user_id))
             await db.commit()
+
+    async def update_user_profile_extended(
+        self,
+        user_id: int,
+        gender: Optional[str] = None,
+        weight: Optional[float] = None,
+        height: Optional[float] = None,
+        age: Optional[int] = None,
+        target_weight: Optional[float] = None,
+        city: Optional[str] = None,
+        country: Optional[str] = None,
+        geo_consent: Optional[int] = None,
+    ) -> None:
+        """Обновить расширенные поля профиля (пол, вес, рост, возраст, цель, город, страна, согласие на гео)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            updates, vals = [], []
+            if gender is not None:
+                updates.append("gender = ?")
+                vals.append((gender or "").strip() or None)
+            if weight is not None:
+                updates.append("weight = ?")
+                vals.append(weight if weight > 0 else None)
+            if height is not None:
+                updates.append("height = ?")
+                vals.append(height if height > 0 else None)
+            if age is not None:
+                updates.append("age = ?")
+                vals.append(age if age > 0 else None)
+            if target_weight is not None:
+                updates.append("target_weight = ?")
+                vals.append(target_weight if target_weight > 0 else None)
+            if city is not None:
+                updates.append("city = ?")
+                vals.append((city or "").strip() or None)
+            if country is not None:
+                updates.append("country = ?")
+                vals.append((country or "").strip() or None)
+            if geo_consent is not None:
+                updates.append("geo_consent = ?")
+                vals.append(1 if geo_consent else 0)
+            if not updates:
+                return
+            vals.append(user_id)
+            await db.execute(
+                "UPDATE users SET " + ", ".join(updates) + " WHERE user_id = ?",
+                vals,
+            )
+            await db.commit()
+
+    async def add_weight_entry(self, user_id: int, date: str, weight: float) -> None:
+        """Добавить/обновить запись веса на дату (date в формате YYYY-MM-DD)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO weight_history (user_id, date, weight) VALUES (?, ?, ?)",
+                (user_id, date, weight),
+            )
+            await db.commit()
+
+    async def get_weight_history(
+        self, user_id: int, period: str = "7"
+    ) -> List[Dict]:
+        """История веса за период: 7 (последние 7 точек), week, month, 6months, year."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if period == "7":
+                query = """
+                    SELECT date, weight FROM weight_history
+                    WHERE user_id = ? ORDER BY date DESC LIMIT 7
+                """
+                async with db.execute(query, (user_id,)) as c:
+                    rows = await c.fetchall()
+                    return [dict(r) for r in reversed(rows)]
+            elif period == "week":
+                query = """
+                    SELECT date, weight FROM weight_history
+                    WHERE user_id = ? AND date >= date('now', '-7 days')
+                    ORDER BY date ASC
+                """
+            elif period == "month":
+                query = """
+                    SELECT date, weight FROM weight_history
+                    WHERE user_id = ? AND date >= date('now', '-1 month')
+                    ORDER BY date ASC
+                """
+            elif period == "6months":
+                query = """
+                    SELECT date, weight FROM weight_history
+                    WHERE user_id = ? AND date >= date('now', '-6 months')
+                    ORDER BY date ASC
+                """
+            elif period == "year":
+                query = """
+                    SELECT date, weight FROM weight_history
+                    WHERE user_id = ? AND date >= date('now', '-1 year')
+                    ORDER BY date ASC
+                """
+            else:
+                query = """
+                    SELECT date, weight FROM weight_history
+                    WHERE user_id = ? ORDER BY date DESC LIMIT 7
+                """
+            async with db.execute(query, (user_id,)) as c:
+                rows = await c.fetchall()
+                return [dict(r) for r in rows]
 
     # === МИССИИ ===
     async def add_mission(self, user_id: int, title: str, description: str = "", deadline: Optional[str] = None, is_example: int = 0) -> int:

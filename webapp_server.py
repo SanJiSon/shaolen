@@ -17,6 +17,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 import logging
 
+import httpx
+
 from database import Database
 
 try:
@@ -30,8 +32,16 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 LIMIT_SHAOLEN_PER_DAY = 50
-SHAOLEN_MODEL = "llama-3.3-70b-versatile"
-SHAOLEN_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+# Списки моделей по приоритету: при 429 (лимит Groq) пробуем следующую. Для пользователя без изменений.
+# Чтобы добавить новую модель — допишите строку в нужный список.
+SHAOLEN_TEXT_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+]
+SHAOLEN_VISION_MODELS = [
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+]
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[dict]:
@@ -565,6 +575,14 @@ async def api_delete_habit(habit_id: int):
 
 class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
+    gender: Optional[str] = None  # "m" / "f" / ""
+    weight: Optional[float] = None
+    height: Optional[float] = None
+    age: Optional[int] = None
+    target_weight: Optional[float] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    geo_consent: Optional[bool] = None
 
 
 class ShaolenAsk(BaseModel):
@@ -574,37 +592,287 @@ class ShaolenAsk(BaseModel):
     history: Optional[List[Dict[str, Any]]] = None  # [{"role":"user"|"assistant","content":"..."}] — контекст диалога
 
 
-@app.get("/api/user/{user_id}/profile", response_model=None)
-async def api_get_profile(user_id: int):
-    """Профиль пользователя: имя, отображаемое имя, статистика."""
-    user = await db.get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    out = {
+def _profile_out(user: dict) -> dict:
+    return {
         "user_id": user.get("user_id"),
         "username": user.get("username") or "",
         "first_name": user.get("first_name") or "",
         "last_name": user.get("last_name") or "",
-        "display_name": user.get("display_name") or "",
+        "display_name": (user.get("display_name") or "").strip() or "",
+        "gender": (user.get("gender") or "").strip() or "",
+        "weight": user.get("weight"),
+        "height": user.get("height"),
+        "age": user.get("age"),
+        "target_weight": user.get("target_weight"),
+        "city": (user.get("city") or "").strip() or None,
+        "country": (user.get("country") or "").strip() or None,
+        "geo_consent": bool(user.get("geo_consent")),
     }
-    return JSONResponse(content=out)
+
+
+@app.get("/api/user/{user_id}/profile", response_model=None)
+async def api_get_profile(user_id: int):
+    """Профиль пользователя: имя, пол, вес, рост, возраст, цель, город, статистика."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return JSONResponse(content=_profile_out(user))
 
 
 @app.put("/api/user/{user_id}/profile")
 async def api_update_profile(user_id: int, payload: ProfileUpdate):
-    """Сохранить отображаемое имя."""
-    await db.update_user_display_name(user_id, payload.display_name)
+    """Сохранить профиль (имя, пол, вес, рост, возраст, цель, город, согласие на гео). При сохранении веса добавляется точка в историю на сегодня."""
+    if payload.display_name is not None:
+        await db.update_user_display_name(user_id, payload.display_name)
+    await db.update_user_profile_extended(
+        user_id,
+        gender=payload.gender,
+        weight=payload.weight,
+        height=payload.height,
+        age=payload.age,
+        target_weight=payload.target_weight,
+        city=payload.city,
+        country=payload.country,
+        geo_consent=payload.geo_consent,
+    )
+    if payload.weight is not None and payload.weight > 0:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        await db.add_weight_entry(user_id, today, payload.weight)
     user = await db.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    out = {
-        "user_id": user.get("user_id"),
-        "username": user.get("username"),
-        "first_name": user.get("first_name") or "",
-        "last_name": user.get("last_name") or "",
-        "display_name": (user.get("display_name") or "").strip() or "",
-    }
-    return JSONResponse(content=out)
+    return JSONResponse(content=_profile_out(user))
+
+
+@app.get("/api/user/{user_id}/weight-history", response_model=None)
+async def api_weight_history(user_id: int, period: str = "7"):
+    """История веса: period = 7 | week | month | 6months | year."""
+    if period not in ("7", "week", "month", "6months", "year"):
+        period = "7"
+    rows = await db.get_weight_history(user_id, period=period)
+    return JSONResponse(content={"period": period, "data": rows})
+
+
+class WeightEntryBody(BaseModel):
+    date: str  # YYYY-MM-DD
+    weight: float
+
+
+@app.post("/api/user/{user_id}/weight", response_model=None)
+async def api_add_weight(user_id: int, payload: WeightEntryBody):
+    """Добавить/обновить вес на дату."""
+    if payload.weight <= 0:
+        raise HTTPException(status_code=400, detail="Вес должен быть больше 0")
+    import re as re_mod
+    if not re_mod.match(r"^\d{4}-\d{2}-\d{2}$", payload.date):
+        raise HTTPException(status_code=400, detail="Дата в формате YYYY-MM-DD")
+    await db.add_user(user_id)
+    await db.add_weight_entry(user_id, payload.date, payload.weight)
+    user = await db.get_user(user_id)
+    if user:
+        await db.update_user_profile_extended(user_id, weight=payload.weight)
+    return JSONResponse(content={"ok": True, "date": payload.date, "weight": payload.weight})
+
+
+# --- Погода и геолокация (для расчёта воды) ---
+def _client_ip(request: Request) -> Optional[str]:
+    """IP клиента (учёт X-Forwarded-For за Nginx)."""
+    forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+async def _geo_by_ip(ip: str) -> Optional[Dict[str, Any]]:
+    """Геолокация по IP через ip-api.com (city, country, lat, lon)."""
+    if not ip or ip == "127.0.0.1":
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                f"http://ip-api.com/json/{ip}",
+                params={"fields": "city,country,lat,lon"},
+            )
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            if data.get("status") != "success":
+                return None
+            return {
+                "city": data.get("city") or "",
+                "country": data.get("country") or "",
+                "lat": data.get("lat"),
+                "lon": data.get("lon"),
+            }
+    except Exception as e:
+        logger.warning("Гео по IP %s: %s", ip, e)
+        return None
+
+
+async def _weather_by_coords(lat: float, lon: float) -> Optional[Dict[str, Any]]:
+    """Погода по координатам (Open-Meteo): temp °C, humidity %."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "current": "temperature_2m,relative_humidity_2m",
+                },
+            )
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            cur = data.get("current") or {}
+            return {
+                "temp": cur.get("temperature_2m"),
+                "humidity": cur.get("relative_humidity_2m"),
+            }
+    except Exception as e:
+        logger.warning("Погода по координатам: %s", e)
+        return None
+
+
+async def _geocode_city(city: str, country: str = "") -> Optional[Dict[str, Any]]:
+    """Геокодинг города (Open-Meteo): lat, lon, name."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": city, "count": 1, "language": "ru"},
+            )
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            results = data.get("results") or []
+            if not results:
+                return None
+            r0 = results[0]
+            return {"lat": r0.get("latitude"), "lon": r0.get("longitude"), "name": r0.get("name")}
+    except Exception as e:
+        logger.warning("Геокодинг %s: %s", city, e)
+        return None
+
+
+def _water_climate_factor(temp: Optional[float], humidity: Optional[float]) -> float:
+    """Климатическая поправка к норме воды (доля от базовой, 0 = без добавки). По ВОЗ/Mayo Clinic."""
+    h = humidity or 0
+    if h > 70:
+        return 0.15  # высокая влажность +10–20%
+    if temp is None:
+        return 0.0
+    if temp < 20:
+        return 0.0
+    if temp <= 26:
+        return 0.10 if h < 60 else 0.15  # +10–15%
+    if temp <= 32:
+        return 0.25 if h < 70 else 0.20  # +20–30% / при влажности +10–20%
+    return 0.40  # >32 °C +30–50%
+
+
+def _water_liters(weight_kg: float, activity_min: float, climate_factor: float) -> float:
+    """Вода (л) = (Вес_кг × 30 мл) + (Активность_минуты × 15 мл) + климатическая поправка к базе."""
+    base_ml = weight_kg * 30 + activity_min * 15
+    base_l = base_ml / 1000.0
+    add = base_l * climate_factor
+    return round(base_l + add, 2)
+
+
+@app.get("/api/weather/by-ip", response_model=None)
+async def api_weather_by_ip(request: Request):
+    """Погода по IP клиента (город, страна, temp, humidity). Для расчёта воды."""
+    ip = _client_ip(request)
+    if not ip:
+        return JSONResponse(content={"error": "IP не определён"}, status_code=400)
+    geo = await _geo_by_ip(ip)
+    if not geo or geo.get("lat") is None:
+        return JSONResponse(content={"error": "Город по IP не определён"}, status_code=404)
+    weather = await _weather_by_coords(geo["lat"], geo["lon"])
+    if not weather:
+        return JSONResponse(content={"error": "Погода недоступна"}, status_code=502)
+    return JSONResponse(content={"city": geo.get("city"), "country": geo.get("country"), **weather})
+
+
+@app.get("/api/weather/by-city", response_model=None)
+async def api_weather_by_city(city: str, country: str = ""):
+    """Погода по названию города (и опционально стране)."""
+    if not (city or "").strip():
+        raise HTTPException(status_code=400, detail="Укажите город")
+    loc = await _geocode_city(city.strip(), country.strip())
+    if not loc:
+        return JSONResponse(content={"error": "Город не найден"}, status_code=404)
+    weather = await _weather_by_coords(loc["lat"], loc["lon"])
+    if not weather:
+        return JSONResponse(content={"error": "Погода недоступна"}, status_code=502)
+    return JSONResponse(content={"city": loc.get("name") or city, "country": country, **weather})
+
+
+class WaterCalculateBody(BaseModel):
+    activity_minutes: Optional[float] = 0
+    use_geo: Optional[bool] = True  # получить город по IP и погоду
+    city: Optional[str] = None
+    country: Optional[str] = None
+    temp: Optional[float] = None  # если уже есть погода
+    humidity: Optional[float] = None
+
+
+@app.post("/api/user/{user_id}/water-calculate", response_model=None)
+async def api_water_calculate(user_id: int, request: Request, payload: WaterCalculateBody):
+    """Рассчитать рекомендуемый объём воды в день (л). Учитывает вес, активность, погоду (по IP или город)."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    weight = user.get("weight")
+    if not weight or weight <= 0:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Укажите вес в профиле"},
+        )
+    activity = float(payload.activity_minutes or 0)
+    temp, humidity = payload.temp, payload.humidity
+    if payload.use_geo:
+        ip = _client_ip(request)
+        geo = await _geo_by_ip(ip) if ip else None
+        if geo and geo.get("lat") is not None:
+            w = await _weather_by_coords(geo["lat"], geo["lon"])
+            if w:
+                temp = w.get("temp")
+                humidity = w.get("humidity")
+    if temp is None and (payload.city or "").strip():
+        loc = await _geocode_city((payload.city or "").strip(), (payload.country or "").strip())
+        if loc:
+            w = await _weather_by_coords(loc["lat"], loc["lon"])
+            if w:
+                temp = w.get("temp")
+                humidity = w.get("humidity")
+    climate = _water_climate_factor(temp, humidity)
+    liters = _water_liters(weight, activity, climate)
+    return JSONResponse(content={
+        "liters": liters,
+        "weight_kg": weight,
+        "activity_minutes": activity,
+        "climate_factor": round(climate * 100, 0),
+        "temp": temp,
+        "humidity": humidity,
+        "formula": "Вода (л) = (Вес_кг × 30 мл) + (Активность_мин × 15 мл) + климатическая поправка ВОЗ/Mayo",
+    })
+
+
+class WaterHabitBody(BaseModel):
+    liters_per_day: float
+    title: Optional[str] = None
+
+
+@app.post("/api/user/{user_id}/water-habit", response_model=None)
+async def api_water_habit(user_id: int, payload: WaterHabitBody):
+    """Создать привычку «Пить воду» на основе рассчитанной нормы."""
+    if payload.liters_per_day <= 0:
+        raise HTTPException(status_code=400, detail="Укажите объём воды в день")
+    title = (payload.title or "").strip() or "Пить воду"
+    desc = f"Рекомендуемая норма: {payload.liters_per_day:.1f} л в день (по формуле с учётом веса, активности и погоды)."
+    hid = await db.add_habit(user_id, title, desc)
+    return JSONResponse(content={"ok": True, "habit_id": hid, "title": title, "liters_per_day": payload.liters_per_day})
 
 
 @app.post("/api/user/{user_id}/seed")
@@ -1002,6 +1270,44 @@ def _parse_add_intent(text: str):
     return None
 
 
+def _is_rate_limit_error(e: Exception) -> bool:
+    """Распознать ошибку превышения лимита Groq (429)."""
+    code = getattr(e, "status_code", None)
+    if code == 429:
+        return True
+    msg = str(e).lower()
+    return "429" in str(e) or "rate" in msg or "rate limit" in msg
+
+
+def _chat_completion_with_fallback(
+    client: "Groq",
+    messages: list,
+    model_list: List[str],
+    max_tokens: int = 800,
+    temperature: float = 0.7,
+) -> str:
+    """Вызов chat.completions с переключением на следующую модель при 429. Для пользователя без изменений."""
+    last_error: Optional[Exception] = None
+    for model in model_list:
+        try:
+            chat = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            return (chat.choices[0].message.content or "").strip() if chat.choices else ""
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                logger.warning("Лимит модели %s, переключаемся на следующую: %s", model, e)
+                continue
+            raise
+    if last_error:
+        raise last_error
+    return ""
+
+
 def _parse_groq_add_block(reply: str):
     """
     Ищет в ответе Groq строку __ДОБАВИТЬ__ ... и извлекает привычки/цели/миссии.
@@ -1196,10 +1502,10 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
             {"type": "text", "text": text[:2000]},
             {"type": "image_url", "image_url": {"url": image_url}},
         ]
-        model = SHAOLEN_VISION_MODEL
+        model_list = list(SHAOLEN_VISION_MODELS)
     else:
         user_content = text[:2000]
-        model = SHAOLEN_MODEL
+        model_list = list(SHAOLEN_TEXT_MODELS)
 
     # Собираем контекст диалога (последние 20 сообщений), чтобы ответы учитывали уточняющие вопросы
     messages_for_groq = [{"role": "system", "content": system_text}]
@@ -1214,13 +1520,9 @@ async def api_shaolen_ask(user_id: int, payload: ShaolenAsk):
 
     try:
         client = Groq(api_key=GROQ_API_KEY)
-        chat = client.chat.completions.create(
-            model=model,
-            messages=messages_for_groq,
-            max_tokens=800,
-            temperature=0.7,
+        reply = _chat_completion_with_fallback(
+            client, messages_for_groq, model_list, max_tokens=800, temperature=0.7
         )
-        reply = (chat.choices[0].message.content or "").strip() if chat.choices else ""
     except Exception as e:
         logger.exception("Ошибка вызова Groq для user_id=%s: %s", user_id, e)
         await db.add_shaolen_history(
