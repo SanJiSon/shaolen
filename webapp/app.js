@@ -340,11 +340,12 @@ function renderMissions(missions) {
       var doneClass = s.is_completed ? " subgoal-done" : "";
       return "<div class=\"subgoal-row" + doneClass + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label></div>";
     }).join("");
+    var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML =
       "<div class=\"card-header card-header-with-cb\">" +
       "<label class=\"mission-done-cb-wrap\"><input type=\"checkbox\" class=\"mission-done-cb\" data-id=\"" + m.id + "\" " + (m.is_completed ? "checked" : "") + " /></label>" +
       "<div class=\"card-title\">" + title + "</div>" +
-      "<span class=\"badge\">" + done + "</span>" +
+      "<span class=\"badge\">" + done + "</span>" + exampleBadge +
       "</div>" +
       "<div class=\"card-description\">" + description + "</div>" +
       "<div class=\"card-meta\"><span>Создана: " + createdAt + "</span>" + (deadline ? "<span>Окончание: " + deadline + "</span>" : "") + "</div>" +
@@ -374,11 +375,12 @@ function renderGoals(goals) {
     var title = escapeHtml(g.title || "");
     var description = escapeHtml(g.description || "Без описания");
     var dl = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
+    var exampleBadge = (g.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML =
       "<div class=\"card-header card-header-with-cb\">" +
       "<label class=\"goal-done-cb-wrap\"><input type=\"checkbox\" class=\"goal-done-cb\" data-id=\"" + g.id + "\" " + (g.is_completed ? "checked" : "") + " /></label>" +
       "<div class=\"card-title\">" + title + "</div>" +
-      "<span class=\"badge\">" + priority + "</span>" +
+      "<span class=\"badge\">" + priority + "</span>" + exampleBadge +
       "</div>" +
       "<div class=\"card-description\">" + description + "</div>" +
       "<div class=\"card-meta\"><span>" + done + "</span><span>" + dl + "</span></div>" +
@@ -403,10 +405,11 @@ function renderHabits(habits) {
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
+    var exampleBadge = (h.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
-        <div class="habit-name">${title}</div>
+        <div class="habit-name">${title}${exampleBadge}</div>
         <div class="habit-count-wrap ${count ? '' : 'hide'}">
           <span class="habit-count-number">${count}</span>
           <span class="habit-count-unit">раз</span>
@@ -934,6 +937,7 @@ async function loadAll() {
   }
   
   try {
+    await fetchJSON(base + "/api/user/" + uid + "/ensure-examples", { method: "POST" }).catch(function() {});
     var profileFallback = {
       first_name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || "",
       last_name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.last_name) || "",

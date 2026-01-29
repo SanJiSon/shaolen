@@ -412,6 +412,23 @@ body {
   flex-shrink: 0;
 }
 
+.example-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.25);
+  color: var(--muted);
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-left: 6px;
+  display: inline-block;
+}
+
+[data-theme="light"] .example-badge {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+}
+
 .card-description {
   font-size: 12px;
   color: var(--muted);
@@ -588,6 +605,10 @@ body {
   flex: 1;
   min-width: 0;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
