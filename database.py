@@ -121,6 +121,10 @@ class Database:
                 await db.execute("ALTER TABLE habits ADD COLUMN is_example INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                await db.execute("ALTER TABLE habits ADD COLUMN is_water_calculated INTEGER DEFAULT 0")
+            except Exception:
+                pass
 
             # Таблица записей привычек (трекинг выполнения)
             await db.execute("""
@@ -521,21 +525,21 @@ class Database:
             await db.commit()
 
     # === ПРИВЫЧКИ ===
-    async def add_habit(self, user_id: int, title: str, description: str = "", is_example: int = 0) -> int:
-        """Добавление привычки. is_example=1 — предустановленный пример."""
+    async def add_habit(self, user_id: int, title: str, description: str = "", is_example: int = 0, is_water_calculated: int = 0) -> int:
+        """Добавление привычки. is_example=1 — пример; is_water_calculated=1 — рассчитана автоматически (вода)."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT INTO habits (user_id, title, description, is_example) VALUES (?, ?, ?, ?)",
-                (user_id, title, description, 1 if is_example else 0)
+                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated) VALUES (?, ?, ?, ?, ?)",
+                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0)
             )
             await db.commit()
             return cursor.lastrowid
 
     async def update_habit(self, habit_id: int, title: str, description: str = "") -> bool:
-        """Обновление привычки. После сохранения пользователем снимается метка «пример»."""
+        """Обновление привычки. После сохранения пользователем снимается метка «пример» и «рассчитана автоматически»."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "UPDATE habits SET title = ?, description = ?, is_example = 0 WHERE id = ?",
+                "UPDATE habits SET title = ?, description = ?, is_example = 0, is_water_calculated = 0 WHERE id = ?",
                 (title, description or "", habit_id)
             )
             await db.commit()

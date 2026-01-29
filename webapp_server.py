@@ -749,10 +749,38 @@ async def _geocode_city(city: str, country: str = "") -> Optional[Dict[str, Any]
             if not results:
                 return None
             r0 = results[0]
-            return {"lat": r0.get("latitude"), "lon": r0.get("longitude"), "name": r0.get("name")}
+            return {"lat": r0.get("latitude"), "lon": r0.get("longitude"), "name": r0.get("name"), "country": r0.get("country_code") or r0.get("country")}
     except Exception as e:
         logger.warning("Геокодинг %s: %s", city, e)
         return None
+
+
+async def _geocode_search(query: str, count: int = 10) -> List[Dict[str, Any]]:
+    """Поиск городов по запросу (Open-Meteo): список {name, country, lat, lon}."""
+    if not (query or "").strip():
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": query.strip(), "count": min(count, 15), "language": "ru"},
+            )
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            results = data.get("results") or []
+            return [
+                {
+                    "name": r.get("name") or "",
+                    "country": r.get("country_code") or r.get("country") or "",
+                    "lat": r.get("latitude"),
+                    "lon": r.get("longitude"),
+                }
+                for r in results
+            ]
+    except Exception as e:
+        logger.warning("Поиск городов %s: %s", query, e)
+        return []
 
 
 def _water_climate_factor(temp: Optional[float], humidity: Optional[float]) -> float:
@@ -794,6 +822,13 @@ async def api_weather_by_ip(request: Request):
     return JSONResponse(content={"city": geo.get("city"), "country": geo.get("country"), **weather})
 
 
+@app.get("/api/geocode/search", response_model=None)
+async def api_geocode_search(q: str = ""):
+    """Поиск городов по названию (для выбора из списка). Возвращает список {name, country, lat, lon}."""
+    results = await _geocode_search(q)
+    return JSONResponse(content={"results": results})
+
+
 @app.get("/api/weather/by-city", response_model=None)
 async def api_weather_by_city(city: str, country: str = ""):
     """Погода по названию города (и опционально стране)."""
@@ -831,14 +866,20 @@ async def api_water_calculate(user_id: int, request: Request, payload: WaterCalc
         )
     activity = float(payload.activity_minutes or 0)
     temp, humidity = payload.temp, payload.humidity
+    city_out = (payload.city or "").strip() or None
+    country_out = (payload.country or "").strip() or None
     if payload.use_geo:
         ip = _client_ip(request)
         geo = await _geo_by_ip(ip) if ip else None
-        if geo and geo.get("lat") is not None:
-            w = await _weather_by_coords(geo["lat"], geo["lon"])
-            if w:
-                temp = w.get("temp")
-                humidity = w.get("humidity")
+        if geo:
+            if not (city_out or country_out):
+                city_out = geo.get("city") or city_out
+                country_out = geo.get("country") or country_out
+            if geo.get("lat") is not None:
+                w = await _weather_by_coords(geo["lat"], geo["lon"])
+                if w:
+                    temp = w.get("temp")
+                    humidity = w.get("humidity")
     if temp is None and (payload.city or "").strip():
         loc = await _geocode_city((payload.city or "").strip(), (payload.country or "").strip())
         if loc:
@@ -855,6 +896,8 @@ async def api_water_calculate(user_id: int, request: Request, payload: WaterCalc
         "climate_factor": round(climate * 100, 0),
         "temp": temp,
         "humidity": humidity,
+        "city": city_out,
+        "country": country_out,
         "formula": "Вода (л) = (Вес_кг × 30 мл) + (Активность_мин × 15 мл) + климатическая поправка ВОЗ/Mayo",
     })
 
@@ -862,16 +905,21 @@ async def api_water_calculate(user_id: int, request: Request, payload: WaterCalc
 class WaterHabitBody(BaseModel):
     liters_per_day: float
     title: Optional[str] = None
+    formula_note: Optional[str] = None  # текст для справки «как рассчитано» (город, темп., влажность, формула)
 
 
 @app.post("/api/user/{user_id}/water-habit", response_model=None)
 async def api_water_habit(user_id: int, payload: WaterHabitBody):
-    """Создать привычку «Пить воду» на основе рассчитанной нормы."""
+    """Создать привычку «Пить воду» (без точного количества в названии), с плашкой «Рассчитана автоматически»."""
     if payload.liters_per_day <= 0:
         raise HTTPException(status_code=400, detail="Укажите объём воды в день")
-    title = (payload.title or "").strip() or "Пить воду"
-    desc = f"Рекомендуемая норма: {payload.liters_per_day:.1f} л в день (по формуле с учётом веса, активности и погоды)."
-    hid = await db.add_habit(user_id, title, desc)
+    title = "Пить воду"
+    desc = f"Рекомендуемая норма: {payload.liters_per_day:.1f} л в день. "
+    if payload.formula_note:
+        desc += payload.formula_note
+    else:
+        desc += "По формуле с учётом веса, активности и погоды (ВОЗ/Mayo)."
+    hid = await db.add_habit(user_id, title, desc, is_example=0, is_water_calculated=1)
     return JSONResponse(content={"ok": True, "habit_id": hid, "title": title, "liters_per_day": payload.liters_per_day})
 
 
