@@ -17,6 +17,8 @@ const state = {
   capsuleCanEdit: false,
   capsuleView: "main",
   capsuleHistory: [],
+  lastWaterResult: null,
+  profileSubTab: "person",
 };
 
 function initUser() {
@@ -406,10 +408,11 @@ function renderHabits(habits) {
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
     var exampleBadge = (h.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
+    var waterCalcBadge = (h.is_water_calculated ? "<span class=\"water-calc-badge\">Рассчитана автоматически</span><button type=\"button\" class=\"habit-water-help icon-btn\" aria-label=\"Как рассчитано\" title=\"Как рассчитано\" data-desc=\"" + escapeHtml((h.description || "").replace(/"/g, "&quot;")) + "\">?</button>" : "");
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
-        <div class="habit-name">${title}${exampleBadge}</div>
+        <div class="habit-name">${title}${exampleBadge}${waterCalcBadge}</div>
         <div class="habit-count-wrap ${count ? '' : 'hide'}">
           <span class="habit-count-number">${count}</span>
           <span class="habit-count-unit">раз</span>
@@ -420,6 +423,15 @@ function renderHabits(habits) {
     card.dataset.editId = String(h.id);
     card.dataset.editType = "habit";
     root.appendChild(wrapSwipeDelete(card, "habit", h.id));
+    var waterHelpBtn = card.querySelector(".habit-water-help");
+    if (waterHelpBtn && h.description) {
+      waterHelpBtn.addEventListener("click", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var text = (h.description || "").trim() || "Норма рассчитана по формуле с учётом веса, активности и погоды (ВОЗ/Mayo).";
+        if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
+      });
+    }
   });
   setupSwipeDelete(root);
 
@@ -574,64 +586,92 @@ function renderProfile() {
   var idealKg = devineIdealKg(gender, height);
   var idealBmi = idealKg != null && heightM ? bmi(idealKg, heightM) : null;
 
+  var lastWater = state.lastWaterResult || {};
+  var selectedCity = (p.city || "").trim() ? escapeHtml((p.city || "").trim()) : "";
+  var selectedCountry = (p.country || "").trim() ? escapeHtml((p.country || "").trim()) : "";
+
   root.innerHTML = `
-    <div class="profile-avatar">${escapeHtml(initial)}</div>
-    <div class="profile-name">${escapeHtml(name)}</div>
-    ${username ? `<div class="profile-username">${username}</div>` : ""}
-    <div class="profile-edit-name">
-      <label class="profile-edit-label">Как к вам обращаться?</label>
-      <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
-    </div>
-    <div class="profile-fields">
-      <label>Пол</label>
-      <select id="profile-gender" class="input">
-        <option value="">—</option>
-        <option value="m" ${gender === "m" ? "selected" : ""}>М</option>
-        <option value="f" ${gender === "f" ? "selected" : ""}>Ж</option>
-      </select>
-      <label>Вес (кг)</label>
-      <input type="number" id="profile-weight" class="input" step="0.1" min="0" placeholder="—" value="${weight != null ? weight : ""}" />
-      <label>Рост (см)</label>
-      <input type="number" id="profile-height" class="input" min="0" placeholder="—" value="${height != null ? height : ""}" />
-      <label>Возраст</label>
-      <input type="number" id="profile-age" class="input" min="0" placeholder="—" value="${age != null ? age : ""}" />
-      <label>Целевой вес (кг)</label>
-      <input type="number" id="profile-target-weight" class="input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
-      <button type="button" class="primary-btn profile-save-fields-btn">Сохранить</button>
-    </div>
-    ${(currentWeight != null || weightHistory.length) ? `
-    <div class="profile-weight-card weight-trend-card" id="profile-weight-trend-card">
-      <div class="weight-card-header">
-        <span class="weight-card-title">Вес</span>
-        <span class="weight-card-date">${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" })}</span>
+    <div id="profile-panel-person" class="profile-panel ${state.profileSubTab === "person" ? "active" : ""}">
+      <div class="profile-avatar">${escapeHtml(initial)}</div>
+      <div class="profile-name">${escapeHtml(name)}</div>
+      ${username ? `<div class="profile-username">${username}</div>` : ""}
+      <div class="profile-edit-name">
+        <label class="profile-edit-label">Как к вам обращаться?</label>
+        <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
       </div>
-      <div class="weight-card-value">${(currentWeight != null ? currentWeight : weight).toFixed(1)} кг</div>
-      ${weightHistory.length ? `
-      <div class="weight-card-trend">
-        <span class="weight-trend-link" id="weight-trend-link">Тенденции &gt;</span>
-        <div id="profile-weight-chart-mini" class="weight-chart-mini"></div>
+      <div class="profile-fields">
+        <label>Пол</label>
+        <select id="profile-gender" class="input">
+          <option value="">—</option>
+          <option value="m" ${gender === "m" ? "selected" : ""}>Мужской</option>
+          <option value="f" ${gender === "f" ? "selected" : ""}>Женский</option>
+        </select>
+        <label>Вес (кг)</label>
+        <input type="number" id="profile-weight" class="input" step="0.1" min="0" placeholder="—" value="${weight != null ? weight : ""}" />
+        <label>Рост (см)</label>
+        <input type="number" id="profile-height" class="input" min="0" placeholder="—" value="${height != null ? height : ""}" />
+        <label>Возраст</label>
+        <input type="number" id="profile-age" class="input" min="0" placeholder="—" value="${age != null ? age : ""}" />
+        <label>Целевой вес (кг)</label>
+        <input type="number" id="profile-target-weight" class="input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
+        <button type="button" class="primary-btn profile-save-fields-btn">Сохранить</button>
+      </div>
+      ${(currentWeight != null || weightHistory.length) ? `
+      <div class="profile-weight-card weight-trend-card" id="profile-weight-trend-card">
+        <div class="weight-card-header">
+          <span class="weight-card-title">Вес</span>
+          <span class="weight-card-date">${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" })}</span>
+        </div>
+        <div class="weight-card-value">${(currentWeight != null ? currentWeight : weight).toFixed(1)} кг</div>
+        ${weightHistory.length ? `
+        <div class="weight-card-trend">
+          <span class="weight-trend-link" id="weight-trend-link">Тенденции &gt;</span>
+          <div id="profile-weight-chart-mini" class="weight-chart-mini"></div>
+        </div>
+        ` : ""}
       </div>
       ` : ""}
-    </div>
-    ` : ""}
-    ${(currentWeight != null || weight) && heightM ? `
-    <div class="profile-bmi-block">
-      <div class="profile-bmi-row">
-        <span>ИМТ</span>
-        <span>${bmiVal != null ? bmiVal : "—"}</span>
+      <div class="profile-water-row profile-add-weight-row">
+        <button type="button" class="secondary-btn profile-add-weight-btn" id="profile-add-weight-btn">+ Добавить вес</button>
       </div>
-      ${idealBmi != null ? `<div class="profile-bmi-row profile-bmi-ideal">Идеальный ИМТ (Девин): ${idealBmi.toFixed(1)}</div>` : ""}
     </div>
-    ` : ""}
-    <div class="profile-water-row">
-      <button type="button" class="icon-btn profile-water-btn" id="profile-water-btn" aria-label="Норма воды" title="Рассчитать норму воды в день">💧</button>
-      <button type="button" class="icon-btn profile-water-help-btn" id="profile-water-help-btn" aria-label="Справка: как считается норма воды" title="Как считается норма воды">?</button>
-      <button type="button" class="secondary-btn profile-add-weight-btn" id="profile-add-weight-btn">+ Добавить вес</button>
+    <div id="profile-panel-bmi-water" class="profile-panel ${state.profileSubTab === "bmi-water" ? "active" : ""}">
+      ${(currentWeight != null || weight) && heightM ? `
+      <div class="profile-bmi-block">
+        <div class="profile-bmi-header">
+          <span>ИМТ</span>
+          <button type="button" class="icon-btn profile-help-btn profile-bmi-help" aria-label="Справка ИМТ" title="Как считается ИМТ">?</button>
+        </div>
+        <div class="profile-bmi-row">
+          <span>Текущий ИМТ</span>
+          <span>${bmiVal != null ? bmiVal : "—"}</span>
+        </div>
+        ${idealBmi != null ? `<div class="profile-bmi-row profile-bmi-ideal">Идеальный ИМТ (Девин): ${idealBmi.toFixed(1)}</div>` : ""}
+      </div>
+      ` : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек» для расчёта ИМТ.</p>"}
+      <div class="profile-water-block">
+        <div class="profile-water-block-header">
+          <span>Норма воды в день</span>
+          <button type="button" class="icon-btn profile-water-help-btn" id="profile-water-help-btn" aria-label="Справка: как считается норма воды" title="Как считается норма воды">?</button>
+        </div>
+        ${lastWater.liters != null ? `
+        <div class="profile-water-result">
+          <div class="profile-water-value">${lastWater.liters} л</div>
+          <div class="profile-water-meta">По данным: ${lastWater.city ? escapeHtml(lastWater.city) : "—"}${lastWater.country ? ", " + escapeHtml(lastWater.country) : ""}${lastWater.temp != null ? "; темп. " + lastWater.temp + " °C" : ""}${lastWater.humidity != null ? "; влажность " + lastWater.humidity + "%" : ""}</div>
+        </div>
+        ` : "<p class=\"profile-water-empty\">Нажмите «Рассчитать» для нормы воды.</p>"}
+        <div class="profile-water-actions">
+          <button type="button" class="secondary-btn profile-select-city-btn" id="profile-select-city-btn">📍 Выбрать город</button>
+          <button type="button" class="primary-btn profile-water-calc-btn" id="profile-water-calc-btn">💧 Рассчитать</button>
+        </div>
+      </div>
     </div>
-    <div class="profile-stats">
-      <div class="profile-stat-row"><span>Миссий</span><span>${missionsTotal}</span></div>
-      <div class="profile-stat-row"><span>Целей</span><span>${goalsTotal}</span></div>
-      <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
+    <div id="profile-panel-stats" class="profile-panel ${state.profileSubTab === "stats" ? "active" : ""}">
+      <div class="profile-stats">
+        <div class="profile-stat-row"><span>Миссий</span><span>${missionsTotal}</span></div>
+        <div class="profile-stat-row"><span>Целей</span><span>${goalsTotal}</span></div>
+        <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
+      </div>
     </div>
   `;
 
@@ -674,12 +714,19 @@ function renderProfile() {
     if (card) card.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
   }
 
-  var waterBtn = root.querySelector("#profile-water-btn");
-  if (waterBtn) waterBtn.addEventListener("click", function() { openWaterFlow(); });
-  var waterHelpBtn = root.querySelector("#profile-water-help-btn");
-  if (waterHelpBtn) waterHelpBtn.addEventListener("click", function() { showWaterHelp(); });
   var addWeightBtn = root.querySelector("#profile-add-weight-btn");
   if (addWeightBtn) addWeightBtn.addEventListener("click", function() { openAddWeightDialog(); });
+  var bmiHelpBtn = root.querySelector(".profile-bmi-help");
+  if (bmiHelpBtn) bmiHelpBtn.addEventListener("click", function() { showProfileHelpBmi(); });
+  var waterHelpBtn = root.querySelector("#profile-water-help-btn");
+  if (waterHelpBtn) waterHelpBtn.addEventListener("click", function() { showWaterHelp(); });
+  var selectCityBtn = root.querySelector("#profile-select-city-btn");
+  if (selectCityBtn) selectCityBtn.addEventListener("click", function() { openCityPicker(); });
+  var waterCalcBtn = root.querySelector("#profile-water-calc-btn");
+  if (waterCalcBtn) waterCalcBtn.addEventListener("click", function() { openWaterFlow(); });
+  $all(".profile-subtab").forEach(function(btn) {
+    btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
+  });
 }
 
 async function openWeightTrendOverlay() {
@@ -742,14 +789,19 @@ function openAddWeightDialog() {
 }
 
 function openWaterFlow() {
+  var p = state.cache.profile || {};
+  var hasCity = (p.city || "").trim();
+  var hasCountry = (p.country || "").trim();
+  if (hasCity || hasCountry) {
+    runWaterCalculate(false, (p.city || "").trim(), (p.country || "").trim());
+    return;
+  }
   var msg = "Даёте согласие на определение вашего города по IP для учёта погоды при расчёте нормы воды?";
   var useGeo = (typeof confirm !== "undefined") ? confirm(msg) : false;
-  if (!useGeo) {
-    var cityInput = prompt("Введите город (например: Москва):", "");
-    var countryInput = prompt("Введите страну (например: Россия):", "");
-    runWaterCalculate(false, cityInput || "", countryInput || "");
-  } else {
+  if (useGeo) {
     runWaterCalculate(true);
+  } else {
+    openCityPicker();
   }
 }
 async function runWaterCalculate(useGeo, city, country) {
@@ -765,20 +817,27 @@ async function runWaterCalculate(useGeo, city, country) {
     });
     var liters = res && res.liters;
     var formula = res && res.formula;
+    var city = res && res.city;
+    var country = res && res.country;
+    var temp = res && res.temp;
+    var humidity = res && res.humidity;
     if (liters == null) {
       if (tg) tg.showAlert("Укажите вес в профиле");
       return;
     }
+    state.lastWaterResult = { liters: liters, formula: formula, city: city, country: country, temp: temp, humidity: humidity };
+    renderProfile();
     var createHabit = (typeof confirm !== "undefined") ? confirm("Сформировать привычку «Пить воду» на основе расчёта?") : false;
+    var formulaNote = [city && "город " + city, country && country, temp != null && "темп. " + temp + " °C", humidity != null && "влажность " + humidity + "%", formula].filter(Boolean).join("; ");
     if (createHabit) {
       await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/water-habit", {
         method: "POST",
-        body: JSON.stringify({ liters_per_day: liters })
+        body: JSON.stringify({ liters_per_day: liters, formula_note: formulaNote })
       });
       await loadAll();
-      if (tg) tg.showAlert("Привычка добавлена. Рекомендуемая норма: " + liters + " л в день.");
+      if (tg) tg.showAlert("Привычка «Пить воду» добавлена. Рекомендуемая норма: " + liters + " л в день.");
     } else {
-      if (tg) tg.showAlert("Рекомендуемая норма воды: " + liters + " л в день. Формула: " + (formula || ""));
+      if (tg) tg.showAlert("Рекомендуемая норма воды: " + liters + " л в день.");
     }
   } catch (e) {
     if (e && e.status === 400 && (e.body || "").indexOf("вес") >= 0) {
@@ -809,6 +868,67 @@ function showProfileHelpBmi() {
 function showWaterHelp() {
   var text = "Вода (л) = (Вес_кг × 30 мл) + (Активность_мин × 15 мл) + климатическая поправка (ВОЗ/Mayo). 15 мл/мин — коэффициент потери жидкости при умеренной активности (MyFitnessPal, WaterMinder, Samsung Health).";
   if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
+}
+
+var cityPickerSearchTimeout = null;
+function openCityPicker() {
+  var overlay = $("#city-picker-overlay");
+  var searchEl = $("#city-picker-search");
+  var listEl = $("#city-picker-list");
+  if (!overlay || !listEl) return;
+  overlay.classList.remove("hidden");
+  if (searchEl) { searchEl.value = ""; searchEl.focus(); }
+  listEl.innerHTML = "<p class=\"city-picker-hint\">Введите название города в поле выше</p>";
+  if (searchEl) {
+    searchEl.oninput = function() {
+      var q = (searchEl.value || "").trim();
+      if (cityPickerSearchTimeout) clearTimeout(cityPickerSearchTimeout);
+      if (!q || q.length < 2) {
+        listEl.innerHTML = "<p class=\"city-picker-hint\">Введите минимум 2 символа</p>";
+        return;
+      }
+      cityPickerSearchTimeout = setTimeout(async function() {
+        try {
+          var res = await fetchJSON(state.baseUrl + "/api/geocode/search?q=" + encodeURIComponent(q));
+          var results = (res && res.results) ? res.results : [];
+          if (!results.length) {
+            listEl.innerHTML = "<p class=\"city-picker-hint\">Ничего не найдено</p>";
+            return;
+          }
+          listEl.innerHTML = results.map(function(r) {
+            var label = (r.name || "") + (r.country ? ", " + r.country : "");
+            return "<button type=\"button\" class=\"city-picker-item\" data-name=\"" + escapeHtml(r.name || "") + "\" data-country=\"" + escapeHtml(r.country || "") + "\">" + escapeHtml(label) + "</button>";
+          }).join("");
+          listEl.querySelectorAll(".city-picker-item").forEach(function(btn) {
+            btn.addEventListener("click", async function() {
+              var name = btn.dataset.name || "";
+              var country = btn.dataset.country || "";
+              try {
+                await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
+                  method: "PUT",
+                  body: JSON.stringify({ city: name, country: country })
+                });
+                state.cache.profile = state.cache.profile || {};
+                state.cache.profile.city = name;
+                state.cache.profile.country = country;
+                closeCityPicker();
+                renderProfile();
+                if (tg) tg.showAlert("Город сохранён: " + name + (country ? ", " + country : ""));
+              } catch (err) {
+                if (tg) tg.showAlert("Не удалось сохранить город");
+              }
+            });
+          });
+        } catch (e) {
+          listEl.innerHTML = "<p class=\"city-picker-hint\">Ошибка поиска</p>";
+        }
+      }, 300);
+    };
+  }
+}
+function closeCityPicker() {
+  var overlay = $("#city-picker-overlay");
+  if (overlay) overlay.classList.add("hidden");
 }
 
 function parseOpenAt(s) {
@@ -1982,8 +2102,19 @@ function bindEvents() {
     });
   });
 
-  var profileHelpBtn = $("#profile-help-btn");
-  if (profileHelpBtn) profileHelpBtn.addEventListener("click", showProfileHelpBmi);
+  var profileSubtabs = $all(".profile-subtab");
+  profileSubtabs.forEach(function(btn) {
+    btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
+    var oldHandler = btn.onclick;
+    btn.onclick = function() {
+      state.profileSubTab = btn.dataset.profileTab || "person";
+      renderProfile();
+    };
+  });
+  var cityPickerClose = $("#city-picker-close");
+  if (cityPickerClose) cityPickerClose.addEventListener("click", closeCityPicker);
+  var cityPickerBackdrop = document.querySelector(".city-picker-backdrop");
+  if (cityPickerBackdrop) cityPickerBackdrop.addEventListener("click", closeCityPicker);
   var weightTrendClose = $("#weight-trend-close");
   if (weightTrendClose) weightTrendClose.addEventListener("click", closeWeightTrendOverlay);
   var weightTrendBackdrop = document.querySelector(".weight-trend-backdrop");

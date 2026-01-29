@@ -78,10 +78,12 @@
           <div id="analytics-view" class="analytics"></div>
         </section>
         <section id="panel-profile" class="tab-panel" role="tabpanel">
-          <div class="profile-header-row">
-            <h2>Профиль</h2>
-            <button type="button" id="profile-help-btn" class="icon-btn profile-help-btn" aria-label="Справка ИМТ" title="Как считается ИМТ (формула Девина)">?</button>
-          </div>
+          <div class="profile-header-row"><h2>Профиль</h2></div>
+          <nav class="profile-subtabs" role="tablist">
+            <button type="button" class="profile-subtab active" data-profile-tab="person" aria-label="Человек">👤 Человек</button>
+            <button type="button" class="profile-subtab" data-profile-tab="bmi-water" aria-label="ИМТ и вода">💧 ИМТ и вода</button>
+            <button type="button" class="profile-subtab" data-profile-tab="stats" aria-label="Статистика">🏆 Статистика</button>
+          </nav>
           <div id="profile-view" class="profile-view"></div>
         </section>
       </main>
@@ -141,6 +143,18 @@
         <button type="button" id="capsule-open-close" class="primary-btn">Закрыть</button>
       </div>
       <canvas id="capsule-confetti-canvas"></canvas>
+    </div>
+
+    <div id="city-picker-overlay" class="city-picker-overlay hidden">
+      <div class="city-picker-backdrop"></div>
+      <div class="city-picker-panel">
+        <div class="city-picker-header">
+          <h3>Выбрать город</h3>
+          <button type="button" id="city-picker-close" class="city-picker-close" aria-label="Закрыть">&times;</button>
+        </div>
+        <input type="text" id="city-picker-search" class="input city-picker-search" placeholder="Введите название города..." autocomplete="off" />
+        <div id="city-picker-list" class="city-picker-list"></div>
+      </div>
     </div>
 
     <div id="weight-trend-overlay" class="weight-trend-overlay hidden">
