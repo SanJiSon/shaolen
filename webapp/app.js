@@ -2442,8 +2442,8 @@ function bindEvents() {
             var title = (p && p.title != null) ? String(p.title).trim() : "";
             var description = (p && p.description != null) ? String(p.description) : "";
             if (!title) { if (tg) tg.showAlert("Введите название"); throw new Error("validate"); }
-            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, {
-              method: "PUT",
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId + "/update", {
+              method: "POST",
               body: JSON.stringify({ title: title, description: description })
             });
             await loadAll();
