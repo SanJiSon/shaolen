@@ -665,6 +665,8 @@ function renderProfile() {
 
   if (state.profileSubTab === "bmi-water") state.profileSubTab = "bmi";
   var hasWeightData = (currentWeight != null || weight) && heightM;
+  var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
+  var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
   var ageText = age != null ? age + " лет" : "";
   var personChecked = state.profileSubTab === "person" ? " checked" : "";
   var bmiChecked = state.profileSubTab === "bmi" ? " checked" : "";
@@ -792,7 +794,9 @@ function renderProfile() {
     </div>
   `;
 
+  var widgetsRowHtml = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "";
   root.innerHTML = `
+    ${widgetsRowHtml}
     <div class="profile-main">
       <div class="profile-main-row">
         <div class="profile-main-content">
@@ -827,10 +831,17 @@ function renderProfile() {
   var gaugeEl = document.getElementById("profile-bmi-gauge");
   if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
 
+  if (weightHistory.length) {
+    var miniChart = root.querySelector("#profile-weight-chart-mini");
+    if (miniChart) drawWeightChart(miniChart, weightHistory, targetWeight, { width: 260, height: 80 });
+    var trendLink = root.querySelector("#weight-trend-link");
+    if (trendLink) trendLink.addEventListener("click", function(e) { e.preventDefault(); openWeightTrendOverlay(); });
+    var weightCard = root.querySelector("#profile-weight-widget-card");
+    if (weightCard) weightCard.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
+  }
+
   var addWeightBtn = root.querySelector("#profile-add-weight-btn");
   if (addWeightBtn) addWeightBtn.addEventListener("click", function() { openAddWeightDialog(); });
-  var bmiHelpBtn = root.querySelector(".profile-bmi-help");
-  if (bmiHelpBtn) bmiHelpBtn.addEventListener("click", function() { showProfileHelpBmi(); });
   var editDataBtn = document.getElementById("profile-edit-data-btn");
   if (editDataBtn) editDataBtn.addEventListener("click", function() { state.profileSubTab = "person"; renderProfile(); });
   $all(".profile-gender-card").forEach(function(btn) {
@@ -2346,6 +2357,11 @@ function bindEvents() {
         await loadAll();
       },
     });
+  });
+
+  var profileView = $("#profile-view");
+  if (profileView) profileView.addEventListener("click", function(e) {
+    if (e.target.closest(".profile-bmi-help")) { e.preventDefault(); showProfileHelpBmi(); }
   });
 
   var cityPickerClose = $("#city-picker-close");
