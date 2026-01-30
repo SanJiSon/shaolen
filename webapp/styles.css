@@ -947,6 +947,31 @@ body {
 .profile-bmi-live-preview.bmi-obese { background: rgba(198, 40, 40, 0.15); color: var(--danger, #c62828); }
 .profile-bmi-preview-hint { color: var(--muted); font-size: 12px; }
 
+.profile-widgets-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 420px) {
+  .profile-widgets-row { grid-template-columns: 1fr; }
+}
+.profile-widget {
+  padding: 14px;
+  border-radius: var(--radius-md);
+  color: #fff;
+}
+.profile-widget-title { font-size: 12px; opacity: 0.9; margin-bottom: 6px; font-weight: 600; }
+.profile-widget-bmi {
+  background: linear-gradient(135deg, #e65100 0%, #fb8c00 100%);
+}
+.profile-widget-bmi .profile-widget-bmi-value { font-size: 13px; line-height: 1.35; }
+.profile-widget-weight {
+  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  cursor: pointer;
+}
+.profile-widget-weight .weight-card-value { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+.profile-widget-weight .weight-card-trend { margin-top: 8px; }
 .profile-subtabs {
   display: flex;
   gap: 8px;
@@ -969,6 +994,113 @@ body {
 }
 .profile-panel { display: none; }
 .profile-panel.active { display: block; }
+
+.profile-form-section { margin-bottom: 16px; }
+.profile-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px 0; color: var(--text); }
+.profile-field-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; margin-top: 12px; }
+.profile-gender-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+.profile-gender-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--muted-strong);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.profile-gender-card .profile-gender-icon { font-size: 28px; margin-bottom: 6px; }
+.profile-gender-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.profile-row-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.profile-stepper-block .profile-field-label { margin-top: 0; }
+.profile-stepper-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--muted-strong);
+}
+.profile-stepper-value { font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+.profile-stepper-btns { display: flex; gap: 12px; }
+.profile-stepper-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile-input-height { max-width: 120px; }
+
+.profile-bmi-page { margin-bottom: 20px; }
+.profile-bmi-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.profile-bmi-page-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--text); }
+.profile-bmi-gauge-section { margin-bottom: 20px; }
+.profile-bmi-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  margin: 0 0 8px 0;
+}
+.profile-bmi-gauge { display: flex; justify-content: center; margin: 0 auto; }
+.bmi-gauge-svg { display: block; max-width: 100%; height: auto; }
+.bmi-gauge-value { font-family: inherit; }
+.bmi-gauge-category { font-family: inherit; }
+.profile-bmi-details-section { margin-bottom: 16px; }
+.profile-bmi-details-card {
+  padding: 14px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--muted-strong);
+}
+.profile-bmi-details-text { margin: 0 0 14px 0; font-size: 14px; line-height: 1.5; color: var(--text); }
+.profile-bmi-categories-table { display: flex; flex-direction: column; gap: 10px; }
+.profile-bmi-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.profile-bmi-cat-bar {
+  width: 8px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.profile-bmi-cat-bar.bmi-under { background: #5c6bc0; }
+.profile-bmi-cat-bar.bmi-normal { background: #43a047; }
+.profile-bmi-cat-bar.bmi-over { background: #fb8c00; }
+.profile-bmi-cat-bar.bmi-obese { background: #e53935; }
+.profile-edit-data-btn { width: 100%; margin-top: 8px; margin-bottom: 20px; }
+.profile-water-block-standalone {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--muted-strong);
+}
 
 .profile-bmi-header, .profile-water-block-header {
   display: flex;

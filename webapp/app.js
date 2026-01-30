@@ -18,7 +18,7 @@ const state = {
   capsuleView: "main",
   capsuleHistory: [],
   lastWaterResult: null,
-  profileSubTab: "person",
+  profileSubTab: "overview",
 };
 
 function initUser() {
@@ -544,6 +544,60 @@ function devineIdealKg(gender, heightCm) {
   return gender === "f" ? 45.5 + 2.3 * (heightIn - 60) : 50 + 2.3 * (heightIn - 60);
 }
 
+/** SVG полукруговая шкала ИМТ: сегменты по ВОЗ, указатель на текущем значении */
+function bmiGaugeSvg(bmiVal, opts) {
+  opts = opts || {};
+  var w = opts.width || 280;
+  var h = opts.height || 160;
+  var cx = w / 2;
+  var cy = h - 10;
+  var r = Math.min(cx, cy) - 16;
+  var bmiMax = 40;
+  var bmiMin = 14;
+  var angleStart = 180;
+  var angleEnd = 0;
+  function bmiToAngle(b) {
+    var t = (b - bmiMin) / (bmiMax - bmiMin);
+    t = Math.max(0, Math.min(1, t));
+    return angleStart + t * (angleEnd - angleStart);
+  }
+  function angleToRad(a) { return (a * Math.PI) / 180; }
+  function arcPath(startAngle, endAngle) {
+    var x1 = cx + r * Math.cos(angleToRad(startAngle));
+    var y1 = cy + r * Math.sin(angleToRad(startAngle));
+    var x2 = cx + r * Math.cos(angleToRad(endAngle));
+    var y2 = cy + r * Math.sin(angleToRad(endAngle));
+    var large = Math.abs(endAngle - startAngle) > 180 ? 1 : 0;
+    return "M " + cx + " " + cy + " L " + x1 + " " + y1 + " A " + r + " " + r + " 0 " + large + " 1 " + x2 + " " + y2 + " Z";
+  }
+  var segments = [
+    { max: 18.5, color: "#5c6bc0" },
+    { max: 24.9, color: "#43a047" },
+    { max: 29.9, color: "#fb8c00" },
+    { max: bmiMax, color: "#e53935" }
+  ];
+  var prev = bmiMin;
+  var paths = segments.map(function(s) {
+    var startA = bmiToAngle(prev);
+    var endA = bmiToAngle(s.max);
+    prev = s.max;
+    return "<path fill=\"" + s.color + "\" opacity=\"0.85\" d=\"" + arcPath(startA, endA) + "\"/>";
+  }).join("");
+  var pointerAngle = bmiVal != null && !isNaN(bmiVal) ? bmiToAngle(Math.max(bmiMin, Math.min(bmiMax, bmiVal))) : bmiToAngle(22);
+  var ptrLen = r - 8;
+  var px = cx + ptrLen * Math.cos(angleToRad(pointerAngle));
+  var py = cy + ptrLen * Math.sin(angleToRad(pointerAngle));
+  var pointerPath = "M " + cx + " " + cy + " L " + px + " " + py;
+  var svg = "<svg width=\"" + w + "\" height=\"" + h + "\" class=\"bmi-gauge-svg\" viewBox=\"0 0 " + w + " " + h + "\">" + paths + "<path d=\"" + pointerPath + "\" stroke=\"#1a237e\" stroke-width=\"3\" fill=\"none\" stroke-linecap=\"round\"/>";
+  if (bmiVal != null && !isNaN(bmiVal)) {
+    svg += "<text x=\"" + cx + "\" y=\"" + (cy - r * 0.5) + "\" text-anchor=\"middle\" class=\"bmi-gauge-value\" font-size=\"28\" font-weight=\"bold\" fill=\"#1a237e\">" + bmiVal + "</text>";
+    var cat = bmiCategory(bmiVal);
+    if (cat) svg += "<text x=\"" + cx + "\" y=\"" + (cy - r * 0.35) + "\" text-anchor=\"middle\" class=\"bmi-gauge-category\" font-size=\"11\" fill=\"#37474f\">" + escapeHtml(cat.label.toUpperCase()) + "</text>";
+  }
+  svg += "</svg>";
+  return svg;
+}
+
 function drawWeightChart(container, data, targetWeight, opts) {
   opts = opts || {};
   if (!container || !Array.isArray(data)) return;
@@ -613,71 +667,91 @@ function renderProfile() {
     identityEl.innerHTML = "<div class=\"profile-avatar\">" + escapeHtml(initial) + "</div><div class=\"profile-name\">" + escapeHtml(name) + "</div>" + (username ? "<div class=\"profile-username\">" + username + "</div>" : "");
   }
 
+  var hasWeightData = (currentWeight != null || weight) && heightM;
+  var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
+  var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
+
   root.innerHTML = `
+    <div class="profile-widgets-row">${bmiWidgetHtml}${weightWidgetHtml}</div>
+    <div id="profile-panel-overview" class="profile-panel ${state.profileSubTab === "overview" ? "active" : ""}"></div>
     <div id="profile-panel-person" class="profile-panel ${state.profileSubTab === "person" ? "active" : ""}">
-      <div class="profile-edit-name">
-        <label class="profile-edit-label">Как к вам обращаться?</label>
-        <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
-      </div>
-      <div class="profile-fields">
-        <label>Пол</label>
-        <select id="profile-gender" class="input">
-          <option value="">—</option>
-          <option value="m" ${gender === "m" ? "selected" : ""}>Мужской</option>
-          <option value="f" ${gender === "f" ? "selected" : ""}>Женский</option>
-        </select>
-        <label>Вес (кг)</label>
-        <input type="number" id="profile-weight" class="input" step="0.1" min="0" placeholder="—" value="${weight != null ? weight : ""}" />
-        <label>Рост (см)</label>
-        <input type="number" id="profile-height" class="input" min="0" placeholder="—" value="${height != null ? height : ""}" />
-        <label>Возраст</label>
-        <input type="number" id="profile-age" class="input" min="0" placeholder="—" value="${age != null ? age : ""}" />
-        <label>Целевой вес (кг)</label>
+      <div class="profile-form-section">
+        <h3 class="profile-section-title">Информация о пользователе</h3>
+        <div class="profile-edit-name">
+          <label class="profile-edit-label">Как к вам обращаться?</label>
+          <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
+        </div>
+        <label class="profile-field-label">Пол</label>
+        <div class="profile-gender-cards">
+          <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской"><span class="profile-gender-icon">👤</span><span>Мужской</span></button>
+          <button type="button" class="profile-gender-card ${gender === "f" ? "selected" : ""}" data-gender="f" aria-label="Женский"><span class="profile-gender-icon">👤</span><span>Женский</span></button>
+        </div>
+        <label class="profile-field-label">Рост (см)</label>
+        <input type="number" id="profile-height" class="input profile-input-height" min="100" max="250" placeholder="см" value="${height != null ? height : ""}" />
+        <div class="profile-row-two">
+          <div class="profile-stepper-block">
+            <label class="profile-field-label">Возраст</label>
+            <div class="profile-stepper-card">
+              <span class="profile-stepper-value" id="profile-age-value">${age != null ? age : "—"}</span>
+              <div class="profile-stepper-btns">
+                <button type="button" class="profile-stepper-btn" id="profile-age-minus" aria-label="Уменьшить">−</button>
+                <button type="button" class="profile-stepper-btn" id="profile-age-plus" aria-label="Увеличить">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="profile-stepper-block">
+            <label class="profile-field-label">Вес (кг)</label>
+            <div class="profile-stepper-card">
+              <span class="profile-stepper-value" id="profile-weight-value">${weight != null ? weight : "—"}</span>
+              <div class="profile-stepper-btns">
+                <button type="button" class="profile-stepper-btn" id="profile-weight-minus" aria-label="Уменьшить">−</button>
+                <button type="button" class="profile-stepper-btn" id="profile-weight-plus" aria-label="Увеличить">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="profile-age-input" value="${age != null ? age : ""}" />
+        <input type="hidden" id="profile-weight-input" value="${weight != null ? weight : ""}" />
+        <label class="profile-field-label">Целевой вес (кг)</label>
         <input type="number" id="profile-target-weight" class="input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
       </div>
-      <div id="profile-bmi-live-preview" class="profile-bmi-live-preview"></div>
       <div class="profile-save-block">
         <button type="button" class="primary-btn profile-save-fields-btn">Сохранить изменения</button>
       </div>
-      ${(currentWeight != null || weightHistory.length) ? `
-      <div class="profile-weight-card weight-trend-card" id="profile-weight-trend-card">
-        <div class="weight-card-header">
-          <span class="weight-card-title">Вес</span>
-          <span class="weight-card-date">${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" })}</span>
-        </div>
-        <div class="weight-card-value">${(currentWeight != null ? currentWeight : weight).toFixed(1)} кг</div>
-        ${weightHistory.length ? `
-        <div class="weight-card-trend">
-          <span class="weight-trend-link" id="weight-trend-link">Тенденции &gt;</span>
-          <div id="profile-weight-chart-mini" class="weight-chart-mini"></div>
-        </div>
-        ` : ""}
-      </div>
-      ` : ""}
-      <div class="profile-water-row profile-add-weight-row">
+      <div class="profile-add-weight-row">
         <button type="button" class="secondary-btn profile-add-weight-btn" id="profile-add-weight-btn">+ Добавить вес</button>
       </div>
     </div>
     <div id="profile-panel-bmi-water" class="profile-panel ${state.profileSubTab === "bmi-water" ? "active" : ""}">
-      ${(currentWeight != null || weight) && heightM ? `
-      <div class="profile-bmi-block">
-        <div class="profile-bmi-header">
-          <span>ИМТ</span>
+      ${hasWeightData ? `
+      <div class="profile-bmi-page">
+        <div class="profile-bmi-page-header">
+          <h3 class="profile-bmi-page-title">Калькулятор ИМТ</h3>
           <button type="button" class="icon-btn profile-help-btn profile-bmi-help" aria-label="Справка ИМТ" title="Как считается ИМТ">?</button>
         </div>
-        <div class="profile-bmi-row">
-          <span>Текущий ИМТ</span>
-          <span>${bmiVal != null ? bmiVal : "—"}</span>
+        <div class="profile-bmi-gauge-section">
+          <p class="profile-bmi-section-label">ВАШ ИМТ</p>
+          <div id="profile-bmi-gauge" class="profile-bmi-gauge"></div>
         </div>
-        ${bmiCat ? `<div class="profile-bmi-row profile-bmi-status ${bmiCat.className}"><span>Оценка</span><span>${escapeHtml(bmiCat.label)}${bmiCat.inNorm ? " ✓" : ""}</span></div>` : ""}
-        ${idealRange ? `<div class="profile-bmi-row profile-bmi-ideal-range"><span>Идеальный диапазон веса</span><span>${idealRange.minKg} – ${idealRange.maxKg} кг</span></div>` : ""}
-        ${idealBmi != null ? `<div class="profile-bmi-row profile-bmi-ideal">Идеальный ИМТ (Девин): ${idealBmi.toFixed(1)}</div>` : ""}
+        <div class="profile-bmi-details-section">
+          <p class="profile-bmi-section-label">ПОДРОБНЫЕ РЕЗУЛЬТАТЫ</p>
+          <div class="profile-bmi-details-card">
+            <p class="profile-bmi-details-text">${bmiVal != null && bmiCat ? "По введённым данным ваш индекс массы тела (ИМТ) составляет <strong>" + bmiVal + "</strong>, что соответствует категории <strong>" + escapeHtml(bmiCat.label) + "</strong> для вашего роста." : "Укажите вес и рост во вкладке «Человек»."}</p>
+            <div class="profile-bmi-categories-table">
+              <div class="profile-bmi-cat-row"><span class="profile-bmi-cat-bar bmi-under"></span><span>Недостаток веса</span><span>&lt; 18.5</span></div>
+              <div class="profile-bmi-cat-row"><span class="profile-bmi-cat-bar bmi-normal"></span><span>Норма</span><span>18.5 – 24.9</span></div>
+              <div class="profile-bmi-cat-row"><span class="profile-bmi-cat-bar bmi-over"></span><span>Избыточный вес</span><span>24.9 – 29.9</span></div>
+              <div class="profile-bmi-cat-row"><span class="profile-bmi-cat-bar bmi-obese"></span><span>Ожирение</span><span>≥ 30</span></div>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="primary-btn profile-edit-data-btn" id="profile-edit-data-btn">◀ Редактировать данные</button>
       </div>
       ` : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек» для расчёта ИМТ.</p>"}
-      <div class="profile-water-block">
+      <div class="profile-water-block profile-water-block-standalone">
         <div class="profile-water-block-header">
           <span>Норма воды в день</span>
-          <button type="button" class="icon-btn profile-water-help-btn" id="profile-water-help-btn" aria-label="Справка: как считается норма воды" title="Как считается норма воды">?</button>
+          <button type="button" class="icon-btn profile-water-help-btn" id="profile-water-help-btn" aria-label="Справка" title="Как считается норма воды">?</button>
         </div>
         ${lastWater.liters != null ? `
         <div class="profile-water-result">
@@ -700,36 +774,6 @@ function renderProfile() {
     </div>
   `;
 
-  var saveFieldsBtn = root.querySelector(".profile-save-fields-btn");
-  var inputNameEl2 = root.querySelector("#profile-display-name-input");
-  if (saveFieldsBtn) {
-    saveFieldsBtn.addEventListener("click", async function() {
-      var dn = (inputNameEl2 && inputNameEl2.value || "").trim();
-      var g = (root.querySelector("#profile-gender") && root.querySelector("#profile-gender").value) || null;
-      var w = parseFloat(root.querySelector("#profile-weight") && root.querySelector("#profile-weight").value);
-      var h = parseFloat(root.querySelector("#profile-height") && root.querySelector("#profile-height").value);
-      var ag = parseInt(root.querySelector("#profile-age") && root.querySelector("#profile-age").value, 10);
-      var tw = parseFloat(root.querySelector("#profile-target-weight") && root.querySelector("#profile-target-weight").value);
-      try {
-        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
-          method: "PUT",
-          body: JSON.stringify({
-            display_name: dn || undefined,
-            gender: g || undefined,
-            weight: isNaN(w) ? undefined : w,
-            height: isNaN(h) ? undefined : h,
-            age: isNaN(ag) ? undefined : ag,
-            target_weight: isNaN(tw) ? undefined : tw
-          })
-        });
-        await loadAll();
-        if (tg) tg.showAlert("Профиль сохранён");
-      } catch (err) {
-        if (tg) tg.showAlert("Не удалось сохранить");
-      }
-    });
-  }
-
   if (weightHistory.length) {
     var miniChart = root.querySelector("#profile-weight-chart-mini");
     if (miniChart) drawWeightChart(miniChart, weightHistory, targetWeight, { width: 260, height: 80 });
@@ -739,35 +783,89 @@ function renderProfile() {
     if (card) card.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
   }
 
+  var gaugeEl = document.getElementById("profile-bmi-gauge");
+  if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
+
   var addWeightBtn = root.querySelector("#profile-add-weight-btn");
   if (addWeightBtn) addWeightBtn.addEventListener("click", function() { openAddWeightDialog(); });
-  function updateBmiLivePreview() {
-    var el = document.getElementById("profile-bmi-live-preview");
-    if (!el) return;
-    var wInput = document.getElementById("profile-weight");
-    var hInput = document.getElementById("profile-height");
-    if (!wInput || !hInput) return;
-    var w = parseFloat(wInput.value);
-    var h = parseFloat(hInput.value);
-    var heightM = h && h > 0 ? h / 100 : null;
-    var bmiVal = (w && heightM) ? bmi(w, heightM) : null;
-    var cat = bmiVal != null ? bmiCategory(bmiVal) : null;
-    var range = heightM ? idealWeightRange(heightM) : null;
-    if (bmiVal == null || !heightM) {
-      el.innerHTML = "<span class=\"profile-bmi-preview-hint\">Укажите вес и рост для расчёта ИМТ</span>";
-      el.className = "profile-bmi-live-preview";
-      return;
-    }
-    el.className = "profile-bmi-live-preview " + (cat ? cat.className : "");
-    el.innerHTML = "ИМТ: " + bmiVal + " — " + (cat ? escapeHtml(cat.label) : "") + (cat && cat.inNorm ? " ✓" : "") + (range ? " · Диапазон нормы: " + range.minKg + "–" + range.maxKg + " кг" : "");
-  }
-  updateBmiLivePreview();
-  var wInput = root.querySelector("#profile-weight");
-  var hInput = root.querySelector("#profile-height");
-  if (wInput) { wInput.addEventListener("input", updateBmiLivePreview); wInput.addEventListener("change", updateBmiLivePreview); }
-  if (hInput) { hInput.addEventListener("input", updateBmiLivePreview); hInput.addEventListener("change", updateBmiLivePreview); }
   var bmiHelpBtn = root.querySelector(".profile-bmi-help");
   if (bmiHelpBtn) bmiHelpBtn.addEventListener("click", function() { showProfileHelpBmi(); });
+  var editDataBtn = document.getElementById("profile-edit-data-btn");
+  if (editDataBtn) editDataBtn.addEventListener("click", function() { state.profileSubTab = "person"; renderProfile(); });
+  $all(".profile-gender-card").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      $all(".profile-gender-card").forEach(function(b) { b.classList.remove("selected"); });
+      btn.classList.add("selected");
+    });
+  });
+  var ageInput = document.getElementById("profile-age-input");
+  var ageValueEl = document.getElementById("profile-age-value");
+  var ageMinus = document.getElementById("profile-age-minus");
+  var agePlus = document.getElementById("profile-age-plus");
+  if (ageInput && ageValueEl) {
+    function updateAge(v) {
+      var n = parseInt(v, 10);
+      if (isNaN(n)) n = 0;
+      n = Math.max(0, Math.min(150, n));
+      ageInput.value = n;
+      ageValueEl.textContent = n || "—";
+    }
+    if (ageMinus) ageMinus.addEventListener("click", function() { updateAge(parseInt(ageInput.value, 10) - 1); });
+    if (agePlus) agePlus.addEventListener("click", function() { updateAge(parseInt(ageInput.value, 10) + 1); });
+  }
+  var weightInput = document.getElementById("profile-weight-input");
+  var weightValueEl = document.getElementById("profile-weight-value");
+  var weightMinus = document.getElementById("profile-weight-minus");
+  var weightPlus = document.getElementById("profile-weight-plus");
+  if (weightInput && weightValueEl) {
+    function updateWeight(v) {
+      var n = parseFloat(v);
+      if (isNaN(n)) n = 0;
+      n = Math.max(0, Math.min(300, Math.round(n * 10) / 10));
+      weightInput.value = n;
+      weightValueEl.textContent = n ? n : "—";
+    }
+    if (weightMinus) weightMinus.addEventListener("click", function() { updateWeight(parseFloat(weightInput.value || 0) - 0.5); });
+    if (weightPlus) weightPlus.addEventListener("click", function() { updateWeight(parseFloat(weightInput.value || 0) + 0.5); });
+  }
+  var saveFieldsBtn = root.querySelector(".profile-save-fields-btn");
+  var inputNameEl2 = root.querySelector("#profile-display-name-input");
+  if (saveFieldsBtn) {
+    saveFieldsBtn.addEventListener("click", async function() {
+      var dn = (inputNameEl2 && inputNameEl2.value || "").trim();
+      var gEl = root.querySelector(".profile-gender-card.selected");
+      var g = gEl ? gEl.dataset.gender || null : null;
+      var h = parseFloat(root.querySelector("#profile-height") && root.querySelector("#profile-height").value);
+      var ag = parseInt(ageInput && ageInput.value, 10);
+      var w = parseFloat(weightInput && weightInput.value);
+      var tw = parseFloat(root.querySelector("#profile-target-weight") && root.querySelector("#profile-target-weight").value);
+      try {
+        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
+          method: "PUT",
+          body: JSON.stringify({
+            display_name: dn || undefined,
+            gender: g || undefined,
+            weight: isNaN(w) || w <= 0 ? undefined : w,
+            height: isNaN(h) || h <= 0 ? undefined : h,
+            age: isNaN(ag) || ag <= 0 ? undefined : ag,
+            target_weight: isNaN(tw) || tw <= 0 ? undefined : tw
+          })
+        });
+        await loadAll();
+        if (tg) tg.showAlert("Профиль сохранён");
+      } catch (err) {
+        if (tg) tg.showAlert("Не удалось сохранить");
+      }
+    });
+  }
+  if (weightHistory.length) {
+    var miniChart = root.querySelector("#profile-weight-chart-mini");
+    if (miniChart) drawWeightChart(miniChart, weightHistory, targetWeight, { width: 260, height: 80 });
+    var trendLink = root.querySelector("#weight-trend-link");
+    if (trendLink) trendLink.addEventListener("click", function(e) { e.preventDefault(); openWeightTrendOverlay(); });
+    var card = document.getElementById("profile-weight-widget-card");
+    if (card) card.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
+  }
   var waterHelpBtn = root.querySelector("#profile-water-help-btn");
   if (waterHelpBtn) waterHelpBtn.addEventListener("click", function() { showWaterHelp(); });
   var selectCityBtn = root.querySelector("#profile-select-city-btn");
@@ -2161,7 +2259,7 @@ function bindEvents() {
     btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
     var oldHandler = btn.onclick;
     btn.onclick = function() {
-      state.profileSubTab = btn.dataset.profileTab || "person";
+      state.profileSubTab = btn.dataset.profileTab || "overview";
       renderProfile();
     };
   });
