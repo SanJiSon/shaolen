@@ -560,6 +560,11 @@ body.drag-active {
   background: var(--bg-card);
 }
 
+.reorder-drag-overlay {
+  background: transparent;
+  cursor: grabbing;
+}
+
 .subgoal-cb-wrap {
   display: flex;
   align-items: center;

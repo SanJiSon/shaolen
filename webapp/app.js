@@ -382,7 +382,7 @@ function renderMissions(missions) {
   });
 }
 
-var longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, container: null, itemSelector: null, getId: null, saveOrder: null };
+var longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, overlay: null, container: null, itemSelector: null, getId: null, saveOrder: null };
 
 function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignoreTarget) {
   if (!container || typeof getId !== "function" || typeof saveOrder !== "function") return;
@@ -410,19 +410,23 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
     var xy = getClientXY(e);
     s.ghost.style.left = (xy.x - 20) + "px";
     s.ghost.style.top = (xy.y - 10) + "px";
+    s.ghost.style.visibility = "hidden";
     var under = document.elementFromPoint(xy.x, xy.y);
-    if (under === s.ghost || (s.ghost && s.ghost.contains(under))) {
-      s.ghost.style.visibility = "hidden";
-      under = document.elementFromPoint(xy.x, xy.y);
-      s.ghost.style.visibility = "";
-    }
-    var other = under && under.closest(s.container) && under.closest(s.itemSelector);
+    s.ghost.style.visibility = "";
+    var other = under && s.container.contains(under) && under.closest(s.itemSelector);
     if (other && other !== s.placeholder) {
-      s.container.insertBefore(s.placeholder, other);
+      var rect = other.getBoundingClientRect();
+      var midY = rect.top + rect.height / 2;
+      if (xy.y < midY) {
+        s.container.insertBefore(s.placeholder, other);
+      } else {
+        var next = other.nextElementSibling;
+        s.container.insertBefore(s.placeholder, next);
+      }
     }
   }
 
-  function onUp() {
+  function onUp(e) {
     var s = longPressDragState;
     if (s.timer) {
       clearTimeout(s.timer);
@@ -430,10 +434,16 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
       return;
     }
     if (!s.ghost) return;
-    document.removeEventListener("pointermove", onMove, true);
-    document.removeEventListener("pointerup", onUp, true);
-    document.removeEventListener("touchmove", onTouchMove, { passive: false });
-    document.removeEventListener("touchend", onUp, true);
+    if (s.overlay) {
+      s.overlay.removeEventListener("pointermove", onMove, true);
+      s.overlay.removeEventListener("pointerup", onUp, true);
+      s.overlay.removeEventListener("pointercancel", onUp, true);
+      s.overlay.removeEventListener("touchmove", onTouchMove, { passive: false });
+      s.overlay.removeEventListener("touchend", onUp, true);
+      s.overlay.removeEventListener("touchcancel", onUp, true);
+      s.overlay.remove();
+      s.overlay = null;
+    }
     document.body.classList.remove("drag-active");
     if (document.body.dataset.scrollbarPadding) {
       document.body.style.paddingRight = "";
@@ -449,11 +459,12 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
       if (id != null) ids.push(id);
     });
     s.saveOrder(ids).then(function() { loadAll(); }).catch(function() { loadAll(); });
-    longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, container: null, itemSelector: null, getId: null, saveOrder: null };
+    longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, overlay: null, container: null, itemSelector: null, getId: null, saveOrder: null };
   }
 
   function onTouchMove(e) {
     if (longPressDragState.ghost) e.preventDefault();
+    onMove(e);
   }
 
   function startDrag() {
@@ -472,16 +483,22 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
     s.ghost.classList.add("reorder-ghost");
     s.ghost.style.cssText = "position:fixed;left:" + (s.startX - 20) + "px;top:" + (s.startY - 10) + "px;width:" + itemWidth + "px;max-width:" + itemWidth + "px;pointer-events:none;z-index:9999;opacity:0.95;box-sizing:border-box;";
     document.body.appendChild(s.ghost);
+    s.overlay = document.createElement("div");
+    s.overlay.className = "reorder-drag-overlay";
+    s.overlay.style.cssText = "position:fixed;inset:0;z-index:9998;pointer-events:auto;";
+    document.body.appendChild(s.overlay);
+    s.overlay.addEventListener("pointermove", onMove, true);
+    s.overlay.addEventListener("pointerup", onUp, true);
+    s.overlay.addEventListener("pointercancel", onUp, true);
+    s.overlay.addEventListener("touchmove", onTouchMove, { passive: false });
+    s.overlay.addEventListener("touchend", onUp, true);
+    s.overlay.addEventListener("touchcancel", onUp, true);
     document.body.classList.add("drag-active");
     var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
     if (scrollbarW > 0) {
       document.body.style.paddingRight = scrollbarW + "px";
       document.body.dataset.scrollbarPadding = "1";
     }
-    document.addEventListener("pointermove", onMove, true);
-    document.addEventListener("pointerup", onUp, true);
-    document.addEventListener("touchmove", onTouchMove, { passive: false });
-    document.addEventListener("touchend", onUp, true);
   }
 
   function startLongPressTimer(e) {
