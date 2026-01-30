@@ -1,5 +1,21 @@
 const tg = window.Telegram?.WebApp;
 
+// В браузере вне Telegram tg.showAlert/showConfirm кидают WebAppMethodUnsupported — подменяем на alert/confirm
+if (tg) {
+  if (typeof tg.showAlert === "function") {
+    var _showAlert = tg.showAlert.bind(tg);
+    tg.showAlert = function(msg) {
+      try { _showAlert(msg); } catch (e) { alert(msg); }
+    };
+  }
+  if (typeof tg.showConfirm === "function") {
+    var _showConfirm = tg.showConfirm.bind(tg);
+    tg.showConfirm = function(msg, cb) {
+      try { _showConfirm(msg, cb); } catch (e) { if (typeof cb === "function") cb(confirm(msg)); }
+    };
+  }
+}
+
 const state = {
   userId: null,
   baseUrl: "",
@@ -341,7 +357,7 @@ function renderMissions(missions) {
     var subs = subgoalsByMission[m.id] || [];
     var subsHtml = subs.map(function(s) {
       var doneClass = s.is_completed ? " subgoal-done" : "";
-      return "<div class=\"subgoal-row" + doneClass + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label></div>";
+      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\" draggable=\"true\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Перетащить\">⋮⋮</span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML =
@@ -352,13 +368,65 @@ function renderMissions(missions) {
       "</div>" +
       "<div class=\"card-description\">" + description + "</div>" +
       "<div class=\"card-meta\"><span>Создана: " + createdAt + "</span>" + (deadline ? "<span>Окончание: " + deadline + "</span>" : "") + "</div>" +
-      (subs.length || true ? "<div class=\"card-subgoals\"><div class=\"subgoals-title\">Подцели</div><div class=\"subgoals-list\">" + subsHtml + "</div><button type=\"button\" class=\"link-btn add-subgoal-btn\" data-mission-id=\"" + m.id + "\">＋ Подцель</button></div>" : "") +
+      (subs.length || true ? "<div class=\"card-subgoals\"><div class=\"subgoals-title\">Подцели</div><div class=\"subgoals-list\" data-mission-id=\"" + m.id + "\">" + subsHtml + "</div><button type=\"button\" class=\"link-btn add-subgoal-btn\" data-mission-id=\"" + m.id + "\">＋ Подцель</button></div>" : "") +
       "";
     card.dataset.editId = String(m.id);
     card.dataset.editType = "mission";
     root.appendChild(wrapSwipeDelete(card, "mission", m.id));
   });
   setupSwipeDelete(root);
+  setupSubgoalsDragDrop(root);
+}
+
+function setupSubgoalsDragDrop(container) {
+  if (!container) return;
+  var lists = container.querySelectorAll(".subgoals-list[data-mission-id]");
+  lists.forEach(function(list) {
+    var missionId = list.dataset.missionId;
+    var rows = list.querySelectorAll(".subgoal-row[draggable]");
+    var draggedEl = null;
+    list.addEventListener("dragstart", function(e) {
+      if (!e.target.classList || !e.target.classList.contains("subgoal-row")) return;
+      if (e.target.closest(".subgoal-cb-wrap")) return;
+      draggedEl = e.target;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", e.target.dataset.id || "");
+      e.target.classList.add("drag-source");
+    });
+    list.addEventListener("dragend", function(e) {
+      if (e.target.classList) e.target.classList.remove("drag-source");
+      draggedEl = null;
+    });
+    list.addEventListener("dragover", function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      var row = e.target.closest(".subgoal-row");
+      if (row && row !== draggedEl) row.classList.add("drag-over");
+    });
+    list.addEventListener("dragleave", function(e) {
+      var row = e.target.closest(".subgoal-row");
+      if (row) row.classList.remove("drag-over");
+    });
+    list.addEventListener("drop", function(e) {
+      e.preventDefault();
+      list.querySelectorAll(".subgoal-row").forEach(function(r) { r.classList.remove("drag-over"); });
+      var dropRow = e.target.closest(".subgoal-row");
+      if (!dropRow || !draggedEl || dropRow === draggedEl) return;
+      var next = dropRow.nextElementSibling;
+      list.insertBefore(draggedEl, dropRow === draggedEl.nextElementSibling ? next : dropRow);
+      var ids = [];
+      list.querySelectorAll(".subgoal-row").forEach(function(r) {
+        var id = r.dataset.id;
+        if (id) ids.push(parseInt(id, 10));
+      });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", {
+          method: "PUT",
+          body: JSON.stringify({ subgoal_ids: ids })
+        }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+      }
+    });
+  });
 }
 
 function renderGoals(goals) {
@@ -391,17 +459,71 @@ function renderGoals(goals) {
     root.appendChild(wrapSwipeDelete(card, "goal", g.id));
   });
   setupSwipeDelete(root);
+  setupListDragDrop(root, "goal", "goals", "goal_ids");
+}
+
+function setupListDragDrop(container, itemType, apiPath, idsKey) {
+  if (!container || !state.userId) return;
+  var rows = container.querySelectorAll(".swipe-row[data-type=\"" + itemType + "\"]");
+  rows.forEach(function(row) { row.draggable = true; });
+  var draggedEl = null;
+  container.addEventListener("dragstart", function(e) {
+    var row = e.target.closest(".swipe-row");
+    if (!row || row.dataset.type !== itemType) return;
+    draggedEl = row;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", row.dataset.id || "");
+    row.classList.add("drag-source");
+  });
+  container.addEventListener("dragend", function(e) {
+    if (e.target.closest) {
+      var r = e.target.closest(".swipe-row");
+      if (r) r.classList.remove("drag-source");
+    }
+    draggedEl = null;
+  });
+  container.addEventListener("dragover", function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    var row = e.target.closest(".swipe-row");
+    if (row && row.dataset.type === itemType && row !== draggedEl) row.classList.add("drag-over");
+  });
+  container.addEventListener("dragleave", function(e) {
+    var row = e.target.closest(".swipe-row");
+    if (row) row.classList.remove("drag-over");
+  });
+  container.addEventListener("drop", function(e) {
+    e.preventDefault();
+    container.querySelectorAll(".swipe-row").forEach(function(r) { r.classList.remove("drag-over"); });
+    var dropRow = e.target.closest(".swipe-row");
+    if (!dropRow || dropRow.dataset.type !== itemType || !draggedEl || dropRow === draggedEl) return;
+    var next = dropRow.nextElementSibling;
+    container.insertBefore(draggedEl, dropRow === draggedEl.nextElementSibling ? next : dropRow);
+    var ids = [];
+    container.querySelectorAll(".swipe-row[data-type=\"" + itemType + "\"]").forEach(function(r) {
+      var id = r.dataset.id;
+      if (id) ids.push(parseInt(id, 10));
+    });
+    if (ids.length) {
+      var payload = {};
+      payload[idsKey] = ids;
+      fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/" + apiPath + "/order", {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+    }
+  });
 }
 
 function renderHabits(habits) {
   const root = $("#habits-list");
   root.innerHTML = "";
-  
+
   if (!habits || habits.length === 0) {
     root.innerHTML = '<div class="empty-state">У вас пока нет привычек.<br>Нажмите <strong>«+ Добавить»</strong></div>';
     return;
   }
-  
+
   habits.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
@@ -435,6 +557,7 @@ function renderHabits(habits) {
     }
   });
   setupSwipeDelete(root);
+  setupListDragDrop(root, "habit", "habits", "habit_ids");
 
   root.querySelectorAll('.habit-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -769,6 +892,7 @@ function renderProfile() {
     </div>
   ` : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек» для расчёта ИМТ.</p>";
 
+  var savedCityLabel = (selectedCity || selectedCountry) ? (selectedCity + (selectedCountry ? ", " + selectedCountry : "") + ((p.country_code || "").trim() ? " (" + escapeHtml((p.country_code || "").trim().toUpperCase()) + ")" : "")) : "";
   var contentWater = `
     <div class="profile-water-block profile-water-block-standalone">
       <div class="profile-water-block-header">
@@ -780,9 +904,9 @@ function renderProfile() {
         <div class="profile-water-value">${lastWater.liters} л</div>
         <div class="profile-water-meta">По данным: ${lastWater.city ? escapeHtml(lastWater.city) : "—"}${lastWater.country ? ", " + escapeHtml(lastWater.country) : ""}${lastWater.temp != null ? "; темп. " + lastWater.temp + " °C" : ""}${lastWater.humidity != null ? "; влажность " + lastWater.humidity + "%" : ""}</div>
       </div>
-      ` : "<p class=\"profile-water-empty\">Нажмите «Рассчитать» для нормы воды.</p>"}
+      ` : savedCityLabel ? "<p class=\"profile-water-saved-city\">Город: " + savedCityLabel + "</p><p class=\"profile-water-empty\">Нажмите «Рассчитать» для нормы воды.</p>" : "<p class=\"profile-water-empty\">Нажмите «Рассчитать» для нормы воды.</p>"}
       <div class="profile-water-actions">
-        <button type="button" class="secondary-btn profile-select-city-btn" id="profile-select-city-btn">Выбрать город</button>
+        <button type="button" class="secondary-btn profile-select-city-btn" id="profile-select-city-btn">${savedCityLabel ? "Изменить город" : "Выбрать город"}</button>
         <button type="button" class="primary-btn profile-water-calc-btn" id="profile-water-calc-btn">Рассчитать</button>
       </div>
     </div>
@@ -799,38 +923,34 @@ function renderProfile() {
   var contentGeneral = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p>";
   root.innerHTML = `
     <div class="profile-main">
-      <div class="profile-main-row">
-        <div class="profile-main-content">
-          <div class="profile-content-wrapper">
-            <div class="profile-tabs-container">
-              <div id="profile-identity" class="profile-identity">
-                <div class="profile-identity-content">
-                  <div class="profile-avatar">${escapeHtml(initial)}</div>
-                  <h2 class="profile-name">${escapeHtml(name)}</h2>
-                  <p class="profile-age">${escapeHtml(ageText)}</p>
-                </div>
-              </div>
-              <div class="vertical-tabs">
-                <input type="radio" id="tab-general" name="profile-tabs" class="profile-tab-radio"${generalChecked}>
-                <label for="tab-general" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</label>
-                <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
-                <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
-                <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
-                <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</label>
-                <input type="radio" id="tab-water" name="profile-tabs" class="profile-tab-radio"${waterChecked}>
-                <label for="tab-water" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</label>
-                <input type="radio" id="tab-stats" name="profile-tabs" class="profile-tab-radio"${statsChecked}>
-                <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
-              </div>
-            </div>
-            <div class="profile-content-area" id="profile-content-area">
-              <section id="content-general" class="profile-tab-content">${contentGeneral}</section>
-              <section id="content-person" class="profile-tab-content">${contentPerson}</section>
-              <section id="content-bmi" class="profile-tab-content">${contentBmi}</section>
-              <section id="content-water" class="profile-tab-content">${contentWater}</section>
-              <section id="content-stats" class="profile-tab-content">${contentStats}</section>
+      <div class="profile-content-wrapper">
+        <div class="profile-tabs-container">
+          <div id="profile-identity" class="profile-identity">
+            <div class="profile-identity-content">
+              <div class="profile-avatar">${escapeHtml(initial)}</div>
+              <h2 class="profile-name">${escapeHtml(name)}</h2>
+              <p class="profile-age">${escapeHtml(ageText)}</p>
             </div>
           </div>
+          <div class="vertical-tabs">
+            <input type="radio" id="tab-general" name="profile-tabs" class="profile-tab-radio"${generalChecked}>
+            <label for="tab-general" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</label>
+            <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
+            <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
+            <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
+            <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</label>
+            <input type="radio" id="tab-water" name="profile-tabs" class="profile-tab-radio"${waterChecked}>
+            <label for="tab-water" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</label>
+            <input type="radio" id="tab-stats" name="profile-tabs" class="profile-tab-radio"${statsChecked}>
+            <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
+          </div>
+        </div>
+        <div class="profile-content-area" id="profile-content-area">
+          <section id="content-general" class="profile-tab-content">${contentGeneral}</section>
+          <section id="content-person" class="profile-tab-content">${contentPerson}</section>
+          <section id="content-bmi" class="profile-tab-content">${contentBmi}</section>
+          <section id="content-water" class="profile-tab-content">${contentWater}</section>
+          <section id="content-stats" class="profile-tab-content">${contentStats}</section>
         </div>
       </div>
     </div>
@@ -1069,7 +1189,7 @@ function openWaterFlow() {
   var hasCity = (p.city || "").trim();
   var hasCountry = (p.country || "").trim();
   if (hasCity || hasCountry) {
-    runWaterCalculate(false, (p.city || "").trim(), (p.country || "").trim());
+    runWaterCalculate(false, (p.city || "").trim(), (p.country || "").trim(), (p.country_code || "").trim());
     return;
   }
   var msg = "Даёте согласие на определение вашего города по IP для учёта погоды при расчёте нормы воды?";
@@ -1104,9 +1224,9 @@ async function runWaterCalculate(useGeo, city, country, countryCode) {
     }
     state.lastWaterResult = { liters: liters, formula: formula, city: city, country: country, temp: temp, humidity: humidity };
     if (city != null || country != null) {
-      if (!state.profile) state.profile = {};
-      if (city != null) state.profile.city = city;
-      if (country != null) state.profile.country = country;
+      if (!state.cache.profile) state.cache.profile = {};
+      if (city != null) state.cache.profile.city = city;
+      if (country != null) state.cache.profile.country = country;
     }
     renderProfile();
     var createHabit = (typeof confirm !== "undefined") ? confirm("Сформировать привычку «Пить воду» на основе расчёта?") : false;
@@ -1178,8 +1298,8 @@ function openCityPicker() {
             return;
           }
           listEl.innerHTML = results.map(function(r) {
-            var label = (r.name || "") + (r.country ? ", " + r.country : "");
             var code = (r.country_code || "").trim();
+            var label = (r.name || "") + (r.country ? ", " + r.country : "") + (code ? " (" + code + ")" : "");
             return "<button type=\"button\" class=\"city-picker-item\" data-name=\"" + escapeHtml(r.name || "") + "\" data-country=\"" + escapeHtml(r.country || "") + "\" data-country-code=\"" + escapeHtml(code) + "\">" + escapeHtml(label) + "</button>";
           }).join("");
           listEl.querySelectorAll(".city-picker-item").forEach(function(btn) {
@@ -2207,10 +2327,14 @@ function bindEvents() {
       } catch (err) { if (tg) tg.showAlert("Ошибка"); }
       return;
     }
-    if (cb.classList && cb.classList.contains("subgoal-done-cb") && cb.checked) {
+    if (cb.classList && cb.classList.contains("subgoal-done-cb")) {
       e.preventDefault();
       try {
-        await fetchJSON(state.baseUrl + "/api/subgoals/" + cb.dataset.id + "/complete", { method: "POST" });
+        if (cb.checked) {
+          await fetchJSON(state.baseUrl + "/api/subgoals/" + cb.dataset.id + "/complete", { method: "POST" });
+        } else {
+          await fetchJSON(state.baseUrl + "/api/subgoals/" + cb.dataset.id + "/uncomplete", { method: "POST" });
+        }
         await loadAll();
       } catch (err) { if (tg) tg.showAlert("Ошибка"); }
       return;
