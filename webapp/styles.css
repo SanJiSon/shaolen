@@ -576,6 +576,16 @@ body {
   text-decoration: line-through;
 }
 
+/* Завершённая цель — зачёркнутый текст */
+.card-goal.goal-done {
+  opacity: 0.85;
+}
+
+.card-goal.goal-done .card-title,
+.card-goal.goal-done .card-description {
+  text-decoration: line-through;
+}
+
 .subgoal-row .subgoal-cb-wrap {
   flex: 1;
   min-width: 0;

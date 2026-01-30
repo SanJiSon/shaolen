@@ -510,7 +510,7 @@ function renderGoals(goals) {
     var done = g.is_completed ? "Завершена" : "В процессе";
     var priority = g.priority === 3 ? "🔥 Высокий" : g.priority === 2 ? "⭐ Средний" : "📌 Низкий";
     var card = document.createElement("div");
-    card.className = "card card-goal";
+    card.className = "card card-goal" + (g.is_completed ? " goal-done" : "");
     var title = escapeHtml(g.title || "");
     var description = escapeHtml(g.description || "Без описания");
     var dl = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
