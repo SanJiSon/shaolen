@@ -411,8 +411,13 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
     s.ghost.style.left = (xy.x - 20) + "px";
     s.ghost.style.top = (xy.y - 10) + "px";
     var under = document.elementFromPoint(xy.x, xy.y);
+    if (under === s.ghost || (s.ghost && s.ghost.contains(under))) {
+      s.ghost.style.visibility = "hidden";
+      under = document.elementFromPoint(xy.x, xy.y);
+      s.ghost.style.visibility = "";
+    }
     var other = under && under.closest(s.container) && under.closest(s.itemSelector);
-    if (other && other !== s.item && other !== s.placeholder) {
+    if (other && other !== s.placeholder) {
       s.container.insertBefore(s.placeholder, other);
     }
   }
@@ -430,7 +435,11 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
     document.removeEventListener("touchmove", onTouchMove, { passive: false });
     document.removeEventListener("touchend", onUp, true);
     document.body.classList.remove("drag-active");
-    s.item.parentNode.insertBefore(s.item, s.placeholder);
+    if (document.body.dataset.scrollbarPadding) {
+      document.body.style.paddingRight = "";
+      delete document.body.dataset.scrollbarPadding;
+    }
+    s.container.insertBefore(s.item, s.placeholder);
     s.placeholder.remove();
     s.ghost.remove();
     s.item.classList.remove("drag-source");
@@ -449,16 +458,26 @@ function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignore
 
   function startDrag() {
     var s = longPressDragState;
+    var itemWidth = s.item.offsetWidth;
+    var itemHeight = s.item.offsetHeight;
     s.item.classList.add("drag-source");
     s.placeholder = document.createElement("div");
     s.placeholder.className = "reorder-placeholder";
-    s.placeholder.style.height = s.item.offsetHeight + "px";
-    s.item.parentNode.insertBefore(s.placeholder, s.item);
+    s.placeholder.style.height = itemHeight + "px";
+    s.placeholder.style.minHeight = itemHeight + "px";
+    var parent = s.item.parentNode;
+    parent.insertBefore(s.placeholder, s.item);
+    parent.removeChild(s.item);
     s.ghost = s.item.cloneNode(true);
     s.ghost.classList.add("reorder-ghost");
-    s.ghost.style.cssText = "position:fixed;left:" + (s.startX - 20) + "px;top:" + (s.startY - 10) + "px;width:" + s.item.offsetWidth + "px;pointer-events:none;z-index:9999;opacity:0.95;";
+    s.ghost.style.cssText = "position:fixed;left:" + (s.startX - 20) + "px;top:" + (s.startY - 10) + "px;width:" + itemWidth + "px;max-width:" + itemWidth + "px;pointer-events:none;z-index:9999;opacity:0.95;box-sizing:border-box;";
     document.body.appendChild(s.ghost);
     document.body.classList.add("drag-active");
+    var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarW > 0) {
+      document.body.style.paddingRight = scrollbarW + "px";
+      document.body.dataset.scrollbarPadding = "1";
+    }
     document.addEventListener("pointermove", onMove, true);
     document.addEventListener("pointerup", onUp, true);
     document.addEventListener("touchmove", onTouchMove, { passive: false });
