@@ -821,6 +821,17 @@ body {
   color: var(--muted);
   min-width: 0;
   overflow-x: hidden;
+  padding-top: 0;
+  margin-top: 0;
+}
+#panel-profile.profile-tab-panel {
+  display: block;
+}
+.profile-view .profile-main {
+  margin-top: 0;
+}
+.profile-content-area {
+  min-height: calc(100vh - 220px);
 }
 
 .profile-avatar {
@@ -1062,16 +1073,18 @@ body {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 16px 20px;
+  padding: 14px 18px;
   color: var(--muted);
   background: transparent;
   border: none;
   border-top: none;
+  border-left: none;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   text-align: left;
   font-size: 15px;
-  margin: 0;
+  margin: 0 6px;
+  border-radius: 10px;
 }
 .vertical-tabs .profile-subtab ~ .profile-subtab {
   border-top: 1px solid var(--muted-strong);
@@ -1090,8 +1103,7 @@ body {
   background: var(--accent-soft);
   font-weight: 600;
   position: relative;
-  border-left: 4px solid var(--accent);
-  padding-left: 16px;
+  padding-left: 18px;
 }
 .profile-content-area {
   flex: 1;
@@ -1149,10 +1161,10 @@ body {
     flex: 1 1 auto;
     min-width: 80px;
     border-top: none;
-    border-left: 1px solid var(--muted-strong);
+    border-left: none;
   }
   .vertical-tabs .profile-tab-radio:checked + .profile-subtab {
-    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
   }
 }
 
