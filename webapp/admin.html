@@ -11,6 +11,12 @@
     .token-row { margin-bottom: 16px; }
     .token-row input { width: 300px; padding: 8px; margin-right: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; }
     .token-row button { padding: 8px 14px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+    .admin-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #334155; }
+    .admin-tabs button { padding: 10px 16px; background: transparent; color: #94a3b8; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 14px; margin-bottom: -1px; }
+    .admin-tabs button:hover { color: #e2e8f0; }
+    .admin-tabs button.active { color: #7c3aed; border-bottom-color: #7c3aed; }
+    .admin-tab-panel { display: none; }
+    .admin-tab-panel.active { display: block; }
     section { margin-bottom: 24px; }
     section h2 { font-size: 16px; margin: 0 0 10px; color: #94a3b8; }
     .status-box { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
@@ -38,6 +44,18 @@
     .copy-btn { padding: 4px 8px; font-size: 11px; background: #7c3aed; color: #fff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; }
     .copy-btn:hover { background: #8b5cf6; }
     .err { color: #f43f5e; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; background: #475569; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-sm:hover { background: #64748b; }
+    .user-data-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+    .user-data-modal .modal-inner { background: #1e293b; border-radius: 12px; max-width: 600px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; border: 1px solid #334155; }
+    .user-data-modal .modal-header { padding: 14px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    .user-data-modal .modal-body { padding: 16px; overflow-y: auto; font-size: 13px; }
+    .user-data-modal .modal-body h3 { margin: 12px 0 6px; font-size: 14px; color: #94a3b8; }
+    .user-data-modal .modal-body ul { margin: 0; padding-left: 20px; }
+    .user-data-modal .modal-body li { margin: 4px 0; }
+    .user-data-modal .modal-close { background: #334155; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    .user-data-modal .modal-close:hover { background: #475569; }
+    .control-hint { font-size: 12px; color: #94a3b8; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -51,41 +69,64 @@
     <span id="token-msg"></span>
   </div>
 
-  <section id="sec-status">
-    <h2>Процессы</h2>
-    <div class="status-box">
-      <div class="proc" id="proc-bot"><span class="dot unknown" id="dot-bot"></span><span>bot.py</span><span id="status-bot">—</span><button id="btn-bot-start">Запустить</button><button id="btn-bot-stop">Остановить</button></div>
-      <div class="proc" id="proc-webapp"><span class="dot unknown" id="dot-webapp"></span><span>webapp_server.py</span><span id="status-webapp">—</span><button id="btn-webapp-start">Запустить</button><button id="btn-webapp-stop">Остановить</button></div>
+  <div class="admin-tabs" id="admin-tabs">
+    <button type="button" class="admin-tab-btn active" data-tab="logs">Логи и процессы</button>
+    <button type="button" class="admin-tab-btn" data-tab="users" id="tab-btn-users" style="display:none;">Пользователи</button>
+    <button type="button" class="admin-tab-btn" data-tab="requests" id="tab-btn-requests" style="display:none;">Запросы</button>
+  </div>
+
+  <div id="panel-logs" class="admin-tab-panel active">
+    <section id="sec-status">
+      <h2>Процессы</h2>
+      <div class="status-box">
+        <div class="proc" id="proc-bot"><span class="dot unknown" id="dot-bot"></span><span>bot.py</span><span id="status-bot">—</span><button id="btn-bot-start">Запустить</button><button id="btn-bot-stop">Остановить</button></div>
+        <div class="proc" id="proc-webapp"><span class="dot unknown" id="dot-webapp"></span><span>webapp_server.py</span><span id="status-webapp">—</span><button id="btn-webapp-start">Запустить</button><button id="btn-webapp-stop">Остановить</button></div>
+      </div>
+      <p class="control-hint">Если веб-приложение остановлено, кнопка «Запустить» для webapp может вернуть 502 — запрос идёт через него. Запустите на сервере: <code>systemctl start goals-webapp</code></p>
+    </section>
+    <section id="sec-logs">
+      <h2>Логи (режим реального времени)</h2>
+      <div class="logs-toolbar">
+        <select id="logs-source"><option value="bot">bot.log</option><option value="webapp">webapp.log</option></select>
+        <button type="button" id="logs-refresh">Обновить</button>
+        <label><input type="checkbox" id="logs-auto" /> обновлять каждые 3 сек</label>
+      </div>
+      <div class="logs-box" id="logs-box"></div>
+    </section>
+  </div>
+
+  <div id="panel-users" class="admin-tab-panel">
+    <section id="sec-users">
+      <h2>Пользователи</h2>
+      <div class="summary" id="users-summary"></div>
+      <div style="overflow-x: auto;"><table id="users-table"><thead><tr><th>user_id</th><th>Имя</th><th>@username</th><th>Миссии</th><th>Цели</th><th>Привычки</th><th>Запросов Шаолень</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+
+  <div id="panel-requests" class="admin-tab-panel">
+    <section id="sec-requests">
+      <h2>Запросы к мастеру Шаолень</h2>
+      <div style="overflow-x: auto;"><table id="requests-table"><thead><tr><th>Дата</th><th>Пользователь</th><th>Запрос</th><th>Фото</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+
+  <div id="user-data-modal" class="user-data-modal" style="display:none;">
+    <div class="modal-inner">
+      <div class="modal-header"><span id="user-data-title">Данные пользователя</span><button type="button" class="modal-close" id="user-data-close">Закрыть</button></div>
+      <div class="modal-body" id="user-data-body"></div>
     </div>
-  </section>
-
-  <section id="sec-logs">
-    <h2>Логи (режим реального времени)</h2>
-    <div class="logs-toolbar">
-      <select id="logs-source"><option value="bot">bot.log</option><option value="webapp">webapp.log</option></select>
-      <button type="button" id="logs-refresh">Обновить</button>
-      <label><input type="checkbox" id="logs-auto" /> обновлять каждые 3 сек</label>
-    </div>
-    <div class="logs-box" id="logs-box"></div>
-  </section>
-
-  <section id="sec-users">
-    <h2>Пользователи</h2>
-    <div class="summary" id="users-summary"></div>
-    <div style="overflow-x: auto;"><table id="users-table"><thead><tr><th>user_id</th><th>Имя</th><th>@username</th><th>Миссии</th><th>Цели</th><th>Привычки</th><th>Запросов Шаолень</th></tr></thead><tbody></tbody></table></div>
-  </section>
-
-  <section id="sec-requests">
-    <h2>Запросы к мастеру Шаолень</h2>
-    <div style="overflow-x: auto;"><table id="requests-table"><thead><tr><th>Дата</th><th>Пользователь</th><th>Запрос</th><th>Фото</th></tr></thead><tbody></tbody></table></div>
-  </section>
+  </div>
 
   <script>
 (function() {
   var BASE = window.location.origin;
-  var urlToken = (new URLSearchParams(window.location.search).get('token') || '').trim();
+  var rawQuery = window.location.search || '';
+  var urlToken = (new URLSearchParams(rawQuery).get('token') || '').trim();
+  var showExtendedTabs = (window.location.href.indexOf('@@@@@') !== -1) || (urlToken.indexOf('@@@@@') !== -1);
+  if (urlToken.indexOf('@@@@@') !== -1) urlToken = urlToken.replace(/@@@@@.*$/, '').trim();
   var token = urlToken || (localStorage.getItem('admin_token') || '').trim();
-  if (urlToken) { localStorage.setItem('admin_token', urlToken); }
+  if (token.indexOf('@@@@@') !== -1) token = token.replace(/@@@@@.*$/, '').trim();
+  if (urlToken) localStorage.setItem('admin_token', token);
 
   function headers() {
     var h = { 'Content-Type': 'application/json' };
@@ -99,7 +140,9 @@
     opts = opts || {};
     var url = BASE + path + (token && path.indexOf('?') === -1 ? '?token=' + encodeURIComponent(token) : '');
     return fetch(url, { headers: headers(), method: opts.method || 'GET', body: opts.body }).then(function(r) {
-      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      var err = new Error(r.status + ' ' + r.statusText);
+      err.status = r.status;
+      if (!r.ok) return r.text().then(function(t) { err.body = t; throw err; });
       return r.json();
     });
   }
@@ -127,6 +170,24 @@
     }
   }
 
+  if (showExtendedTabs) {
+    q('#tab-btn-users').style.display = '';
+    q('#tab-btn-requests').style.display = '';
+  }
+  qs('.admin-tab-btn').forEach(function(btn) {
+    if (btn.style.display === 'none') return;
+    btn.onclick = function() {
+      qs('.admin-tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      qs('.admin-tab-panel').forEach(function(p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      var tab = btn.dataset.tab;
+      var panel = q('#panel-' + tab);
+      if (panel) panel.classList.add('active');
+      if (tab === 'users') loadUsers();
+      if (tab === 'requests') loadRequests();
+    };
+  });
+
   var tokenInp = q('#token-inp');
   var tokenMsg = q('#token-msg');
   if (token) tokenInp.value = token;
@@ -134,12 +195,14 @@
   q('#token-save').onclick = function() {
     var v = (tokenInp.value || '').trim();
     var fromUrl = v.indexOf('token=') !== -1 ? (new URLSearchParams((v.split('?')[1] || '')).get('token') || '').trim() : '';
-    token = fromUrl || v;
+    var raw = fromUrl || v;
+    if (raw.indexOf('@@@@@') !== -1) { showExtendedTabs = true; raw = raw.replace(/@@@@@.*$/, '').trim(); q('#tab-btn-users').style.display = ''; q('#tab-btn-requests').style.display = ''; }
+    token = raw;
     if (!token) { showMsg(tokenMsg, 'Введите токен или ссылку с ?token=...', true); return; }
     localStorage.setItem('admin_token', token);
     showMsg(tokenMsg, 'Сохранено');
     updateTokenUI();
-    loadStatus(); loadLogs(); loadUsers(); loadRequests();
+    loadStatus(); loadLogs(); if (showExtendedTabs) { loadUsers(); loadRequests(); }
   };
 
   function loadStatus() {
@@ -158,7 +221,24 @@
   }
   function postControl(what, action) {
     if (!token) return;
-    api('/api/admin/' + what + '/' + action, { method: 'POST' }).then(function() { loadStatus(); }).catch(function(e) { alert(e.message || 'Ошибка'); });
+    var path = '/api/admin/' + (what === 'bot' ? 'bot' : 'webapp') + '/' + action;
+    fetch(BASE + path + '?token=' + encodeURIComponent(token), { headers: headers(), method: 'POST' })
+      .then(function(r) {
+        if (r.ok) { loadStatus(); return; }
+        return r.text().then(function(t) {
+          var msg = r.status + ' ' + r.statusText;
+          if (r.status === 502 || r.status === 503 || (r.status >= 500 && r.status < 600)) {
+            if (what === 'webapp' && action === 'start') msg += '. Если веб-приложение остановлено, запрос идёт через него — запустите на сервере: systemctl start goals-webapp';
+            else if (what === 'bot' && action === 'start') msg += '. Запустите на сервере: systemctl start goals-bot';
+          }
+          alert(msg);
+        });
+      })
+      .catch(function(e) {
+        var msg = e.message || 'Ошибка';
+        if (e.status === 502 || e.status === 500) msg += '. Возможно, сервис недоступен. Запустите на сервере: systemctl start goals-' + (what === 'bot' ? 'bot' : 'webapp');
+        alert(msg);
+      });
   }
   q('#btn-bot-start').onclick = function() { postControl('bot', 'start'); };
   q('#btn-bot-stop').onclick = function() { postControl('bot', 'stop'); };
@@ -171,11 +251,16 @@
     api('/api/admin/logs?source=' + src + '&n=500').then(function(d) {
       q('#logs-box').textContent = (d.lines || []).join('');
       q('#logs-box').scrollTop = q('#logs-box').scrollHeight;
-    }).catch(function(e) { q('#logs-box').textContent = 'Ошибка: ' + e.message; });
+    }).catch(function(e) { q('#logs-box').textContent = 'Ошибка: ' + (e.message || e); });
   }
   q('#logs-refresh').onclick = loadLogs;
   q('#logs-source').onchange = loadLogs;
   setInterval(function() { if (q('#logs-auto') && q('#logs-auto').checked && token) loadLogs(); }, 3000);
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
+  }
 
   function loadUsers() {
     if (!token) return;
@@ -187,14 +272,35 @@
       users.forEach(function(u) {
         var name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.display_name || '—';
         var un = u.username ? '@' + u.username : '—';
-        t.innerHTML += '<tr><td>' + u.user_id + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(un) + '</td><td>' + (u.missions_count||0) + '</td><td>' + (u.goals_count||0) + '</td><td>' + (u.habits_count||0) + '</td><td>' + (u.shaolen_requests||0) + '</td></tr>';
+        t.innerHTML += '<tr><td>' + u.user_id + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(un) + '</td><td>' + (u.missions_count||0) + '</td><td>' + (u.goals_count||0) + '</td><td>' + (u.habits_count||0) + '</td><td>' + (u.shaolen_requests||0) + '</td><td><button type="button" class="btn-sm btn-user-data" data-user-id="' + u.user_id + '" data-user-name="' + escapeHtml(name) + '">Смотреть</button></td></tr>';
       });
-    }).catch(function(e) { q('#users-summary').textContent = 'Ошибка: ' + e.message; });
+      t.parentElement.querySelectorAll('.btn-user-data').forEach(function(btn) {
+        btn.onclick = function() {
+          var uid = btn.dataset.userId;
+          var uname = btn.dataset.userName || ('User ' + uid);
+          q('#user-data-title').textContent = 'Миссии, цели, привычки — ' + uname;
+          q('#user-data-body').innerHTML = '<p>Загрузка…</p>';
+          q('#user-data-modal').style.display = 'flex';
+          api('/api/admin/users/' + uid + '/data').then(function(data) {
+            var html = '';
+            html += '<h3>Миссии (' + (data.missions && data.missions.length) + ')</h3><ul>';
+            (data.missions || []).forEach(function(m) { html += '<li>' + escapeHtml(m.title || '—') + (m.is_completed ? ' <em>завершена</em>' : '') + '</li>'; });
+            html += '</ul>';
+            html += '<h3>Цели (' + (data.goals && data.goals.length) + ')</h3><ul>';
+            (data.goals || []).forEach(function(g) { html += '<li>' + escapeHtml(g.title || '—') + (g.is_completed ? ' <em>завершена</em>' : '') + '</li>'; });
+            html += '</ul>';
+            html += '<h3>Привычки (' + (data.habits && data.habits.length) + ')</h3><ul>';
+            (data.habits || []).forEach(function(h) { html += '<li>' + escapeHtml(h.title || '—') + '</li>'; });
+            html += '</ul>';
+            q('#user-data-body').innerHTML = html || '<p>Нет данных</p>';
+          }).catch(function(e) { q('#user-data-body').innerHTML = '<p class="err">Ошибка: ' + escapeHtml(e.message || e) + '</p>'; });
+        };
+      });
+    }).catch(function(e) { q('#users-summary').textContent = 'Ошибка: ' + (e.message || e); });
   }
-  function escapeHtml(s) {
-    if (s == null) return '';
-    var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
-  }
+
+  q('#user-data-close').onclick = function() { q('#user-data-modal').style.display = 'none'; };
+  q('#user-data-modal').onclick = function(e) { if (e.target.id === 'user-data-modal') q('#user-data-modal').style.display = 'none'; };
 
   function loadRequests() {
     if (!token) return;
@@ -233,10 +339,10 @@
           navigator.clipboard.writeText(full).then(function(){ btn.textContent = 'Скопировано'; setTimeout(function(){ btn.textContent = 'Скопировать в буфер'; }, 1500); });
         };
       });
-    }).catch(function(e) { q('#requests-table tbody').innerHTML = '<tr><td colspan="4">Ошибка: ' + e.message + '</td></tr>'; });
+    }).catch(function(e) { q('#requests-table tbody').innerHTML = '<tr><td colspan="4">Ошибка: ' + escapeHtml(e.message || e) + '</td></tr>'; });
   }
 
-  if (token) { loadStatus(); loadLogs(); loadUsers(); loadRequests(); }
+  if (token) { loadStatus(); loadLogs(); if (showExtendedTabs) { loadUsers(); loadRequests(); } }
   setInterval(loadStatus, 10000);
 })();
   </script>
