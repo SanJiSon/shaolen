@@ -79,16 +79,18 @@
           <div id="analytics-view" class="analytics"></div>
         </section>
         <section id="panel-profile" class="tab-panel" role="tabpanel">
-          <div class="profile-layout">
-            <div class="profile-main">
-              <div id="profile-identity" class="profile-identity"></div>
-              <div id="profile-view" class="profile-view"></div>
+          <div class="profile-main">
+            <div class="profile-main-row">
+              <div class="profile-main-content">
+                <div id="profile-identity" class="profile-identity"></div>
+                <div id="profile-view" class="profile-view"></div>
+              </div>
+              <nav class="profile-subtabs" role="tablist" aria-label="Разделы профиля">
+                <button type="button" class="profile-subtab active" data-profile-tab="person" aria-label="Человек">👤 Человек</button>
+                <button type="button" class="profile-subtab" data-profile-tab="bmi-water" aria-label="ИМТ и вода">💧 ИМТ и вода</button>
+                <button type="button" class="profile-subtab" data-profile-tab="stats" aria-label="Статистика">🏆 Статистика</button>
+              </nav>
             </div>
-            <nav class="profile-subtabs" role="tablist" aria-label="Разделы профиля">
-              <button type="button" class="profile-subtab active" data-profile-tab="person" aria-label="Человек">👤 Человек</button>
-              <button type="button" class="profile-subtab" data-profile-tab="bmi-water" aria-label="ИМТ и вода">💧 ИМТ и вода</button>
-              <button type="button" class="profile-subtab" data-profile-tab="stats" aria-label="Статистика">🏆 Статистика</button>
-            </nav>
           </div>
         </section>
       </main>
