@@ -963,7 +963,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-top: 16px;
 }
 .profile-widget {
   padding: 14px;
@@ -1068,6 +1068,9 @@ body {
   text-align: left;
   font-size: 15px;
   margin: 0;
+}
+.vertical-tabs .profile-subtab:first-of-type {
+  border-top: none;
 }
 .vertical-tabs .profile-subtab:hover {
   background: var(--bg-card);

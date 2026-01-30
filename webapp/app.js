@@ -796,7 +796,6 @@ function renderProfile() {
 
   var widgetsRowHtml = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "";
   root.innerHTML = `
-    ${widgetsRowHtml}
     <div class="profile-main">
       <div class="profile-main-row">
         <div class="profile-main-content">
@@ -830,6 +829,7 @@ function renderProfile() {
         </div>
       </div>
     </div>
+    ${widgetsRowHtml}
   `;
 
   function showProfileTabContent(tabId) {
