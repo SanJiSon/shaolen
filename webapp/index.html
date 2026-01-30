@@ -81,15 +81,20 @@
         <section id="panel-profile" class="tab-panel" role="tabpanel">
           <div class="profile-main">
             <div class="profile-main-row">
-              <div class="profile-main-content">
+              <div class="profile-content-wrapper">
                 <div id="profile-identity" class="profile-identity"></div>
-                <div id="profile-view" class="profile-view"></div>
+                <div class="vertical-tabs">
+                  <input id="tab-person" type="radio" name="profile-tabs" value="person" checked aria-label="Человек" />
+                  <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span>Человек</label>
+                  <input id="tab-bmi" type="radio" name="profile-tabs" value="bmi-water" aria-label="ИМТ и вода" />
+                  <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span>ИМТ и вода</label>
+                  <input id="tab-stats" type="radio" name="profile-tabs" value="stats" aria-label="Статистика" />
+                  <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">emoji_events</span>Статистика</label>
+                  <section id="content-person" class="profile-tab-content" role="tabpanel"></section>
+                  <section id="content-bmi" class="profile-tab-content" role="tabpanel"></section>
+                  <section id="content-stats" class="profile-tab-content" role="tabpanel"></section>
+                </div>
               </div>
-              <nav class="profile-subtabs" role="tablist" aria-label="Разделы профиля">
-                <button type="button" class="profile-subtab active" data-profile-tab="person" aria-label="Человек">👤 Человек</button>
-                <button type="button" class="profile-subtab" data-profile-tab="bmi-water" aria-label="ИМТ и вода">💧 ИМТ и вода</button>
-                <button type="button" class="profile-subtab" data-profile-tab="stats" aria-label="Статистика">🏆 Статистика</button>
-              </nav>
             </div>
           </div>
         </section>

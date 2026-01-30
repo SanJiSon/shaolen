@@ -627,8 +627,6 @@ function drawWeightChart(container, data, targetWeight, opts) {
 }
 
 function renderProfile() {
-  const root = $("#profile-view");
-  if (!root) return;
   var p = state.cache.profile || {};
   var displayName = (p.display_name || "").trim();
   var firstName = (p.first_name || "").trim();
@@ -674,11 +672,13 @@ function renderProfile() {
   var hasAnyWidget = bmiWidgetHtml || weightWidgetHtml;
   var overviewPlaceholderHtml = !hasAnyWidget ? "<div class=\"profile-overview-placeholder\" id=\"profile-overview-placeholder\"><p>Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p><button type=\"button\" class=\"secondary-btn profile-go-person-btn\" id=\"profile-go-person-btn\">Перейти к данным</button></div>" : "";
 
-  root.innerHTML = `
-    <div class="profile-widgets-row">${bmiWidgetHtml}${weightWidgetHtml}</div>
-    ${overviewPlaceholderHtml}
-    <div id="profile-panel-person" class="profile-panel ${state.profileSubTab === "person" ? "active" : ""}">
-      <div class="profile-form-section">
+  var personEl = document.getElementById("content-person");
+  var bmiEl = document.getElementById("content-bmi");
+  var statsEl = document.getElementById("content-stats");
+  if (!personEl || !bmiEl || !statsEl) return;
+
+  var personHtml = `
+    <div class="profile-form-section">
         <h3 class="profile-section-title">Информация о пользователе</h3>
         <div class="profile-edit-name">
           <label class="profile-edit-label">Как к вам обращаться?</label>
@@ -743,9 +743,12 @@ function renderProfile() {
       <div class="profile-save-block">
         <button type="button" class="primary-btn profile-save-fields-btn">Сохранить изменения</button>
       </div>
-    </div>
-    <div id="profile-panel-bmi-water" class="profile-panel ${state.profileSubTab === "bmi-water" ? "active" : ""}">
-      ${hasWeightData ? `
+  `;
+
+  var bmiHtml = `
+    <div class="profile-widgets-row">${bmiWidgetHtml}${weightWidgetHtml}</div>
+    ${overviewPlaceholderHtml}
+    ${hasWeightData ? `
       <div class="profile-bmi-page">
         <div class="profile-bmi-page-header">
           <h3 class="profile-bmi-page-title">Калькулятор ИМТ</h3>
@@ -786,37 +789,51 @@ function renderProfile() {
           <button type="button" class="primary-btn profile-water-calc-btn" id="profile-water-calc-btn">💧 Рассчитать</button>
         </div>
       </div>
-    </div>
-    <div id="profile-panel-stats" class="profile-panel ${state.profileSubTab === "stats" ? "active" : ""}">
-      <div class="profile-stats">
-        <div class="profile-stat-row"><span>Миссий</span><span>${missionsTotal}</span></div>
-        <div class="profile-stat-row"><span>Целей</span><span>${goalsTotal}</span></div>
-        <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
-      </div>
+  `;
+
+  var statsHtml = `
+    <div class="profile-stats">
+      <div class="profile-stat-row"><span>Миссий</span><span>${missionsTotal}</span></div>
+      <div class="profile-stat-row"><span>Целей</span><span>${goalsTotal}</span></div>
+      <div class="profile-stat-row"><span>Привычек</span><span>${habitsTotal}</span></div>
     </div>
   `;
 
+  personEl.innerHTML = personHtml;
+  bmiEl.innerHTML = bmiHtml;
+  statsEl.innerHTML = statsHtml;
+
+  var tabPerson = document.getElementById("tab-person");
+  var tabBmi = document.getElementById("tab-bmi");
+  var tabStats = document.getElementById("tab-stats");
+  if (tabPerson) tabPerson.checked = state.profileSubTab === "person";
+  if (tabBmi) tabBmi.checked = state.profileSubTab === "bmi-water";
+  if (tabStats) tabStats.checked = state.profileSubTab === "stats";
+  $all("input[name=profile-tabs]").forEach(function(radio) {
+    radio.addEventListener("change", function() { state.profileSubTab = radio.value; });
+  });
+
   if (weightHistory.length) {
-    var miniChart = root.querySelector("#profile-weight-chart-mini");
+    var miniChart = bmiEl.querySelector("#profile-weight-chart-mini");
     if (miniChart) drawWeightChart(miniChart, weightHistory, targetWeight, { width: 260, height: 80 });
-    var trendLink = root.querySelector("#weight-trend-link");
+    var trendLink = bmiEl.querySelector("#weight-trend-link");
     if (trendLink) trendLink.addEventListener("click", function() { openWeightTrendOverlay(); });
-    var card = root.querySelector("#profile-weight-trend-card");
+    var card = bmiEl.querySelector("#profile-weight-widget-card");
     if (card) card.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
   }
 
   var gaugeEl = document.getElementById("profile-bmi-gauge");
   if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
 
-  var addWeightBtn = root.querySelector("#profile-add-weight-btn");
+  var addWeightBtn = personEl.querySelector("#profile-add-weight-btn");
   if (addWeightBtn) addWeightBtn.addEventListener("click", function() { openAddWeightDialog(); });
-  var bmiHelpBtn = root.querySelector(".profile-bmi-help");
+  var bmiHelpBtn = bmiEl.querySelector(".profile-bmi-help");
   if (bmiHelpBtn) bmiHelpBtn.addEventListener("click", function() { showProfileHelpBmi(); });
   var editDataBtn = document.getElementById("profile-edit-data-btn");
-  if (editDataBtn) editDataBtn.addEventListener("click", function() { state.profileSubTab = "person"; renderProfile(); });
-  $all(".profile-gender-card").forEach(function(btn) {
+  if (editDataBtn) editDataBtn.addEventListener("click", function() { state.profileSubTab = "person"; var r = document.getElementById("tab-person"); if (r) r.checked = true; });
+  personEl.querySelectorAll(".profile-gender-card").forEach(function(btn) {
     btn.addEventListener("click", function() {
-      $all(".profile-gender-card").forEach(function(b) { b.classList.remove("selected"); });
+      personEl.querySelectorAll(".profile-gender-card").forEach(function(b) { b.classList.remove("selected"); });
       btn.classList.add("selected");
     });
   });
@@ -850,17 +867,17 @@ function renderProfile() {
     if (weightMinus) weightMinus.addEventListener("click", function() { updateWeight(parseFloat(weightInput.value || 0) - 0.5); });
     if (weightPlus) weightPlus.addEventListener("click", function() { updateWeight(parseFloat(weightInput.value || 0) + 0.5); });
   }
-  var saveFieldsBtn = root.querySelector(".profile-save-fields-btn");
-  var inputNameEl2 = root.querySelector("#profile-display-name-input");
+  var saveFieldsBtn = personEl.querySelector(".profile-save-fields-btn");
+  var inputNameEl2 = personEl.querySelector("#profile-display-name-input");
   if (saveFieldsBtn) {
     saveFieldsBtn.addEventListener("click", async function() {
       var dn = (inputNameEl2 && inputNameEl2.value || "").trim();
-      var gEl = root.querySelector(".profile-gender-card.selected");
+      var gEl = personEl.querySelector(".profile-gender-card.selected");
       var g = gEl ? gEl.dataset.gender || null : null;
-      var h = parseFloat(root.querySelector("#profile-height") && root.querySelector("#profile-height").value);
+      var h = parseFloat(personEl.querySelector("#profile-height") && personEl.querySelector("#profile-height").value);
       var ag = parseInt(ageInput && ageInput.value, 10);
       var w = parseFloat(weightInput && weightInput.value);
-      var tw = parseFloat(root.querySelector("#profile-target-weight") && root.querySelector("#profile-target-weight").value);
+      var tw = parseFloat(personEl.querySelector("#profile-target-weight") && personEl.querySelector("#profile-target-weight").value);
       try {
         await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
           method: "PUT",
@@ -880,26 +897,15 @@ function renderProfile() {
       }
     });
   }
-  if (weightHistory.length) {
-    var miniChart = root.querySelector("#profile-weight-chart-mini");
-    if (miniChart) drawWeightChart(miniChart, weightHistory, targetWeight, { width: 260, height: 80 });
-    var trendLink = root.querySelector("#weight-trend-link");
-    if (trendLink) trendLink.addEventListener("click", function(e) { e.preventDefault(); openWeightTrendOverlay(); });
-    var card = document.getElementById("profile-weight-widget-card");
-    if (card) card.addEventListener("click", function(e) { if (!e.target.closest(".weight-trend-link")) openWeightTrendOverlay(); });
-  }
-  var waterHelpBtn = root.querySelector("#profile-water-help-btn");
+  var waterHelpBtn = bmiEl.querySelector("#profile-water-help-btn");
   if (waterHelpBtn) waterHelpBtn.addEventListener("click", function() { showWaterHelp(); });
-  var selectCityBtn = root.querySelector("#profile-select-city-btn");
+  var selectCityBtn = bmiEl.querySelector("#profile-select-city-btn");
   if (selectCityBtn) selectCityBtn.addEventListener("click", function() { openCityPicker(); });
-  var waterCalcBtn = root.querySelector("#profile-water-calc-btn");
+  var waterCalcBtn = bmiEl.querySelector("#profile-water-calc-btn");
   if (waterCalcBtn) waterCalcBtn.addEventListener("click", function() { openWaterFlow(); });
   var goPersonBtn = document.getElementById("profile-go-person-btn");
-  if (goPersonBtn) goPersonBtn.addEventListener("click", function() { state.profileSubTab = "person"; renderProfile(); });
-  initHeightRuler(root);
-  $all(".profile-subtab").forEach(function(btn) {
-    btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
-  });
+  if (goPersonBtn) goPersonBtn.addEventListener("click", function() { state.profileSubTab = "person"; var r = document.getElementById("tab-person"); if (r) r.checked = true; });
+  initHeightRuler(personEl);
 }
 
 function initHeightRuler(container) {
@@ -2337,14 +2343,8 @@ function bindEvents() {
     });
   });
 
-  var profileSubtabs = $all(".profile-subtab");
-  profileSubtabs.forEach(function(btn) {
-    btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
-    var oldHandler = btn.onclick;
-    btn.onclick = function() {
-      state.profileSubTab = btn.dataset.profileTab || "person";
-      renderProfile();
-    };
+  $all("input[name=profile-tabs]").forEach(function(radio) {
+    radio.addEventListener("change", function() { state.profileSubTab = radio.value; });
   });
   var cityPickerClose = $("#city-picker-close");
   if (cityPickerClose) cityPickerClose.addEventListener("click", closeCityPicker);
