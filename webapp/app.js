@@ -1103,6 +1103,11 @@ async function runWaterCalculate(useGeo, city, country, countryCode) {
       return;
     }
     state.lastWaterResult = { liters: liters, formula: formula, city: city, country: country, temp: temp, humidity: humidity };
+    if (city != null || country != null) {
+      if (!state.profile) state.profile = {};
+      if (city != null) state.profile.city = city;
+      if (country != null) state.profile.country = country;
+    }
     renderProfile();
     var createHabit = (typeof confirm !== "undefined") ? confirm("Сформировать привычку «Пить воду» на основе расчёта?") : false;
     var formulaNote = [city && "город " + city, country && country, temp != null && "темп. " + temp + " °C", humidity != null && "влажность " + humidity + "%", formula].filter(Boolean).join("; ");

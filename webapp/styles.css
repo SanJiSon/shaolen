@@ -827,6 +827,10 @@ body {
 #panel-profile.profile-tab-panel {
   display: block;
 }
+/* Выравнивание контента профиля по уровню заголовка/контента других панелей (panel-header + контент) */
+.profile-view {
+  padding-top: 29px;
+}
 .profile-view .profile-main {
   margin-top: 0;
 }
