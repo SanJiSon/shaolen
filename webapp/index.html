@@ -17,6 +17,8 @@
         if (tg) {
           tg.ready();
           tg.expand();
+          if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes();
+          if (typeof tg.disableHorizontalSwipes === "function") tg.disableHorizontalSwipes();
           function hideMain() {
             try { if (tg.MainButton) tg.MainButton.hide(); } catch(e) {}
           }

@@ -54,6 +54,10 @@ function initUser() {
 
   if (tg && tg.MainButton) { try { tg.MainButton.hide(); } catch (_) {} }
   if (tg && tg.BackButton) { try { tg.BackButton.hide(); } catch (_) {} }
+  if (tg) {
+    try { if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes(); } catch (_) {}
+    try { if (typeof tg.disableHorizontalSwipes === "function") tg.disableHorizontalSwipes(); } catch (_) {}
+  }
   // Определяем базовый URL API
   const loc = window.location;
   // Используем текущий origin (протокол + хост) для API
@@ -286,7 +290,8 @@ function setupSwipeDelete(container) {
       row.classList.toggle("swiped", v <= -w / 2);
     };
     const onStart = (e) => {
-      if (e.target.closest(".habit-btn, .swipe-delete-btn")) return;
+      if (e.target.closest(".habit-btn, .swipe-delete-btn, .swipe-row-drag-handle")) return;
+      if (window._sortableDragging) return;
       startX = e.touches ? e.touches[0].clientX : e.clientX;
       startY = e.touches ? e.touches[0].clientY : e.clientY;
       startLeft = content && content.style.transform ? parseFloat(String(content.style.transform).replace(/[^-\d.]/g, "")) || 0 : 0;
@@ -384,6 +389,7 @@ function createSortableCommon(listEl, options) {
   if (typeof Sortable === "undefined") return null;
   var userOnEnd = options.onEnd;
   options.onEnd = function(evt) {
+    window._sortableDragging = false;
     document.body.classList.remove("drag-active");
     document.body.style.paddingRight = "";
     if (userOnEnd) userOnEnd.call(this, evt);
@@ -395,6 +401,7 @@ function createSortableCommon(listEl, options) {
     fallbackOnBody: true,
     swapThreshold: 0.65,
     onStart: function() {
+      window._sortableDragging = true;
       document.body.classList.add("drag-active");
       var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
       if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + "px";
