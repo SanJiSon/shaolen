@@ -114,7 +114,7 @@ async function fetchJSON(url, options = {}) {
   try {
     var headers = { 'Content-Type': 'application/json' };
     if (options.headers) Object.assign(headers, options.headers);
-    if ((url.indexOf("/api/user/") !== -1 || url.indexOf("/api/me") !== -1) && tg && tg.initData) {
+    if (url.indexOf("/api/") !== -1 && tg && tg.initData) {
       headers["X-Telegram-Init-Data"] = tg.initData;
     }
     console.log(`📡 Запрос: ${options.method || 'GET'} ${url}`);
@@ -2439,11 +2439,17 @@ function bindEvents() {
           title: "Редактировать подцель",
           initialValues: { title: subgoal.title || "", description: subgoal.description || "" },
           onSave: async function(p) {
-            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description || "" }) });
+            var title = (p && p.title != null) ? String(p.title).trim() : "";
+            var description = (p && p.description != null) ? String(p.description) : "";
+            if (!title) { if (tg) tg.showAlert("Введите название"); throw new Error("validate"); }
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, {
+              method: "PUT",
+              body: JSON.stringify({ title: title, description: description })
+            });
             await loadAll();
           },
           onDelete: async function() {
-            await fetch(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "DELETE" });
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "DELETE" });
             await loadAll();
           }
         });
@@ -2514,7 +2520,7 @@ function bindEvents() {
     document.body.classList.toggle("reorder-mode", state.reorderMode);
     $all(".panel-edit-btn").forEach(function(btn) {
       var icon = btn.querySelector(".panel-edit-btn-icon");
-      if (icon) icon.textContent = state.reorderMode ? "check" : "reorder";
+      if (icon) icon.textContent = state.reorderMode ? "check" : "edit";
       btn.setAttribute("aria-label", state.reorderMode ? "Готово" : "Режим перетаскивания");
       btn.setAttribute("title", state.reorderMode ? "Готово" : "Режим перетаскивания");
     });
