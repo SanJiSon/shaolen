@@ -1912,6 +1912,27 @@ async def api_admin_users(request: Request):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+@app.get("/api/admin/users/{user_id}/data")
+async def api_admin_user_data(request: Request, user_id: int):
+    """Миссии, цели и привычки пользователя (только для админа)."""
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content=_admin_403_body())
+    try:
+        missions = await db.get_missions(user_id, include_completed=True)
+        goals = await db.get_goals(user_id, include_completed=True)
+        habits = await db.get_habits(user_id, active_only=False)
+        def to_json_list(rows):
+            return [_row_to_json(r) or {} for r in (rows or [])]
+        return JSONResponse(content={
+            "missions": to_json_list(missions),
+            "goals": to_json_list(goals),
+            "habits": to_json_list(habits),
+        })
+    except Exception as e:
+        logger.exception("admin user data: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 @app.get("/api/admin/shaolen-requests")
 async def api_admin_shaolen_requests(request: Request, limit: int = 200, offset: int = 0):
     if not _admin_token(request):
