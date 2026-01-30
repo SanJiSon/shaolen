@@ -342,14 +342,24 @@ def _row_to_json(obj):
     """Приводит строку БД/словарь к JSON-сериализуемому виду."""
     if obj is None:
         return None
-    d = dict(obj) if hasattr(obj, "keys") else obj
-    out = {}
-    for k, v in d.items():
-        if hasattr(v, "isoformat"):
-            out[k] = v.isoformat()
-        else:
-            out[k] = v
-    return out
+    try:
+        d = dict(obj) if hasattr(obj, "keys") else obj
+        if not isinstance(d, dict):
+            return None
+        out = {}
+        for k, v in d.items():
+            key = str(k) if k is not None else ""
+            if v is None:
+                out[key] = None
+            elif hasattr(v, "isoformat"):
+                out[key] = v.isoformat()
+            elif isinstance(v, (int, float, bool, str)):
+                out[key] = v
+            else:
+                out[key] = str(v)
+        return out
+    except Exception:
+        return None
 
 
 @app.post("/api/missions")
@@ -419,11 +429,22 @@ async def api_uncomplete_subgoal(subgoal_id: int):
 @app.post("/api/subgoals/{subgoal_id}/update")
 async def api_update_subgoal(subgoal_id: int, payload: SubgoalCreate):
     """Редактировать подцель (название и описание). PUT или POST .../update."""
-    ok = await db.update_subgoal(subgoal_id, payload.title, payload.description or "")
-    if not ok:
-        return JSONResponse(content={"error": "not_found"}, status_code=404)
-    subgoal = await db.get_subgoal(subgoal_id)
-    return JSONResponse(content=_row_to_json(subgoal) or {})
+    try:
+        title = payload.title if payload.title is not None else ""
+        description = payload.description if payload.description is not None else ""
+        ok = await db.update_subgoal(subgoal_id, title, description)
+        if not ok:
+            return JSONResponse(content={"error": "not_found"}, status_code=404)
+        subgoal = await db.get_subgoal(subgoal_id)
+        if not subgoal:
+            return JSONResponse(content={"error": "not_found"}, status_code=404)
+        return JSONResponse(content=_row_to_json(subgoal) or {})
+    except Exception as e:
+        logger.exception("Ошибка обновления подцели %s: %s", subgoal_id, e)
+        return JSONResponse(
+            content={"error": "server_error", "detail": str(e)},
+            status_code=500,
+        )
 
 
 @app.delete("/api/subgoals/{subgoal_id}")

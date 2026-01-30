@@ -518,6 +518,19 @@ class Database:
             )
             await db.commit()
 
+    async def update_subgoal(self, subgoal_id: int, title: str, description: str = "") -> bool:
+        """Обновление подцели (название и описание)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE subgoals SET title = ?, description = ? WHERE id = ?",
+                (title, description, subgoal_id)
+            )
+            await db.commit()
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT 1 FROM subgoals WHERE id = ?", (subgoal_id,)) as cur:
+                row = await cur.fetchone()
+                return row is not None
+
     async def delete_subgoal(self, subgoal_id: int):
         """Удаление подцели"""
         async with aiosqlite.connect(self.db_path) as db:
