@@ -70,6 +70,10 @@ class Database:
                     await db.execute(f"ALTER TABLE missions ADD COLUMN {col} INTEGER DEFAULT {default}")
                 except Exception:
                     pass
+            try:
+                await db.execute("ALTER TABLE missions ADD COLUMN sort_order INTEGER")
+            except Exception:
+                pass
 
             # Таблица подцелей (подцели миссий)
             await db.execute("""
@@ -377,24 +381,42 @@ class Database:
     async def add_mission(self, user_id: int, title: str, description: str = "", deadline: Optional[str] = None, is_example: int = 0) -> int:
         """Добавление миссии. is_example=1 — предустановленный пример."""
         async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM missions WHERE user_id = ?",
+                (user_id,)
+            ) as c:
+                row = await c.fetchone()
+                sort_order = row[0] if row and row[0] is not None else 0
             cursor = await db.execute(
-                "INSERT INTO missions (user_id, title, description, deadline, is_example) VALUES (?, ?, ?, ?, ?)",
-                (user_id, title, description or "", deadline, 1 if is_example else 0)
+                "INSERT INTO missions (user_id, title, description, deadline, is_example, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, title, description or "", deadline, 1 if is_example else 0, sort_order)
             )
             await db.commit()
             return cursor.lastrowid
 
     async def get_missions(self, user_id: int, include_completed: bool = False) -> List[Dict]:
-        """Получение всех миссий пользователя"""
+        """Получение всех миссий пользователя (по sort_order, затем created_at)."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM missions WHERE user_id = ?"
             if not include_completed:
                 query += " AND is_completed = 0"
-            query += " ORDER BY created_at DESC"
+            query += " ORDER BY COALESCE(sort_order, 999999), created_at DESC"
             async with db.execute(query, (user_id,)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def set_missions_order(self, user_id: int, mission_ids: List[int]) -> None:
+        """Установить порядок миссий (список id в нужном порядке)."""
+        if not mission_ids:
+            return
+        async with aiosqlite.connect(self.db_path) as db:
+            for i, mid in enumerate(mission_ids):
+                await db.execute(
+                    "UPDATE missions SET sort_order = ? WHERE id = ? AND user_id = ?",
+                    (i, mid, user_id)
+                )
+            await db.commit()
 
     async def get_mission(self, mission_id: int) -> Optional[Dict]:
         """Получение миссии по ID"""

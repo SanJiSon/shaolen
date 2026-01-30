@@ -118,6 +118,10 @@ class SubgoalsOrderBody(BaseModel):
     subgoal_ids: List[int]
 
 
+class MissionsOrderBody(BaseModel):
+    mission_ids: List[int]
+
+
 class GoalsOrderBody(BaseModel):
     goal_ids: List[int]
 
@@ -297,6 +301,14 @@ async def api_me(request: Request):
         "last_name": u.get("last_name"),
         "username": u.get("username"),
     })
+
+
+@app.put("/api/user/{user_id}/missions/order")
+async def api_set_missions_order(user_id: int, payload: MissionsOrderBody):
+    """Изменить порядок миссий (перетаскивание)."""
+    if payload.mission_ids:
+        await db.set_missions_order(user_id, payload.mission_ids)
+    return JSONResponse(content={"ok": True})
 
 
 @app.get("/api/user/{user_id}/missions", response_model=None)
