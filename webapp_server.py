@@ -1912,18 +1912,51 @@ async def api_admin_users(request: Request):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+def _bmi_category(bmi_val: float) -> str:
+    """Категория ИМТ по ВОЗ (как в app.js)."""
+    if bmi_val is None or (isinstance(bmi_val, float) and (bmi_val != bmi_val)):
+        return None
+    if bmi_val < 18.5:
+        return "Недостаток веса"
+    if bmi_val <= 24.9:
+        return "Норма"
+    if bmi_val <= 29.9:
+        return "Избыточный вес"
+    return "Ожирение"
+
+
 @app.get("/api/admin/users/{user_id}/data")
 async def api_admin_user_data(request: Request, user_id: int):
-    """Миссии, цели и привычки пользователя (только для админа)."""
+    """Миссии, цели, привычки и профиль (рост, вес, возраст, ИМТ) пользователя (только для админа)."""
     if not _admin_token(request):
         return JSONResponse(status_code=403, content=_admin_403_body())
     try:
+        user = await db.get_user(user_id)
+        profile_out = None
+        if user:
+            weight = user.get("weight")
+            height = user.get("height")
+            age = user.get("age")
+            bmi_val = None
+            if weight and height and height > 0:
+                try:
+                    bmi_val = round(float(weight) / ((float(height) / 100) ** 2), 1)
+                except (TypeError, ValueError):
+                    pass
+            profile_out = {
+                "height": float(height) if height is not None else None,
+                "weight": float(weight) if weight is not None else None,
+                "age": int(age) if age is not None else None,
+                "bmi": bmi_val,
+                "bmi_category": _bmi_category(bmi_val) if bmi_val is not None else None,
+            }
         missions = await db.get_missions(user_id, include_completed=True)
         goals = await db.get_goals(user_id, include_completed=True)
         habits = await db.get_habits(user_id, active_only=False)
         def to_json_list(rows):
             return [_row_to_json(r) or {} for r in (rows or [])]
         return JSONResponse(content={
+            "profile": profile_out,
             "missions": to_json_list(missions),
             "goals": to_json_list(goals),
             "habits": to_json_list(habits),
