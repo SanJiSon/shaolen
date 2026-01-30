@@ -399,6 +399,14 @@ async def api_complete_goal(goal_id: int):
     return JSONResponse(content=_row_to_json(goal) or {})
 
 
+@app.post("/api/goals/{goal_id}/uncomplete")
+async def api_uncomplete_goal(goal_id: int):
+    """Снять отметку выполнения цели"""
+    await db.uncomplete_goal(goal_id)
+    goal = await db.get_goal(goal_id)
+    return JSONResponse(content=_row_to_json(goal) or {})
+
+
 @app.post("/api/missions/{mission_id}/subgoals")
 async def api_add_subgoal(mission_id: int, payload: SubgoalCreate):
     """Добавить подцель к миссии"""

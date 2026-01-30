@@ -596,6 +596,15 @@ class Database:
             )
             await db.commit()
 
+    async def uncomplete_goal(self, goal_id: int):
+        """Снять отметку выполнения цели"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE goals SET is_completed = 0, completed_at = NULL WHERE id = ?",
+                (goal_id,)
+            )
+            await db.commit()
+
     async def update_goal(self, goal_id: int, title: str, description: str = "",
                          deadline: Optional[str] = None, priority: int = 1) -> bool:
         """Обновление цели. После сохранения пользователем снимается метка «пример»."""
