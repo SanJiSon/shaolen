@@ -61,11 +61,11 @@ body {
 
 [data-theme="dark"] body,
 :root body {
-  background: linear-gradient(180deg, #12151c 0%, #0c0e14 100%);
+  background: #0c0e14;
 }
 
 [data-theme="light"] body {
-  background: linear-gradient(180deg, #e2e8f0 0%, #f8fafc 50%);
+  background: #ffffff;
 }
 
 #app {
@@ -371,6 +371,25 @@ body {
   color: var(--text-soft);
 }
 
+.danger-btn {
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.danger-btn:hover {
+  opacity: 0.9;
+}
+
+.danger-btn.hidden {
+  display: none;
+}
+
 .cards {
   display: flex;
   flex-direction: column;
@@ -671,6 +690,12 @@ body.drag-active {
 
 .swipe-row.swiped .swipe-row-content {
   transform: translateX(-72px);
+}
+
+/* Скрыть кнопку «Удалить» при перетаскивании подцелей внутри карточки */
+.swipe-row.subgoal-dragging .swipe-row-actions {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Привычки */

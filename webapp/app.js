@@ -175,7 +175,7 @@ async function fetchJSON(url, options = {}) {
   }
 }
 
-function openDialog({ title, extraHtml = "", onSave, initialValues }) {
+function openDialog({ title, extraHtml = "", onSave, onDelete, initialValues }) {
   if (tg && tg.MainButton) tg.MainButton.hide();
   var titleEl = $("#dialog-title");
   var titleInput = $("#dialog-title-input");
@@ -183,12 +183,33 @@ function openDialog({ title, extraHtml = "", onSave, initialValues }) {
   var extraEl = $("#dialog-extra");
   var backdrop = $("#dialog-backdrop");
   var form = $("#dialog-form");
+  var deleteBtn = $("#dialog-delete");
   var iv = initialValues || {};
   if (titleEl) titleEl.textContent = title || "";
   if (titleInput) titleInput.value = (iv.title != null ? iv.title : "") || "";
   if (descInput) descInput.value = (iv.description != null ? iv.description : "") || "";
   if (extraEl) extraEl.innerHTML = extraHtml || "";
   if (backdrop) backdrop.classList.remove("hidden");
+  if (deleteBtn) {
+    if (onDelete) {
+      deleteBtn.classList.remove("hidden");
+      deleteBtn.onclick = function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var p = onDelete();
+        var promise = (p && typeof p.then === "function" ? p : Promise.resolve());
+        promise.then(function() {
+          if (backdrop) backdrop.classList.add("hidden");
+          if (form) form.onsubmit = null;
+        }).catch(function(err) {
+          if (tg) tg.showAlert("Не удалось удалить");
+        });
+      };
+    } else {
+      deleteBtn.classList.add("hidden");
+      deleteBtn.onclick = null;
+    }
+  }
   if (extraEl && iv.deadline != null) {
     setTimeout(function() {
       var de = document.getElementById("deadline-input");
@@ -403,11 +424,21 @@ function resetSwipeState(el) {
 function createSortableCommon(listEl, options) {
   if (typeof Sortable === "undefined") return null;
   var userOnEnd = options.onEnd;
+  var userOnStart = options.onStart;
   options.onEnd = function(evt) {
+    document.querySelectorAll(".swipe-row.subgoal-dragging").forEach(function(el) { el.classList.remove("subgoal-dragging"); });
     window._sortableDragging = false;
     document.body.classList.remove("drag-active");
     document.body.style.paddingRight = "";
     if (userOnEnd) userOnEnd.call(this, evt);
+  };
+  options.onStart = function(evt) {
+    window._sortableDragging = true;
+    resetSwipeState(evt.item);
+    document.body.classList.add("drag-active");
+    var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + "px";
+    if (userOnStart) userOnStart.call(this, evt);
   };
   return new Sortable(listEl, Object.assign({
     animation: 150,
@@ -418,13 +449,6 @@ function createSortableCommon(listEl, options) {
     swapThreshold: 0.65,
     chosenClass: "sortable-chosen",
     ghostClass: "sortable-ghost",
-    onStart: function(evt) {
-      window._sortableDragging = true;
-      resetSwipeState(evt.item);
-      document.body.classList.add("drag-active");
-      var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
-      if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + "px";
-    },
     onClone: function(evt) {
       resetSwipeState(evt.clone);
     }
@@ -438,7 +462,12 @@ function setupSortableSubgoals(container) {
   container.querySelectorAll(".subgoals-list[data-mission-id]").forEach(function(list) {
     var missionId = list.dataset.missionId;
     var sortable = createSortableCommon(list, {
+      draggable: ".subgoal-row",
       handle: ".subgoal-drag-handle",
+      onStart: function(evt) {
+        var swipeRow = evt.item.closest(".swipe-row");
+        if (swipeRow) swipeRow.classList.add("subgoal-dragging");
+      },
       onEnd: function(evt) {
         var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
         if (ids.length && missionId) {
@@ -2387,8 +2416,40 @@ function bindEvents() {
       return;
     }
 
+    var subgoalRow = e.target.closest(".subgoal-row");
+    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest(".subgoal-cb-wrap")) {
+      e.preventDefault();
+      e.stopPropagation();
+      var subgoalId = subgoalRow.dataset.id;
+      if (!subgoalId) return;
+      var subgoal = null;
+      var subgoalsByMission = state.cache.subgoalsByMission || {};
+      for (var mid in subgoalsByMission) {
+        var list = subgoalsByMission[mid] || [];
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i].id) === String(subgoalId)) { subgoal = list[i]; break; }
+        }
+        if (subgoal) break;
+      }
+      if (subgoal) {
+        openDialog({
+          title: "Редактировать подцель",
+          initialValues: { title: subgoal.title || "", description: subgoal.description || "" },
+          onSave: async function(p) {
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description || "" }) });
+            await loadAll();
+          },
+          onDelete: async function() {
+            await fetch(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "DELETE" });
+            await loadAll();
+          }
+        });
+      }
+      return;
+    }
+
     var content = e.target.closest(".swipe-row-content");
-    if (content && !e.target.closest(".habit-btn, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .add-subgoal-btn")) {
+    if (content && !e.target.closest(".habit-btn, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
       var row = e.target.closest(".swipe-row");
       if (row) {
         var type = row.dataset.type, id = row.dataset.id;
