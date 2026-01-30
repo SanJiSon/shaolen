@@ -599,6 +599,8 @@ body.drag-active {
 
 /* Свайп: экран не двигается, только строка */
 .swipe-row {
+  display: flex;
+  align-items: stretch;
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-md);
@@ -607,7 +609,28 @@ body.drag-active {
   user-select: none;
 }
 
+.swipe-row-drag-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  cursor: grab;
+  color: var(--muted);
+  touch-action: none;
+}
+
+.swipe-row-drag-handle:active {
+  cursor: grabbing;
+}
+
+.swipe-row-drag-handle .material-symbols-outlined {
+  font-size: 20px;
+}
+
 .swipe-row-content {
+  flex: 1;
+  min-width: 0;
   position: relative;
   z-index: 1;
   background: var(--bg-card);

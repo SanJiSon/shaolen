@@ -263,6 +263,7 @@ function wrapSwipeDelete(node, type, id) {
   wrap.dataset.type = type;
   wrap.dataset.id = String(id);
   wrap.innerHTML = `
+    <div class="swipe-row-drag-handle" aria-label="Перетащить"><span class="material-symbols-outlined">drag_indicator</span></div>
     <div class="swipe-row-content">${node.outerHTML}</div>
     <div class="swipe-row-actions"><button type="button" class="swipe-delete-btn">Удалить</button></div>
   `;
@@ -375,178 +376,58 @@ function renderMissions(missions) {
     root.appendChild(wrapSwipeDelete(card, "mission", m.id));
   });
   setupSwipeDelete(root);
-  setupSubgoalsDragDrop(root);
-  setupLongPressReorder(root, ".swipe-row[data-type=\"mission\"]", function(item) { var id = item.dataset.id; return id ? parseInt(id, 10) : null; }, function(ids) {
-    if (!ids.length || !state.userId) return Promise.resolve();
-    return fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/missions/order", { method: "PUT", body: JSON.stringify({ mission_ids: ids }) });
+  setupSortableSubgoals(root);
+  setupSortableMissions(root);
+}
+
+function createSortableCommon(listEl, options) {
+  if (typeof Sortable === "undefined") return null;
+  var userOnEnd = options.onEnd;
+  options.onEnd = function(evt) {
+    document.body.classList.remove("drag-active");
+    document.body.style.paddingRight = "";
+    if (userOnEnd) userOnEnd.call(this, evt);
+  };
+  return new Sortable(listEl, Object.assign({
+    animation: 150,
+    dataIdAttr: "data-id",
+    forceFallback: true,
+    fallbackOnBody: true,
+    swapThreshold: 0.65,
+    onStart: function() {
+      document.body.classList.add("drag-active");
+      var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + "px";
+    }
+  }, options));
+}
+
+function setupSortableSubgoals(container) {
+  if (!container || typeof Sortable === "undefined") return;
+  container.querySelectorAll(".subgoals-list[data-mission-id]").forEach(function(list) {
+    var missionId = list.dataset.missionId;
+    createSortableCommon(list, {
+      handle: ".subgoal-drag-handle",
+      onEnd: function(evt) {
+        var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+        if (ids.length && missionId) {
+          fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", { method: "PUT", body: JSON.stringify({ subgoal_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+        }
+      }
+    });
   });
 }
 
-var longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, overlay: null, container: null, itemSelector: null, getId: null, saveOrder: null };
-
-function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignoreTarget) {
-  if (!container || typeof getId !== "function" || typeof saveOrder !== "function") return;
-  var LONG_PRESS_MS = 450;
-  var MOVE_THRESHOLD = 12;
-
-  function getClientXY(e) {
-    if (e.clientX != null) return { x: e.clientX, y: e.clientY };
-    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    return { x: 0, y: 0 };
-  }
-
-  function onMove(e) {
-    var s = longPressDragState;
-    if (s.timer && !s.ghost) {
-      var xy = getClientXY(e);
-      if (Math.abs(xy.x - s.startX) > MOVE_THRESHOLD || Math.abs(xy.y - s.startY) > MOVE_THRESHOLD) {
-        clearTimeout(s.timer);
-        s.timer = null;
-      }
-      return;
-    }
-    if (!s.ghost) return;
-    e.preventDefault();
-    var xy = getClientXY(e);
-    s.ghost.style.left = (xy.x - 20) + "px";
-    s.ghost.style.top = (xy.y - 10) + "px";
-    s.ghost.style.visibility = "hidden";
-    var under = document.elementFromPoint(xy.x, xy.y);
-    s.ghost.style.visibility = "";
-    var other = under && s.container.contains(under) && under.closest(s.itemSelector);
-    if (other && other !== s.placeholder) {
-      var rect = other.getBoundingClientRect();
-      var midY = rect.top + rect.height / 2;
-      if (xy.y < midY) {
-        s.container.insertBefore(s.placeholder, other);
-      } else {
-        var next = other.nextElementSibling;
-        s.container.insertBefore(s.placeholder, next);
+function setupSortableMissions(container) {
+  if (!container || !state.userId || typeof Sortable === "undefined") return;
+  createSortableCommon(container, {
+    handle: ".swipe-row-drag-handle",
+    onEnd: function(evt) {
+      var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/missions/order", { method: "PUT", body: JSON.stringify({ mission_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
       }
     }
-  }
-
-  function onUp(e) {
-    var s = longPressDragState;
-    if (s.timer) {
-      clearTimeout(s.timer);
-      s.timer = null;
-      return;
-    }
-    if (!s.ghost) return;
-    if (s.overlay) {
-      s.overlay.removeEventListener("pointermove", onMove, true);
-      s.overlay.removeEventListener("pointerup", onUp, true);
-      s.overlay.removeEventListener("pointercancel", onUp, true);
-      s.overlay.removeEventListener("touchmove", onTouchMove, { passive: false });
-      s.overlay.removeEventListener("touchend", onUp, true);
-      s.overlay.removeEventListener("touchcancel", onUp, true);
-      s.overlay.remove();
-      s.overlay = null;
-    }
-    document.body.classList.remove("drag-active");
-    if (document.body.dataset.scrollbarPadding) {
-      document.body.style.paddingRight = "";
-      delete document.body.dataset.scrollbarPadding;
-    }
-    s.container.insertBefore(s.item, s.placeholder);
-    s.placeholder.remove();
-    s.ghost.remove();
-    s.item.classList.remove("drag-source");
-    var ids = [];
-    s.container.querySelectorAll(s.itemSelector).forEach(function(el) {
-      var id = s.getId(el);
-      if (id != null) ids.push(id);
-    });
-    s.saveOrder(ids).then(function() { loadAll(); }).catch(function() { loadAll(); });
-    longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, overlay: null, container: null, itemSelector: null, getId: null, saveOrder: null };
-  }
-
-  function onTouchMove(e) {
-    if (longPressDragState.ghost) e.preventDefault();
-    onMove(e);
-  }
-
-  function startDrag() {
-    var s = longPressDragState;
-    var itemWidth = s.item.offsetWidth;
-    var itemHeight = s.item.offsetHeight;
-    s.item.classList.add("drag-source");
-    s.placeholder = document.createElement("div");
-    s.placeholder.className = "reorder-placeholder";
-    s.placeholder.style.height = itemHeight + "px";
-    s.placeholder.style.minHeight = itemHeight + "px";
-    var parent = s.item.parentNode;
-    parent.insertBefore(s.placeholder, s.item);
-    parent.removeChild(s.item);
-    s.ghost = s.item.cloneNode(true);
-    s.ghost.classList.add("reorder-ghost");
-    s.ghost.style.cssText = "position:fixed;left:" + (s.startX - 20) + "px;top:" + (s.startY - 10) + "px;width:" + itemWidth + "px;max-width:" + itemWidth + "px;pointer-events:none;z-index:9999;opacity:0.95;box-sizing:border-box;";
-    document.body.appendChild(s.ghost);
-    s.overlay = document.createElement("div");
-    s.overlay.className = "reorder-drag-overlay";
-    s.overlay.style.cssText = "position:fixed;inset:0;z-index:9998;pointer-events:auto;";
-    document.body.appendChild(s.overlay);
-    s.overlay.addEventListener("pointermove", onMove, true);
-    s.overlay.addEventListener("pointerup", onUp, true);
-    s.overlay.addEventListener("pointercancel", onUp, true);
-    s.overlay.addEventListener("touchmove", onTouchMove, { passive: false });
-    s.overlay.addEventListener("touchend", onUp, true);
-    s.overlay.addEventListener("touchcancel", onUp, true);
-    document.body.classList.add("drag-active");
-    var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
-    if (scrollbarW > 0) {
-      document.body.style.paddingRight = scrollbarW + "px";
-      document.body.dataset.scrollbarPadding = "1";
-    }
-  }
-
-  function startLongPressTimer(e) {
-    if (longPressDragState.ghost) return;
-    var item = e.target.closest(itemSelector);
-    if (!item || !container.contains(item)) return;
-    if (ignoreTarget && ignoreTarget(e.target)) return;
-    var xy = getClientXY(e);
-    longPressDragState.startX = xy.x;
-    longPressDragState.startY = xy.y;
-    longPressDragState.item = item;
-    longPressDragState.container = container;
-    longPressDragState.itemSelector = itemSelector;
-    longPressDragState.getId = getId;
-    longPressDragState.saveOrder = saveOrder;
-    longPressDragState.timer = setTimeout(function() {
-      longPressDragState.timer = null;
-      startDrag();
-    }, LONG_PRESS_MS);
-    function cancelTimer() {
-      if (longPressDragState.timer) {
-        clearTimeout(longPressDragState.timer);
-        longPressDragState.timer = null;
-      }
-      document.removeEventListener("pointerup", cancelTimer);
-      document.removeEventListener("pointercancel", cancelTimer);
-      document.removeEventListener("touchend", cancelTimer);
-      document.removeEventListener("touchcancel", cancelTimer);
-    }
-    document.addEventListener("pointerup", cancelTimer);
-    document.addEventListener("pointercancel", cancelTimer);
-    document.addEventListener("touchend", cancelTimer);
-    document.addEventListener("touchcancel", cancelTimer);
-  }
-
-  container.addEventListener("pointerdown", startLongPressTimer, true);
-  container.addEventListener("touchstart", startLongPressTimer, { passive: true });
-}
-
-function setupSubgoalsDragDrop(container) {
-  if (!container) return;
-  var lists = container.querySelectorAll(".subgoals-list[data-mission-id]");
-  lists.forEach(function(list) {
-    var missionId = list.dataset.missionId;
-    setupLongPressReorder(list, ".subgoal-row", function(item) { return item.dataset.id ? parseInt(item.dataset.id, 10) : null; }, function(ids) {
-      if (!ids.length) return Promise.resolve();
-      return fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", { method: "PUT", body: JSON.stringify({ subgoal_ids: ids }) });
-    }, function(target) { return !!target.closest(".subgoal-cb-wrap"); });
   });
 }
 
@@ -580,9 +461,32 @@ function renderGoals(goals) {
     root.appendChild(wrapSwipeDelete(card, "goal", g.id));
   });
   setupSwipeDelete(root);
-  setupLongPressReorder(root, ".swipe-row[data-type=\"goal\"]", function(item) { var id = item.dataset.id; return id ? parseInt(id, 10) : null; }, function(ids) {
-    if (!ids.length || !state.userId) return Promise.resolve();
-    return fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/goals/order", { method: "PUT", body: JSON.stringify({ goal_ids: ids }) });
+  setupSortableGoals(root);
+}
+
+function setupSortableGoals(container) {
+  if (!container || !state.userId || typeof Sortable === "undefined") return;
+  createSortableCommon(container, {
+    handle: ".swipe-row-drag-handle",
+    onEnd: function(evt) {
+      var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/goals/order", { method: "PUT", body: JSON.stringify({ goal_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+      }
+    }
+  });
+}
+
+function setupSortableHabits(container) {
+  if (!container || !state.userId || typeof Sortable === "undefined") return;
+  createSortableCommon(container, {
+    handle: ".swipe-row-drag-handle",
+    onEnd: function(evt) {
+      var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habits/order", { method: "PUT", body: JSON.stringify({ habit_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+      }
+    }
   });
 }
 
@@ -628,10 +532,7 @@ function renderHabits(habits) {
     }
   });
   setupSwipeDelete(root);
-  setupLongPressReorder(root, ".swipe-row[data-type=\"habit\"]", function(item) { var id = item.dataset.id; return id ? parseInt(id, 10) : null; }, function(ids) {
-    if (!ids.length || !state.userId) return Promise.resolve();
-    return fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habits/order", { method: "PUT", body: JSON.stringify({ habit_ids: ids }) });
-  });
+  setupSortableHabits(root);
 
   root.querySelectorAll('.habit-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
