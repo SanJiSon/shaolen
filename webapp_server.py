@@ -917,6 +917,15 @@ async def api_water_calculate(user_id: int, request: Request, payload: WaterCalc
                 humidity = w.get("humidity")
     climate = _water_climate_factor(temp, humidity)
     liters = _water_liters(weight, activity, climate)
+    # Сохраняем город/страну в профиль, чтобы при следующем заходе не вводить заново
+    if city_out is not None or country_out is not None:
+        code = (payload.country_code or user.get("country_code") or "").strip().upper()
+        await db.update_user_profile_extended(
+            user_id,
+            city=city_out,
+            country=country_out,
+            country_code=code if len(code) == 2 else None,
+        )
     return JSONResponse(content={
         "liters": liters,
         "weight_kg": weight,
