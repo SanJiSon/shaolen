@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#0f172a" />
     <link rel="stylesheet" href="styles.css?v=10" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
@@ -78,14 +79,17 @@
           <div id="analytics-view" class="analytics"></div>
         </section>
         <section id="panel-profile" class="tab-panel" role="tabpanel">
-          <div id="profile-identity" class="profile-identity"></div>
-          <nav class="profile-subtabs" role="tablist">
-            <button type="button" class="profile-subtab active" data-profile-tab="overview" aria-label="Обзор">📋 Обзор</button>
-            <button type="button" class="profile-subtab" data-profile-tab="person" aria-label="Человек">👤 Человек</button>
-            <button type="button" class="profile-subtab" data-profile-tab="bmi-water" aria-label="ИМТ и вода">💧 ИМТ и вода</button>
-            <button type="button" class="profile-subtab" data-profile-tab="stats" aria-label="Статистика">🏆 Статистика</button>
-          </nav>
-          <div id="profile-view" class="profile-view"></div>
+          <div class="profile-layout">
+            <div class="profile-main">
+              <div id="profile-identity" class="profile-identity"></div>
+              <div id="profile-view" class="profile-view"></div>
+            </div>
+            <nav class="profile-subtabs" role="tablist" aria-label="Разделы профиля">
+              <button type="button" class="profile-subtab active" data-profile-tab="person" aria-label="Человек">👤 Человек</button>
+              <button type="button" class="profile-subtab" data-profile-tab="bmi-water" aria-label="ИМТ и вода">💧 ИМТ и вода</button>
+              <button type="button" class="profile-subtab" data-profile-tab="stats" aria-label="Статистика">🏆 Статистика</button>
+            </nav>
+          </div>
         </section>
       </main>
     </div>

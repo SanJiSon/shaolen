@@ -18,7 +18,7 @@ const state = {
   capsuleView: "main",
   capsuleHistory: [],
   lastWaterResult: null,
-  profileSubTab: "overview",
+  profileSubTab: "person",
 };
 
 function initUser() {
@@ -82,6 +82,7 @@ function switchTab(tabName) {
     t.classList.toggle("active", t.dataset.tab === tabName);
     t.setAttribute("aria-selected", t.dataset.tab === tabName ? "true" : "false");
   });
+  if (tabName === "profile") renderProfile();
 }
 
 async function fetchJSON(url, options = {}) {
@@ -670,10 +671,12 @@ function renderProfile() {
   var hasWeightData = (currentWeight != null || weight) && heightM;
   var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
   var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
+  var hasAnyWidget = bmiWidgetHtml || weightWidgetHtml;
+  var overviewPlaceholderHtml = !hasAnyWidget ? "<div class=\"profile-overview-placeholder\" id=\"profile-overview-placeholder\"><p>Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p><button type=\"button\" class=\"secondary-btn profile-go-person-btn\" id=\"profile-go-person-btn\">Перейти к данным</button></div>" : "";
 
   root.innerHTML = `
     <div class="profile-widgets-row">${bmiWidgetHtml}${weightWidgetHtml}</div>
-    <div id="profile-panel-overview" class="profile-panel ${state.profileSubTab === "overview" ? "active" : ""}"></div>
+    ${overviewPlaceholderHtml}
     <div id="profile-panel-person" class="profile-panel ${state.profileSubTab === "person" ? "active" : ""}">
       <div class="profile-form-section">
         <h3 class="profile-section-title">Информация о пользователе</h3>
@@ -683,11 +686,32 @@ function renderProfile() {
         </div>
         <label class="profile-field-label">Пол</label>
         <div class="profile-gender-cards">
-          <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской"><span class="profile-gender-icon">👤</span><span>Мужской</span></button>
-          <button type="button" class="profile-gender-card ${gender === "f" ? "selected" : ""}" data-gender="f" aria-label="Женский"><span class="profile-gender-icon">👤</span><span>Женский</span></button>
+          <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-m">face</span><span>Мужской</span></button>
+          <button type="button" class="profile-gender-card ${gender === "f" ? "selected" : ""}" data-gender="f" aria-label="Женский"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-f">face_3</span><span>Женский</span></button>
         </div>
         <label class="profile-field-label">Рост (см)</label>
-        <input type="number" id="profile-height" class="input profile-input-height" min="100" max="250" placeholder="см" value="${height != null ? height : ""}" />
+        <div class="profile-height-ruler-block">
+          <div class="profile-height-display">
+            <span id="profile-height-value" class="profile-height-value">${height != null ? height : "—"}</span><span class="profile-height-unit"> см</span>
+          </div>
+          <div class="profile-ruler-container">
+            <div class="profile-ruler-track">
+              <div class="profile-ruler-scale" id="profile-ruler-scale"></div>
+            </div>
+            <div class="profile-height-slider-wrap">
+              <input type="range" id="profile-height-slider" class="profile-height-slider" min="100" max="220" value="${height != null && height >= 100 && height <= 220 ? height : 165}" step="1" aria-label="Рост в см" />
+              <span class="profile-height-slider-hint">Перемещайте ползунок</span>
+            </div>
+          </div>
+          <div class="profile-height-presets">
+            <button type="button" class="profile-height-preset-btn" data-height="150">150</button>
+            <button type="button" class="profile-height-preset-btn" data-height="160">160</button>
+            <button type="button" class="profile-height-preset-btn" data-height="170">170</button>
+            <button type="button" class="profile-height-preset-btn" data-height="180">180</button>
+            <button type="button" class="profile-height-preset-btn" data-height="190">190</button>
+          </div>
+        </div>
+        <input type="hidden" id="profile-height" value="${height != null ? height : ""}" />
         <div class="profile-row-two">
           <div class="profile-stepper-block">
             <label class="profile-field-label">Возраст</label>
@@ -701,12 +725,13 @@ function renderProfile() {
           </div>
           <div class="profile-stepper-block">
             <label class="profile-field-label">Вес (кг)</label>
-            <div class="profile-stepper-card">
+            <div class="profile-stepper-card profile-stepper-card-weight">
               <span class="profile-stepper-value" id="profile-weight-value">${weight != null ? weight : "—"}</span>
-              <div class="profile-stepper-btns">
-                <button type="button" class="profile-stepper-btn" id="profile-weight-minus" aria-label="Уменьшить">−</button>
-                <button type="button" class="profile-stepper-btn" id="profile-weight-plus" aria-label="Увеличить">+</button>
+              <div class="profile-stepper-btns profile-stepper-btns-weight">
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-weight-minus" aria-label="Уменьшить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-down">arrow_drop_down_circle</span></button>
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-weight-plus" aria-label="Увеличить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-up">arrow_drop_down_circle</span></button>
               </div>
+              <button type="button" class="profile-add-weight-inline" id="profile-add-weight-btn">+ Добавить запись веса</button>
             </div>
           </div>
         </div>
@@ -717,9 +742,6 @@ function renderProfile() {
       </div>
       <div class="profile-save-block">
         <button type="button" class="primary-btn profile-save-fields-btn">Сохранить изменения</button>
-      </div>
-      <div class="profile-add-weight-row">
-        <button type="button" class="secondary-btn profile-add-weight-btn" id="profile-add-weight-btn">+ Добавить вес</button>
       </div>
     </div>
     <div id="profile-panel-bmi-water" class="profile-panel ${state.profileSubTab === "bmi-water" ? "active" : ""}">
@@ -872,8 +894,69 @@ function renderProfile() {
   if (selectCityBtn) selectCityBtn.addEventListener("click", function() { openCityPicker(); });
   var waterCalcBtn = root.querySelector("#profile-water-calc-btn");
   if (waterCalcBtn) waterCalcBtn.addEventListener("click", function() { openWaterFlow(); });
+  var goPersonBtn = document.getElementById("profile-go-person-btn");
+  if (goPersonBtn) goPersonBtn.addEventListener("click", function() { state.profileSubTab = "person"; renderProfile(); });
+  initHeightRuler(root);
   $all(".profile-subtab").forEach(function(btn) {
     btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
+  });
+}
+
+function initHeightRuler(container) {
+  var scaleEl = document.getElementById("profile-ruler-scale");
+  var sliderEl = document.getElementById("profile-height-slider");
+  var valueEl = document.getElementById("profile-height-value");
+  var hiddenEl = document.getElementById("profile-height");
+  var trackEl = container ? container.querySelector(".profile-ruler-track") : document.querySelector(".profile-ruler-track");
+  if (!scaleEl || !sliderEl || !valueEl || !hiddenEl || !trackEl) return;
+  var minH = 100;
+  var maxH = 220;
+  var pixelsPerCm = 12;
+  function buildScale() {
+    scaleEl.innerHTML = "";
+    for (var i = minH; i <= maxH; i++) {
+      var mark = document.createElement("div");
+      mark.className = "profile-cm-mark";
+      if (i % 10 === 0) mark.classList.add("tall");
+      else if (i % 5 === 0) mark.classList.add("medium");
+      else mark.classList.add("short");
+      if (i % 10 === 0) {
+        var num = document.createElement("div");
+        num.className = "profile-cm-number";
+        num.textContent = i;
+        mark.appendChild(num);
+      }
+      scaleEl.appendChild(mark);
+    }
+  }
+  function updateRulerPosition(val) {
+    var v = parseInt(val, 10);
+    if (isNaN(v)) v = 165;
+    v = Math.max(minH, Math.min(maxH, v));
+    var trackW = trackEl.offsetWidth || 280;
+    var offset = (trackW / 2) - (v - minH) * pixelsPerCm;
+    scaleEl.style.transform = "translateX(" + offset + "px)";
+  }
+  function syncFromSlider() {
+    var v = parseInt(sliderEl.value, 10);
+    valueEl.textContent = v;
+    hiddenEl.value = v;
+    updateRulerPosition(v);
+  }
+  buildScale();
+  var initialVal = parseInt(sliderEl.value, 10);
+  if (isNaN(initialVal)) initialVal = 165;
+  valueEl.textContent = initialVal;
+  hiddenEl.value = initialVal;
+  updateRulerPosition(initialVal);
+  sliderEl.addEventListener("input", syncFromSlider);
+  $all(".profile-height-preset-btn").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var h = parseInt(btn.dataset.height, 10);
+      if (isNaN(h)) return;
+      sliderEl.value = h;
+      syncFromSlider();
+    });
   });
 }
 
@@ -2259,7 +2342,7 @@ function bindEvents() {
     btn.classList.toggle("active", btn.dataset.profileTab === state.profileSubTab);
     var oldHandler = btn.onclick;
     btn.onclick = function() {
-      state.profileSubTab = btn.dataset.profileTab || "overview";
+      state.profileSubTab = btn.dataset.profileTab || "person";
       renderProfile();
     };
   });
