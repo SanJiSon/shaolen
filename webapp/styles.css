@@ -291,6 +291,11 @@ body {
 .tab-panel {
   display: none;
   overflow-x: hidden;
+  min-width: 0;
+}
+.tab-panel.active {
+  display: block;
+  animation: fadeIn 0.2s ease;
 }
 
 .tab-panel.active {
@@ -957,10 +962,14 @@ body {
   flex-direction: row;
   gap: 16px;
   align-items: flex-start;
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
 }
 .profile-main {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 .profile-subtabs {
   display: flex;
@@ -968,6 +977,7 @@ body {
   gap: 8px;
   flex-shrink: 0;
   margin-bottom: 0;
+  max-width: 140px;
 }
 .profile-widgets-row {
   display: flex;
@@ -991,9 +1001,18 @@ body {
 }
 .profile-widget-weight .weight-card-value { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
 .profile-widget-weight .weight-card-trend { margin-top: 8px; }
-@media (max-width: 600px) {
-  .profile-layout { flex-direction: column; }
-  .profile-subtabs { flex-direction: row; flex-wrap: wrap; }
+@media (max-width: 768px) {
+  .profile-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .profile-subtabs {
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-width: none;
+    order: -1;
+    margin-bottom: 12px;
+  }
 }
 .profile-subtab {
   padding: 8px 14px;
@@ -1083,8 +1102,8 @@ body {
   border: none;
   background: transparent;
   padding: 6px;
-  width: 48px;
-  height: 48px;
+  width: 50px;
+  height: 50px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1209,12 +1228,12 @@ body {
 .profile-height-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 40px;
-  height: 40px;
+  width: 22px;
+  height: 22px;
   background: var(--accent);
   border-radius: 50%;
-  border: 3px solid var(--bg-card);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  border: 2px solid var(--bg-card);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   cursor: grab;
   transition: transform 0.15s;
 }
@@ -1222,12 +1241,12 @@ body {
   transform: scale(1.08);
 }
 .profile-height-slider::-moz-range-thumb {
-  width: 40px;
-  height: 40px;
+  width: 22px;
+  height: 22px;
   background: var(--accent);
   border-radius: 50%;
-  border: 3px solid var(--bg-card);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  border: 2px solid var(--bg-card);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   cursor: grab;
 }
 .profile-height-slider::-webkit-slider-runnable-track {
