@@ -1157,12 +1157,8 @@ function openCityPicker() {
                   method: "PUT",
                   body: JSON.stringify({ city: name, country: country, country_code: countryCode || undefined })
                 });
-                state.cache.profile = state.cache.profile || {};
-                state.cache.profile.city = name;
-                state.cache.profile.country = country;
-                state.cache.profile.country_code = countryCode;
                 closeCityPicker();
-                renderProfile();
+                await loadAll();
                 if (tg) tg.showAlert("Город сохранён: " + name + (country ? ", " + country : ""));
               } catch (err) {
                 if (tg) tg.showAlert("Не удалось сохранить город");
