@@ -415,6 +415,17 @@ async def api_uncomplete_subgoal(subgoal_id: int):
     return JSONResponse(content=_row_to_json(subgoal) or {})
 
 
+@app.put("/api/subgoals/{subgoal_id}")
+@app.post("/api/subgoals/{subgoal_id}/update")
+async def api_update_subgoal(subgoal_id: int, payload: SubgoalCreate):
+    """Редактировать подцель (название и описание). PUT или POST .../update."""
+    ok = await db.update_subgoal(subgoal_id, payload.title, payload.description or "")
+    if not ok:
+        return JSONResponse(content={"error": "not_found"}, status_code=404)
+    subgoal = await db.get_subgoal(subgoal_id)
+    return JSONResponse(content=_row_to_json(subgoal) or {})
+
+
 @app.delete("/api/subgoals/{subgoal_id}")
 async def api_delete_subgoal(subgoal_id: int):
     """Удалить подцель"""
