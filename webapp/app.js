@@ -801,22 +801,26 @@ function renderProfile() {
       <div class="profile-main-row">
         <div class="profile-main-content">
           <div class="profile-content-wrapper">
-            <div id="profile-identity" class="profile-identity">
-              <div class="profile-info">
-                <div class="profile-avatar">${escapeHtml(initial)}</div>
-                <div class="profile-name">${escapeHtml(name)}</div>
-                <div class="profile-age">${escapeHtml(ageText)}</div>
+            <div class="profile-tabs-container">
+              <div id="profile-identity" class="profile-identity">
+                <div class="profile-identity-content">
+                  <div class="profile-avatar">${escapeHtml(initial)}</div>
+                  <h2 class="profile-name">${escapeHtml(name)}</h2>
+                  <p class="profile-age">${escapeHtml(ageText)}</p>
+                </div>
+              </div>
+              <div class="vertical-tabs">
+                <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
+                <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
+                <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
+                <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</label>
+                <input type="radio" id="tab-water" name="profile-tabs" class="profile-tab-radio"${waterChecked}>
+                <label for="tab-water" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</label>
+                <input type="radio" id="tab-stats" name="profile-tabs" class="profile-tab-radio"${statsChecked}>
+                <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
               </div>
             </div>
-            <div class="vertical-tabs">
-              <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
-              <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
-              <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
-              <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</label>
-              <input type="radio" id="tab-water" name="profile-tabs" class="profile-tab-radio"${waterChecked}>
-              <label for="tab-water" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</label>
-              <input type="radio" id="tab-stats" name="profile-tabs" class="profile-tab-radio"${statsChecked}>
-              <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
+            <div class="profile-content-area">
               <section id="content-person" class="profile-tab-content">${contentPerson}</section>
               <section id="content-bmi" class="profile-tab-content">${contentBmi}</section>
               <section id="content-water" class="profile-tab-content">${contentWater}</section>
@@ -827,6 +831,15 @@ function renderProfile() {
       </div>
     </div>
   `;
+
+  function showProfileTabContent(tabId) {
+    var ids = ["content-person", "content-bmi", "content-water", "content-stats"];
+    ids.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = id === tabId ? "block" : "none";
+    });
+  }
+  showProfileTabContent(state.profileSubTab === "person" ? "content-person" : state.profileSubTab === "bmi" ? "content-bmi" : state.profileSubTab === "water" ? "content-water" : "content-stats");
 
   var gaugeEl = document.getElementById("profile-bmi-gauge");
   if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
@@ -920,10 +933,9 @@ function renderProfile() {
   var profileRadios = root.querySelectorAll('input[name="profile-tabs"]');
   profileRadios.forEach(function(r) {
     r.addEventListener("change", function() {
-      if (r.id === "tab-person") state.profileSubTab = "person";
-      else if (r.id === "tab-bmi") state.profileSubTab = "bmi";
-      else if (r.id === "tab-water") state.profileSubTab = "water";
-      else if (r.id === "tab-stats") state.profileSubTab = "stats";
+      var contentId = r.id === "tab-person" ? "content-person" : r.id === "tab-bmi" ? "content-bmi" : r.id === "tab-water" ? "content-water" : "content-stats";
+      state.profileSubTab = r.id === "tab-person" ? "person" : r.id === "tab-bmi" ? "bmi" : r.id === "tab-water" ? "water" : "stats";
+      showProfileTabContent(contentId);
     });
   });
 }

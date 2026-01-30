@@ -1005,36 +1005,49 @@ body {
 .profile-content-wrapper {
   display: flex;
   width: 100%;
-  min-height: 420px;
+  min-width: 0;
+  min-height: 500px;
 }
-.profile-identity {
-  width: 200px;
+.profile-tabs-container {
+  width: 280px;
   flex-shrink: 0;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
   background: var(--surface-2);
   border-right: 1px solid var(--muted-strong);
 }
-.profile-identity .profile-info {
+.profile-identity {
+  padding: 24px 20px;
   text-align: center;
+  flex-shrink: 0;
+  color: var(--text);
+}
+.profile-identity-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .profile-identity .profile-avatar {
   margin-left: auto;
   margin-right: auto;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .profile-identity .profile-name {
-  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--text);
 }
 .profile-age {
   color: var(--muted);
   font-size: 14px;
+  margin: 0;
 }
 .vertical-tabs {
-  position: relative;
   flex: 1;
-  padding: 0;
-  min-width: 0;
-  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .vertical-tabs .profile-tab-radio,
 .vertical-tabs input[type="radio"] {
@@ -1043,50 +1056,48 @@ body {
 .vertical-tabs .profile-subtab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 180px;
-  padding: 15px;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 20px;
   color: var(--muted);
-  background: var(--surface-2);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--muted-strong);
   cursor: pointer;
-  border-bottom: 1px solid var(--muted-strong);
-  font-size: 14px;
-  margin: 0;
   transition: background 0.2s, color 0.2s;
+  text-align: left;
+  font-size: 15px;
+  margin: 0;
+}
+.vertical-tabs .profile-subtab:hover {
+  background: var(--bg-card);
+  color: var(--text);
 }
 .vertical-tabs .profile-subtab .profile-tab-icon {
   font-size: 24px;
   color: inherit;
 }
-.vertical-tabs label.profile-subtab:last-of-type {
-  border-bottom: none;
-}
 .vertical-tabs .profile-tab-radio:checked + .profile-subtab,
 .vertical-tabs input[type="radio"]:checked + .profile-subtab {
   color: var(--text);
-  background: var(--bg-card);
+  background: var(--accent-soft);
   font-weight: 600;
-  border-left: 3px solid var(--accent);
-  padding-left: 12px;
+  position: relative;
+  border-left: 4px solid var(--accent);
+  padding-left: 16px;
+}
+.profile-content-area {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+  background: var(--bg-card);
+  overflow: auto;
 }
 .profile-tab-content {
   display: none;
-  padding: 15px;
-  background: var(--bg-card);
-  position: absolute;
-  top: 0;
-  left: 180px;
-  right: 0;
-  bottom: 0;
-  overflow: auto;
+  padding: 0;
+  background: transparent;
   min-width: 0;
-  z-index: 1;
-}
-#tab-person:checked ~ #content-person,
-#tab-bmi:checked ~ #content-bmi,
-#tab-water:checked ~ #content-water,
-#tab-stats:checked ~ #content-stats {
-  display: block;
 }
 .profile-bmi-page-header {
   display: flex;
@@ -1109,20 +1120,31 @@ body {
   .profile-content-wrapper {
     flex-direction: column;
   }
-  .profile-identity {
+  .profile-tabs-container {
     width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
     border-right: none;
     border-bottom: 1px solid var(--muted-strong);
   }
-  .vertical-tabs .profile-subtab {
-    width: 100%;
-    max-width: none;
+  .profile-identity {
+    flex: 1;
+    min-width: 140px;
+    padding: 16px;
   }
-  .profile-tab-content {
-    position: static;
-    left: auto;
-    right: auto;
-    bottom: auto;
+  .vertical-tabs {
+    flex: 1;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .vertical-tabs .profile-subtab {
+    flex: 1 1 auto;
+    min-width: 80px;
+    border-top: none;
+    border-left: 1px solid var(--muted-strong);
+  }
+  .vertical-tabs .profile-tab-radio:checked + .profile-subtab {
+    border-left: 4px solid var(--accent);
   }
 }
 
@@ -2237,29 +2259,4 @@ body {
 .capsule-reflection-input {
   margin-bottom: 8px;
   min-height: 60px;
-}
-
-.vertical-tabs {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Скрываем радиокнопки */
-.vertical-tabs input[type="radio"] {
-  display: none;
-}
-
-/* Контент вкладок */
-.profile-view {
-  flex: 1;
-  padding: 40px;
-  background: white;
-  position: relative;
-  min-height: 600px;
-}
-
-.profile-tab-content {
-  display: none;
-  animation: scale 0.3s ease-in-out;
 }
