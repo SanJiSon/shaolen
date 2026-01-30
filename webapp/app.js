@@ -357,7 +357,7 @@ function renderMissions(missions) {
     var subs = subgoalsByMission[m.id] || [];
     var subsHtml = subs.map(function(s) {
       var doneClass = s.is_completed ? " subgoal-done" : "";
-      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\" draggable=\"true\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Перетащить\">⋮⋮</span></div>";
+      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML =
@@ -376,6 +376,130 @@ function renderMissions(missions) {
   });
   setupSwipeDelete(root);
   setupSubgoalsDragDrop(root);
+  setupLongPressReorder(root, ".swipe-row[data-type=\"mission\"]", function(item) { var id = item.dataset.id; return id ? parseInt(id, 10) : null; }, function(ids) {
+    if (!ids.length || !state.userId) return Promise.resolve();
+    return fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/missions/order", { method: "PUT", body: JSON.stringify({ mission_ids: ids }) });
+  });
+}
+
+var longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, container: null, itemSelector: null, getId: null, saveOrder: null };
+
+function setupLongPressReorder(container, itemSelector, getId, saveOrder, ignoreTarget) {
+  if (!container || typeof getId !== "function" || typeof saveOrder !== "function") return;
+  var LONG_PRESS_MS = 450;
+  var MOVE_THRESHOLD = 12;
+
+  function getClientXY(e) {
+    if (e.clientX != null) return { x: e.clientX, y: e.clientY };
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: 0, y: 0 };
+  }
+
+  function onMove(e) {
+    var s = longPressDragState;
+    if (s.timer && !s.ghost) {
+      var xy = getClientXY(e);
+      if (Math.abs(xy.x - s.startX) > MOVE_THRESHOLD || Math.abs(xy.y - s.startY) > MOVE_THRESHOLD) {
+        clearTimeout(s.timer);
+        s.timer = null;
+      }
+      return;
+    }
+    if (!s.ghost) return;
+    e.preventDefault();
+    var xy = getClientXY(e);
+    s.ghost.style.left = (xy.x - 20) + "px";
+    s.ghost.style.top = (xy.y - 10) + "px";
+    var under = document.elementFromPoint(xy.x, xy.y);
+    var other = under && under.closest(s.container) && under.closest(s.itemSelector);
+    if (other && other !== s.item && other !== s.placeholder) {
+      s.container.insertBefore(s.placeholder, other);
+    }
+  }
+
+  function onUp() {
+    var s = longPressDragState;
+    if (s.timer) {
+      clearTimeout(s.timer);
+      s.timer = null;
+      return;
+    }
+    if (!s.ghost) return;
+    document.removeEventListener("pointermove", onMove, true);
+    document.removeEventListener("pointerup", onUp, true);
+    document.removeEventListener("touchmove", onTouchMove, { passive: false });
+    document.removeEventListener("touchend", onUp, true);
+    document.body.classList.remove("drag-active");
+    s.item.parentNode.insertBefore(s.item, s.placeholder);
+    s.placeholder.remove();
+    s.ghost.remove();
+    s.item.classList.remove("drag-source");
+    var ids = [];
+    s.container.querySelectorAll(s.itemSelector).forEach(function(el) {
+      var id = s.getId(el);
+      if (id != null) ids.push(id);
+    });
+    s.saveOrder(ids).then(function() { loadAll(); }).catch(function() { loadAll(); });
+    longPressDragState = { timer: null, startX: 0, startY: 0, item: null, placeholder: null, ghost: null, container: null, itemSelector: null, getId: null, saveOrder: null };
+  }
+
+  function onTouchMove(e) {
+    if (longPressDragState.ghost) e.preventDefault();
+  }
+
+  function startDrag() {
+    var s = longPressDragState;
+    s.item.classList.add("drag-source");
+    s.placeholder = document.createElement("div");
+    s.placeholder.className = "reorder-placeholder";
+    s.placeholder.style.height = s.item.offsetHeight + "px";
+    s.item.parentNode.insertBefore(s.placeholder, s.item);
+    s.ghost = s.item.cloneNode(true);
+    s.ghost.classList.add("reorder-ghost");
+    s.ghost.style.cssText = "position:fixed;left:" + (s.startX - 20) + "px;top:" + (s.startY - 10) + "px;width:" + s.item.offsetWidth + "px;pointer-events:none;z-index:9999;opacity:0.95;";
+    document.body.appendChild(s.ghost);
+    document.body.classList.add("drag-active");
+    document.addEventListener("pointermove", onMove, true);
+    document.addEventListener("pointerup", onUp, true);
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchend", onUp, true);
+  }
+
+  function startLongPressTimer(e) {
+    if (longPressDragState.ghost) return;
+    var item = e.target.closest(itemSelector);
+    if (!item || !container.contains(item)) return;
+    if (ignoreTarget && ignoreTarget(e.target)) return;
+    var xy = getClientXY(e);
+    longPressDragState.startX = xy.x;
+    longPressDragState.startY = xy.y;
+    longPressDragState.item = item;
+    longPressDragState.container = container;
+    longPressDragState.itemSelector = itemSelector;
+    longPressDragState.getId = getId;
+    longPressDragState.saveOrder = saveOrder;
+    longPressDragState.timer = setTimeout(function() {
+      longPressDragState.timer = null;
+      startDrag();
+    }, LONG_PRESS_MS);
+    function cancelTimer() {
+      if (longPressDragState.timer) {
+        clearTimeout(longPressDragState.timer);
+        longPressDragState.timer = null;
+      }
+      document.removeEventListener("pointerup", cancelTimer);
+      document.removeEventListener("pointercancel", cancelTimer);
+      document.removeEventListener("touchend", cancelTimer);
+      document.removeEventListener("touchcancel", cancelTimer);
+    }
+    document.addEventListener("pointerup", cancelTimer);
+    document.addEventListener("pointercancel", cancelTimer);
+    document.addEventListener("touchend", cancelTimer);
+    document.addEventListener("touchcancel", cancelTimer);
+  }
+
+  container.addEventListener("pointerdown", startLongPressTimer, true);
+  container.addEventListener("touchstart", startLongPressTimer, { passive: true });
 }
 
 function setupSubgoalsDragDrop(container) {
@@ -383,49 +507,10 @@ function setupSubgoalsDragDrop(container) {
   var lists = container.querySelectorAll(".subgoals-list[data-mission-id]");
   lists.forEach(function(list) {
     var missionId = list.dataset.missionId;
-    var rows = list.querySelectorAll(".subgoal-row[draggable]");
-    var draggedEl = null;
-    list.addEventListener("dragstart", function(e) {
-      if (!e.target.classList || !e.target.classList.contains("subgoal-row")) return;
-      if (e.target.closest(".subgoal-cb-wrap")) return;
-      draggedEl = e.target;
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", e.target.dataset.id || "");
-      e.target.classList.add("drag-source");
-    });
-    list.addEventListener("dragend", function(e) {
-      if (e.target.classList) e.target.classList.remove("drag-source");
-      draggedEl = null;
-    });
-    list.addEventListener("dragover", function(e) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      var row = e.target.closest(".subgoal-row");
-      if (row && row !== draggedEl) row.classList.add("drag-over");
-    });
-    list.addEventListener("dragleave", function(e) {
-      var row = e.target.closest(".subgoal-row");
-      if (row) row.classList.remove("drag-over");
-    });
-    list.addEventListener("drop", function(e) {
-      e.preventDefault();
-      list.querySelectorAll(".subgoal-row").forEach(function(r) { r.classList.remove("drag-over"); });
-      var dropRow = e.target.closest(".subgoal-row");
-      if (!dropRow || !draggedEl || dropRow === draggedEl) return;
-      var next = dropRow.nextElementSibling;
-      list.insertBefore(draggedEl, dropRow === draggedEl.nextElementSibling ? next : dropRow);
-      var ids = [];
-      list.querySelectorAll(".subgoal-row").forEach(function(r) {
-        var id = r.dataset.id;
-        if (id) ids.push(parseInt(id, 10));
-      });
-      if (ids.length) {
-        fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", {
-          method: "PUT",
-          body: JSON.stringify({ subgoal_ids: ids })
-        }).then(function() { loadAll(); }).catch(function() { loadAll(); });
-      }
-    });
+    setupLongPressReorder(list, ".subgoal-row", function(item) { return item.dataset.id ? parseInt(item.dataset.id, 10) : null; }, function(ids) {
+      if (!ids.length) return Promise.resolve();
+      return fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", { method: "PUT", body: JSON.stringify({ subgoal_ids: ids }) });
+    }, function(target) { return !!target.closest(".subgoal-cb-wrap"); });
   });
 }
 
@@ -459,59 +544,9 @@ function renderGoals(goals) {
     root.appendChild(wrapSwipeDelete(card, "goal", g.id));
   });
   setupSwipeDelete(root);
-  setupListDragDrop(root, "goal", "goals", "goal_ids");
-}
-
-function setupListDragDrop(container, itemType, apiPath, idsKey) {
-  if (!container || !state.userId) return;
-  var rows = container.querySelectorAll(".swipe-row[data-type=\"" + itemType + "\"]");
-  rows.forEach(function(row) { row.draggable = true; });
-  var draggedEl = null;
-  container.addEventListener("dragstart", function(e) {
-    var row = e.target.closest(".swipe-row");
-    if (!row || row.dataset.type !== itemType) return;
-    draggedEl = row;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", row.dataset.id || "");
-    row.classList.add("drag-source");
-  });
-  container.addEventListener("dragend", function(e) {
-    if (e.target.closest) {
-      var r = e.target.closest(".swipe-row");
-      if (r) r.classList.remove("drag-source");
-    }
-    draggedEl = null;
-  });
-  container.addEventListener("dragover", function(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    var row = e.target.closest(".swipe-row");
-    if (row && row.dataset.type === itemType && row !== draggedEl) row.classList.add("drag-over");
-  });
-  container.addEventListener("dragleave", function(e) {
-    var row = e.target.closest(".swipe-row");
-    if (row) row.classList.remove("drag-over");
-  });
-  container.addEventListener("drop", function(e) {
-    e.preventDefault();
-    container.querySelectorAll(".swipe-row").forEach(function(r) { r.classList.remove("drag-over"); });
-    var dropRow = e.target.closest(".swipe-row");
-    if (!dropRow || dropRow.dataset.type !== itemType || !draggedEl || dropRow === draggedEl) return;
-    var next = dropRow.nextElementSibling;
-    container.insertBefore(draggedEl, dropRow === draggedEl.nextElementSibling ? next : dropRow);
-    var ids = [];
-    container.querySelectorAll(".swipe-row[data-type=\"" + itemType + "\"]").forEach(function(r) {
-      var id = r.dataset.id;
-      if (id) ids.push(parseInt(id, 10));
-    });
-    if (ids.length) {
-      var payload = {};
-      payload[idsKey] = ids;
-      fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/" + apiPath + "/order", {
-        method: "PUT",
-        body: JSON.stringify(payload)
-      }).then(function() { loadAll(); }).catch(function() { loadAll(); });
-    }
+  setupLongPressReorder(root, ".swipe-row[data-type=\"goal\"]", function(item) { var id = item.dataset.id; return id ? parseInt(id, 10) : null; }, function(ids) {
+    if (!ids.length || !state.userId) return Promise.resolve();
+    return fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/goals/order", { method: "PUT", body: JSON.stringify({ goal_ids: ids }) });
   });
 }
 
@@ -557,7 +592,10 @@ function renderHabits(habits) {
     }
   });
   setupSwipeDelete(root);
-  setupListDragDrop(root, "habit", "habits", "habit_ids");
+  setupLongPressReorder(root, ".swipe-row[data-type=\"habit\"]", function(item) { var id = item.dataset.id; return id ? parseInt(id, 10) : null; }, function(ids) {
+    if (!ids.length || !state.userId) return Promise.resolve();
+    return fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habits/order", { method: "PUT", body: JSON.stringify({ habit_ids: ids }) });
+  });
 
   root.querySelectorAll('.habit-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
