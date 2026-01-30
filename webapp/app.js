@@ -966,7 +966,12 @@ function renderProfile() {
   `;
 
   var contentGeneral = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p>";
-  root.innerHTML = `
+
+  var subPageTitles = { person: "Человек", bmi: "ИМТ", water: "Вода", stats: "Статистика" };
+  var subPageContent = { person: contentPerson, bmi: contentBmi, water: contentWater, stats: contentStats };
+
+  if (state.profileSubTab === "general") {
+    root.innerHTML = `
     <div class="profile-main">
       <div class="profile-content-wrapper">
         <div class="profile-tabs-container">
@@ -978,40 +983,42 @@ function renderProfile() {
             </div>
           </div>
           <div class="vertical-tabs">
-            <input type="radio" id="tab-general" name="profile-tabs" class="profile-tab-radio"${generalChecked}>
-            <label for="tab-general" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</label>
-            <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
-            <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
-            <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
-            <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</label>
-            <input type="radio" id="tab-water" name="profile-tabs" class="profile-tab-radio"${waterChecked}>
-            <label for="tab-water" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</label>
-            <input type="radio" id="tab-stats" name="profile-tabs" class="profile-tab-radio"${statsChecked}>
-            <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
+            <span class="profile-subtab profile-subtab-current"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</span>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="person"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="bmi"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="water"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="stats"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</button>
           </div>
         </div>
         <div class="profile-content-area" id="profile-content-area">
           <section id="content-general" class="profile-tab-content">${contentGeneral}</section>
-          <section id="content-person" class="profile-tab-content">${contentPerson}</section>
-          <section id="content-bmi" class="profile-tab-content">${contentBmi}</section>
-          <section id="content-water" class="profile-tab-content">${contentWater}</section>
-          <section id="content-stats" class="profile-tab-content">${contentStats}</section>
         </div>
       </div>
     </div>
   `;
-
-  function showProfileTabContent(tabId) {
-    var ids = ["content-general", "content-person", "content-bmi", "content-water", "content-stats"];
-    ids.forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.style.display = id === tabId ? "block" : "none";
+    root.querySelectorAll(".profile-subtab-link").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var tab = btn.dataset.profileTab;
+        if (tab) { state.profileSubTab = tab; renderProfile(); }
+      });
     });
-    var area = document.getElementById("profile-content-area");
-    if (area) area.scrollTop = 0;
+  } else {
+    var currentTitle = subPageTitles[state.profileSubTab] || "";
+    var currentContent = subPageContent[state.profileSubTab] || "";
+    root.innerHTML = `
+    <div class="profile-main profile-subpage">
+      <header class="profile-subpage-header">
+        <button type="button" class="profile-back-btn" id="profile-back-btn" aria-label="Назад"><span class="material-symbols-outlined">arrow_back</span></button>
+        <h2 class="profile-subpage-title">${escapeHtml(currentTitle)}</h2>
+      </header>
+      <div class="profile-content-area profile-subpage-content" id="profile-content-area">
+        ${currentContent}
+      </div>
+    </div>
+  `;
+    var backBtn = document.getElementById("profile-back-btn");
+    if (backBtn) backBtn.addEventListener("click", function() { state.profileSubTab = "general"; renderProfile(); });
   }
-  var initialTabId = state.profileSubTab === "general" ? "content-general" : state.profileSubTab === "person" ? "content-person" : state.profileSubTab === "bmi" ? "content-bmi" : state.profileSubTab === "water" ? "content-water" : "content-stats";
-  showProfileTabContent(initialTabId);
 
   var gaugeEl = document.getElementById("profile-bmi-gauge");
   if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
@@ -1102,14 +1109,6 @@ function renderProfile() {
   var waterCalcBtn = root.querySelector("#profile-water-calc-btn");
   if (waterCalcBtn) waterCalcBtn.addEventListener("click", function() { openWaterFlow(); });
   initHeightRuler(root);
-  var profileRadios = root.querySelectorAll('input[name="profile-tabs"]');
-  profileRadios.forEach(function(r) {
-    r.addEventListener("change", function() {
-      var contentId = r.id === "tab-general" ? "content-general" : r.id === "tab-person" ? "content-person" : r.id === "tab-bmi" ? "content-bmi" : r.id === "tab-water" ? "content-water" : "content-stats";
-      state.profileSubTab = r.id === "tab-general" ? "general" : r.id === "tab-person" ? "person" : r.id === "tab-bmi" ? "bmi" : r.id === "tab-water" ? "water" : "stats";
-      showProfileTabContent(contentId);
-    });
-  });
 }
 
 function initHeightRuler(container) {
@@ -1308,9 +1307,29 @@ async function runWaterCalculate(useGeo, city, country, countryCode) {
   }
 }
 
+function showInfoPopup(title, message) {
+  var backdrop = $("#info-popup-backdrop");
+  var titleEl = $("#info-popup-title");
+  var messageEl = $("#info-popup-message");
+  var okBtn = $("#info-popup-ok");
+  if (!backdrop) return;
+  if (titleEl) titleEl.textContent = title || "";
+  if (messageEl) messageEl.textContent = message || "";
+  backdrop.classList.remove("hidden");
+  function close() {
+    backdrop.classList.add("hidden");
+  }
+  if (okBtn) okBtn.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); close(); };
+  backdrop.onclick = function(ev) {
+    if (ev.target === backdrop) { ev.preventDefault(); close(); }
+  };
+  var dialog = backdrop.querySelector(".info-popup-dialog");
+  if (dialog) dialog.onclick = function(ev) { ev.stopPropagation(); };
+}
+
 function showProfileHelpBmi() {
   var text = "ИМТ = вес (кг) / рост² (м). Оценка по ВОЗ: <18.5 — недостаток веса; 18.5–24.9 — норма; 25–29.9 — избыточный вес; ≥30 — ожирение. Идеальный диапазон веса — вес при ИМТ 18.5–24.9 для вашего роста. Идеальный ИМТ по формуле Девина (пол и рост) — золотой стандарт в клинической практике.";
-  if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
+  showInfoPopup("Справка ИМТ", text);
 }
 function showWaterHelp() {
   var text = "Вода (л) = (Вес_кг × 30 мл) + (Активность_мин × 15 мл) + климатическая поправка (ВОЗ/Mayo). 15 мл/мин — коэффициент потери жидкости при умеренной активности (MyFitnessPal, WaterMinder, Samsung Health).";

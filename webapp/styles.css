@@ -277,8 +277,6 @@ body {
 }
 
 .tab-content {
-  display: flex;
-  flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow-x: hidden;
@@ -299,12 +297,10 @@ body {
   display: block;
   animation: fadeIn 0.2s ease;
 }
-#panel-profile.tab-panel.active {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+
+.tab-panel.active {
+  display: block;
+  animation: fadeIn 0.2s ease;
 }
 
 @keyframes fadeIn {
@@ -995,42 +991,27 @@ body.reorder-mode .swipe-row-actions {
   margin-bottom: 12px;
 }
 
-/* Профиль: каждая вкладка на всю высоту экрана, навигация сверху */
+/* Профиль */
 .profile-view {
   font-size: 14px;
   color: var(--muted);
   min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  overflow-x: hidden;
+  padding-top: 0;
+  margin-top: 0;
 }
 #panel-profile.profile-tab-panel {
-  display: flex;
+  display: block;
+}
+/* Выравнивание контента профиля по уровню заголовка/контента других панелей (panel-header + контент) */
+.profile-view {
+  padding-top: 29px;
 }
 .profile-view .profile-main {
-  margin: 0;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.profile-content-wrapper {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  margin-top: 0;
 }
 .profile-content-area {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  min-height: calc(100vh - 220px);
 }
 
 .profile-avatar {
@@ -1216,10 +1197,9 @@ body.reorder-mode .swipe-row-actions {
   gap: 0;
   background: var(--surface-2);
   border-bottom: 1px solid var(--muted-strong);
-  padding: 0;
 }
 .profile-identity {
-  padding: 10px 14px;
+  padding: 16px 20px;
   text-align: center;
   flex-shrink: 0;
   color: var(--text);
@@ -1234,20 +1214,20 @@ body.reorder-mode .swipe-row-actions {
 .profile-identity .profile-avatar {
   margin-left: auto;
   margin-right: auto;
-  margin-bottom: 4px;
-  width: 40px;
-  height: 40px;
-  font-size: 18px;
+  margin-bottom: 8px;
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
 }
 .profile-identity .profile-name {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  margin: 0 0 0;
+  margin: 0 0 2px;
   color: var(--text);
 }
 .profile-age {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
 }
 .vertical-tabs {
@@ -1258,7 +1238,7 @@ body.reorder-mode .swipe-row-actions {
   align-items: center;
   gap: 4px;
   min-height: 0;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border: none;
 }
 .vertical-tabs .profile-tab-radio,
@@ -1268,17 +1248,17 @@ body.reorder-mode .swipe-row-actions {
 .vertical-tabs .profile-subtab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 10px 14px;
   color: var(--muted);
   background: transparent;
   border: none;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   margin: 0;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 .vertical-tabs .profile-subtab ~ .profile-subtab {
   border-top: none;
@@ -1297,19 +1277,88 @@ body.reorder-mode .swipe-row-actions {
   background: var(--accent-soft);
   font-weight: 600;
   position: relative;
-  padding-left: 14px;
+  padding-left: 18px;
+}
+.vertical-tabs .profile-subtab-current {
+  color: var(--text);
+  background: var(--accent-soft);
+  font-weight: 600;
+  padding-left: 18px;
+  cursor: default;
+}
+.vertical-tabs .profile-subtab-link {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  margin: 0;
+}
+.vertical-tabs .profile-subtab-link:hover {
+  background: var(--bg-card);
+  color: var(--text);
 }
 .profile-content-area {
   flex: 1;
   width: 100%;
   min-width: 0;
-  padding: 20px 16px 24px;
+  padding: 24px;
   background: var(--bg-card);
+  overflow: auto;
+}
+/* Подстраницы профиля (Человек, ИМТ, Вода, Статистика) — без блока вкладок, только шапка с «Назад» и контент */
+.profile-main.profile-subpage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.profile-subpage-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--muted-strong);
+}
+.profile-back-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.profile-back-btn:hover,
+.profile-back-btn:focus {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.profile-back-btn .material-symbols-outlined {
+  font-size: 24px;
+}
+.profile-subpage-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.profile-subpage-content {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  overflow-x: hidden;
 }
 .profile-tab-content {
-  display: none;
+  display: block;
   padding: 0;
   background: transparent;
   min-width: 0;
