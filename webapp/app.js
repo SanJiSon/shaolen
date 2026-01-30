@@ -2364,10 +2364,14 @@ function bindEvents() {
       } catch (err) { if (tg) tg.showAlert("Ошибка"); }
       return;
     }
-    if (cb.classList && cb.classList.contains("goal-done-cb") && cb.checked) {
+    if (cb.classList && cb.classList.contains("goal-done-cb")) {
       e.preventDefault();
       try {
-        await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/complete", { method: "POST" });
+        if (cb.checked) {
+          await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/complete", { method: "POST" });
+        } else {
+          await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/uncomplete", { method: "POST" });
+        }
         await loadAll();
       } catch (err) { if (tg) tg.showAlert("Ошибка"); }
       return;
