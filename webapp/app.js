@@ -718,8 +718,8 @@ function renderProfile() {
             <div class="profile-stepper-card">
               <span class="profile-stepper-value" id="profile-age-value">${age != null ? age : "—"}</span>
               <div class="profile-stepper-btns">
-                <button type="button" class="profile-stepper-btn" id="profile-age-minus" aria-label="Уменьшить">−</button>
-                <button type="button" class="profile-stepper-btn" id="profile-age-plus" aria-label="Увеличить">+</button>
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-age-minus" aria-label="Уменьшить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-down">arrow_drop_down_circle</span></button>
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-age-plus" aria-label="Увеличить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-up">arrow_drop_down_circle</span></button>
               </div>
             </div>
           </div>
@@ -911,7 +911,7 @@ function initHeightRuler(container) {
   if (!scaleEl || !sliderEl || !valueEl || !hiddenEl || !trackEl) return;
   var minH = 100;
   var maxH = 220;
-  var pixelsPerCm = 12;
+  var pixelsPerCm = 10;
   function buildScale() {
     scaleEl.innerHTML = "";
     for (var i = minH; i <= maxH; i++) {
