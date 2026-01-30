@@ -329,6 +329,39 @@ body {
 
 .tab-panel.analytics-panel > h2 { margin-bottom: 10px; }
 
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.panel-edit-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.panel-edit-btn:hover,
+.panel-edit-btn:focus {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.panel-edit-btn .panel-edit-btn-icon {
+  font-size: 22px;
+}
+
 .panel-header .primary-btn,
 .panel-header .add-btn {
   flex-shrink: 0;
@@ -535,6 +568,7 @@ body {
   min-width: 0;
 }
 
+/* Ручка перетаскивания подцели видна только в режиме редактирования порядка */
 .subgoal-drag-handle {
   flex-shrink: 0;
   padding: 4px 6px;
@@ -542,6 +576,12 @@ body {
   color: var(--muted);
   font-size: 14px;
   user-select: none;
+  display: none;
+}
+
+body.reorder-mode .subgoal-drag-handle {
+  display: flex;
+  align-items: center;
 }
 
 .subgoal-drag-handle:active {
@@ -628,15 +668,20 @@ body.drag-active {
   user-select: none;
 }
 
+/* Ручки перетаскивания видны только в режиме редактирования порядка */
 .swipe-row-drag-handle {
   flex-shrink: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 0 8px;
   cursor: grab;
   color: var(--muted);
   touch-action: none;
+}
+
+body.reorder-mode .swipe-row-drag-handle {
+  display: flex;
 }
 
 .swipe-row-drag-handle:active {
@@ -694,6 +739,12 @@ body.drag-active {
 
 /* Скрыть кнопку «Удалить» при перетаскивании подцелей внутри карточки */
 .swipe-row.subgoal-dragging .swipe-row-actions {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* В режиме перетаскивания скрыть кнопки «Удалить», чтобы не дёргались */
+body.reorder-mode .swipe-row-actions {
   visibility: hidden;
   pointer-events: none;
 }

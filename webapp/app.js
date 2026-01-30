@@ -38,7 +38,8 @@ const state = {
   sortableMissions: null,
   sortableGoals: null,
   sortableHabits: null,
-  sortableSubgoals: []
+  sortableSubgoals: [],
+  reorderMode: false
 };
 
 function initUser() {
@@ -2417,7 +2418,8 @@ function bindEvents() {
     }
 
     var subgoalRow = e.target.closest(".subgoal-row");
-    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest(".subgoal-cb-wrap")) {
+    /* Открывать редактирование при клике по подцели, кроме чекбокса и ручки перетаскивания */
+    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest("input.subgoal-done-cb")) {
       e.preventDefault();
       e.stopPropagation();
       var subgoalId = subgoalRow.dataset.id;
@@ -2432,6 +2434,7 @@ function bindEvents() {
         if (subgoal) break;
       }
       if (subgoal) {
+        if (tg && tg.MainButton) tg.MainButton.hide();
         openDialog({
           title: "Редактировать подцель",
           initialValues: { title: subgoal.title || "", description: subgoal.description || "" },
@@ -2444,8 +2447,8 @@ function bindEvents() {
             await loadAll();
           }
         });
+        return;
       }
-      return;
     }
 
     var content = e.target.closest(".swipe-row-content");
@@ -2505,6 +2508,25 @@ function bindEvents() {
         }
       }
     }
+  });
+
+  function updateReorderModeUI() {
+    document.body.classList.toggle("reorder-mode", state.reorderMode);
+    $all(".panel-edit-btn").forEach(function(btn) {
+      var icon = btn.querySelector(".panel-edit-btn-icon");
+      if (icon) icon.textContent = state.reorderMode ? "check" : "reorder";
+      btn.setAttribute("aria-label", state.reorderMode ? "Готово" : "Режим перетаскивания");
+      btn.setAttribute("title", state.reorderMode ? "Готово" : "Режим перетаскивания");
+    });
+  }
+
+  $all(".panel-edit-btn").forEach(function(btn) {
+    btn.addEventListener("click", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.reorderMode = !state.reorderMode;
+      updateReorderModeUI();
+    });
   });
 
   var addMissionBtn = $("#add-mission-btn");

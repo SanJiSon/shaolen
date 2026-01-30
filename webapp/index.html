@@ -59,21 +59,30 @@
         <section id="panel-missions" class="tab-panel active" role="tabpanel">
           <div class="panel-header">
             <h2>Миссии</h2>
-            <button type="button" id="add-mission-btn" class="primary-btn add-btn" aria-label="Добавить миссию">+ Добавить</button>
+            <div class="panel-header-actions">
+              <button type="button" class="panel-edit-btn icon-btn" data-panel="missions" aria-label="Режим перетаскивания" title="Режим перетаскивания"><span class="material-symbols-outlined panel-edit-btn-icon">reorder</span></button>
+              <button type="button" id="add-mission-btn" class="primary-btn add-btn" aria-label="Добавить миссию">+ Добавить</button>
+            </div>
           </div>
           <div id="missions-list" class="cards"></div>
         </section>
         <section id="panel-goals" class="tab-panel" role="tabpanel">
           <div class="panel-header">
             <h2>Цели</h2>
-            <button type="button" id="add-goal-btn" class="primary-btn add-btn" aria-label="Добавить цель">+ Добавить</button>
+            <div class="panel-header-actions">
+              <button type="button" class="panel-edit-btn icon-btn" data-panel="goals" aria-label="Режим перетаскивания" title="Режим перетаскивания"><span class="material-symbols-outlined panel-edit-btn-icon">reorder</span></button>
+              <button type="button" id="add-goal-btn" class="primary-btn add-btn" aria-label="Добавить цель">+ Добавить</button>
+            </div>
           </div>
           <div id="goals-list" class="cards"></div>
         </section>
         <section id="panel-habits" class="tab-panel" role="tabpanel">
           <div class="panel-header">
             <h2>Привычки</h2>
-            <button type="button" id="add-habit-btn" class="primary-btn add-btn" aria-label="Добавить привычку">+ Добавить</button>
+            <div class="panel-header-actions">
+              <button type="button" class="panel-edit-btn icon-btn" data-panel="habits" aria-label="Режим перетаскивания" title="Режим перетаскивания"><span class="material-symbols-outlined panel-edit-btn-icon">reorder</span></button>
+              <button type="button" id="add-habit-btn" class="primary-btn add-btn" aria-label="Добавить привычку">+ Добавить</button>
+            </div>
           </div>
           <div id="habits-list" class="cards"></div>
         </section>
