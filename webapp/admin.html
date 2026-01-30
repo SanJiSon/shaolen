@@ -51,6 +51,9 @@
     .user-data-modal .modal-header { padding: 14px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
     .user-data-modal .modal-body { padding: 16px; overflow-y: auto; font-size: 13px; }
     .user-data-modal .modal-body h3 { margin: 12px 0 6px; font-size: 14px; color: #94a3b8; }
+    .user-data-modal .user-data-profile { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #334155; }
+    .user-data-modal .user-data-profile h3 { margin-top: 0; }
+    .user-data-modal .user-data-profile p { margin: 6px 0; font-size: 13px; }
     .user-data-modal .modal-body ul { margin: 0; padding-left: 20px; }
     .user-data-modal .modal-body li { margin: 4px 0; }
     .user-data-modal .modal-close { background: #334155; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
@@ -283,6 +286,12 @@
           q('#user-data-modal').style.display = 'flex';
           api('/api/admin/users/' + uid + '/data').then(function(data) {
             var html = '';
+            var p = data.profile || {};
+            html += '<div class="user-data-profile">';
+            html += '<h3>Профиль</h3>';
+            html += '<p><strong>Рост:</strong> ' + (p.height != null ? escapeHtml(p.height) + ' см' : '—') + ' &nbsp; <strong>Вес:</strong> ' + (p.weight != null ? escapeHtml(p.weight) + ' кг' : '—') + ' &nbsp; <strong>Возраст:</strong> ' + (p.age != null ? escapeHtml(p.age) + ' лет' : '—') + '</p>';
+            html += '<p><strong>ИМТ:</strong> ' + (p.bmi != null ? escapeHtml(p.bmi) : '—') + (p.bmi_category ? ' &nbsp; <strong>Категория:</strong> ' + escapeHtml(p.bmi_category) : '') + '</p>';
+            html += '</div>';
             html += '<h3>Миссии (' + (data.missions && data.missions.length) + ')</h3><ul>';
             (data.missions || []).forEach(function(m) { html += '<li>' + escapeHtml(m.title || '—') + (m.is_completed ? ' <em>завершена</em>' : '') + '</li>'; });
             html += '</ul>';
