@@ -35,6 +35,10 @@ const state = {
   capsuleHistory: [],
   lastWaterResult: null,
   profileSubTab: "general", // "general" | "person" | "bmi" | "water" | "stats"
+  sortableMissions: null,
+  sortableGoals: null,
+  sortableHabits: null,
+  sortableSubgoals: []
 };
 
 function initUser() {
@@ -344,6 +348,10 @@ function setupSwipeDelete(container) {
 
 function renderMissions(missions) {
   var root = $("#missions-list");
+  if (state.sortableMissions) {
+    state.sortableMissions.destroy();
+    state.sortableMissions = null;
+  }
   root.innerHTML = "";
 
   if (!missions || missions.length === 0) {
@@ -385,6 +393,13 @@ function renderMissions(missions) {
   setupSortableMissions(root);
 }
 
+function resetSwipeState(el) {
+  if (!el) return;
+  var content = el.querySelector(".swipe-row-content");
+  if (content) content.style.transform = "";
+  el.classList.remove("swiped");
+}
+
 function createSortableCommon(listEl, options) {
   if (typeof Sortable === "undefined") return null;
   var userOnEnd = options.onEnd;
@@ -397,23 +412,32 @@ function createSortableCommon(listEl, options) {
   return new Sortable(listEl, Object.assign({
     animation: 150,
     dataIdAttr: "data-id",
+    draggable: ".swipe-row",
     forceFallback: true,
     fallbackOnBody: true,
     swapThreshold: 0.65,
-    onStart: function() {
+    chosenClass: "sortable-chosen",
+    ghostClass: "sortable-ghost",
+    onStart: function(evt) {
       window._sortableDragging = true;
+      resetSwipeState(evt.item);
       document.body.classList.add("drag-active");
       var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
       if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + "px";
+    },
+    onClone: function(evt) {
+      resetSwipeState(evt.clone);
     }
   }, options));
 }
 
 function setupSortableSubgoals(container) {
   if (!container || typeof Sortable === "undefined") return;
+  state.sortableSubgoals.forEach(function(s) { if (s && s.destroy) s.destroy(); });
+  state.sortableSubgoals = [];
   container.querySelectorAll(".subgoals-list[data-mission-id]").forEach(function(list) {
     var missionId = list.dataset.missionId;
-    createSortableCommon(list, {
+    var sortable = createSortableCommon(list, {
       handle: ".subgoal-drag-handle",
       onEnd: function(evt) {
         var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
@@ -422,12 +446,13 @@ function setupSortableSubgoals(container) {
         }
       }
     });
+    if (sortable) state.sortableSubgoals.push(sortable);
   });
 }
 
 function setupSortableMissions(container) {
   if (!container || !state.userId || typeof Sortable === "undefined") return;
-  createSortableCommon(container, {
+  state.sortableMissions = createSortableCommon(container, {
     handle: ".swipe-row-drag-handle",
     onEnd: function(evt) {
       var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
@@ -440,6 +465,10 @@ function setupSortableMissions(container) {
 
 function renderGoals(goals) {
   var root = $("#goals-list");
+  if (state.sortableGoals) {
+    state.sortableGoals.destroy();
+    state.sortableGoals = null;
+  }
   root.innerHTML = "";
 
   if (!goals || goals.length === 0) {
@@ -473,7 +502,7 @@ function renderGoals(goals) {
 
 function setupSortableGoals(container) {
   if (!container || !state.userId || typeof Sortable === "undefined") return;
-  createSortableCommon(container, {
+  state.sortableGoals = createSortableCommon(container, {
     handle: ".swipe-row-drag-handle",
     onEnd: function(evt) {
       var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
@@ -486,7 +515,7 @@ function setupSortableGoals(container) {
 
 function setupSortableHabits(container) {
   if (!container || !state.userId || typeof Sortable === "undefined") return;
-  createSortableCommon(container, {
+  state.sortableHabits = createSortableCommon(container, {
     handle: ".swipe-row-drag-handle",
     onEnd: function(evt) {
       var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
@@ -499,6 +528,10 @@ function setupSortableHabits(container) {
 
 function renderHabits(habits) {
   const root = $("#habits-list");
+  if (state.sortableHabits) {
+    state.sortableHabits.destroy();
+    state.sortableHabits = null;
+  }
   root.innerHTML = "";
 
   if (!habits || habits.length === 0) {
