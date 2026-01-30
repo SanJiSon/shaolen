@@ -1021,6 +1021,8 @@ body {
   text-align: center;
   flex-shrink: 0;
   color: var(--text);
+  border: none;
+  border-bottom: none;
 }
 .profile-identity-content {
   display: flex;
@@ -1048,6 +1050,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  border: none;
+  border-top: none;
 }
 .vertical-tabs .profile-tab-radio,
 .vertical-tabs input[type="radio"] {
@@ -1062,15 +1066,15 @@ body {
   color: var(--muted);
   background: transparent;
   border: none;
-  border-top: 1px solid var(--muted-strong);
+  border-top: none;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   text-align: left;
   font-size: 15px;
   margin: 0;
 }
-.vertical-tabs .profile-subtab:first-of-type {
-  border-top: none;
+.vertical-tabs .profile-subtab ~ .profile-subtab {
+  border-top: 1px solid var(--muted-strong);
 }
 .vertical-tabs .profile-subtab:hover {
   background: var(--bg-card);
@@ -1095,6 +1099,7 @@ body {
   padding: 24px;
   background: var(--bg-card);
   overflow: auto;
+  align-self: stretch;
 }
 .profile-tab-content {
   display: none;

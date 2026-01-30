@@ -18,7 +18,7 @@ const state = {
   capsuleView: "main",
   capsuleHistory: [],
   lastWaterResult: null,
-  profileSubTab: "person", // "person" | "bmi" | "water" | "stats"
+  profileSubTab: "general", // "general" | "person" | "bmi" | "water" | "stats"
 };
 
 function initUser() {
@@ -664,10 +664,12 @@ function renderProfile() {
   var selectedCountry = (p.country || "").trim() ? escapeHtml((p.country || "").trim()) : "";
 
   if (state.profileSubTab === "bmi-water") state.profileSubTab = "bmi";
+  if (!["general", "person", "bmi", "water", "stats"].includes(state.profileSubTab)) state.profileSubTab = "general";
   var hasWeightData = (currentWeight != null || weight) && heightM;
   var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
   var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
   var ageText = age != null ? age + " лет" : "";
+  var generalChecked = state.profileSubTab === "general" ? " checked" : "";
   var personChecked = state.profileSubTab === "person" ? " checked" : "";
   var bmiChecked = state.profileSubTab === "bmi" ? " checked" : "";
   var waterChecked = state.profileSubTab === "water" ? " checked" : "";
@@ -794,7 +796,7 @@ function renderProfile() {
     </div>
   `;
 
-  var widgetsRowHtml = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "";
+  var contentGeneral = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p>";
   root.innerHTML = `
     <div class="profile-main">
       <div class="profile-main-row">
@@ -809,6 +811,8 @@ function renderProfile() {
                 </div>
               </div>
               <div class="vertical-tabs">
+                <input type="radio" id="tab-general" name="profile-tabs" class="profile-tab-radio"${generalChecked}>
+                <label for="tab-general" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</label>
                 <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
                 <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
                 <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
@@ -819,7 +823,8 @@ function renderProfile() {
                 <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
               </div>
             </div>
-            <div class="profile-content-area">
+            <div class="profile-content-area" id="profile-content-area">
+              <section id="content-general" class="profile-tab-content">${contentGeneral}</section>
               <section id="content-person" class="profile-tab-content">${contentPerson}</section>
               <section id="content-bmi" class="profile-tab-content">${contentBmi}</section>
               <section id="content-water" class="profile-tab-content">${contentWater}</section>
@@ -829,17 +834,19 @@ function renderProfile() {
         </div>
       </div>
     </div>
-    ${widgetsRowHtml}
   `;
 
   function showProfileTabContent(tabId) {
-    var ids = ["content-person", "content-bmi", "content-water", "content-stats"];
+    var ids = ["content-general", "content-person", "content-bmi", "content-water", "content-stats"];
     ids.forEach(function(id) {
       var el = document.getElementById(id);
       if (el) el.style.display = id === tabId ? "block" : "none";
     });
+    var area = document.getElementById("profile-content-area");
+    if (area) area.scrollTop = 0;
   }
-  showProfileTabContent(state.profileSubTab === "person" ? "content-person" : state.profileSubTab === "bmi" ? "content-bmi" : state.profileSubTab === "water" ? "content-water" : "content-stats");
+  var initialTabId = state.profileSubTab === "general" ? "content-general" : state.profileSubTab === "person" ? "content-person" : state.profileSubTab === "bmi" ? "content-bmi" : state.profileSubTab === "water" ? "content-water" : "content-stats";
+  showProfileTabContent(initialTabId);
 
   var gaugeEl = document.getElementById("profile-bmi-gauge");
   if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
@@ -933,8 +940,8 @@ function renderProfile() {
   var profileRadios = root.querySelectorAll('input[name="profile-tabs"]');
   profileRadios.forEach(function(r) {
     r.addEventListener("change", function() {
-      var contentId = r.id === "tab-person" ? "content-person" : r.id === "tab-bmi" ? "content-bmi" : r.id === "tab-water" ? "content-water" : "content-stats";
-      state.profileSubTab = r.id === "tab-person" ? "person" : r.id === "tab-bmi" ? "bmi" : r.id === "tab-water" ? "water" : "stats";
+      var contentId = r.id === "tab-general" ? "content-general" : r.id === "tab-person" ? "content-person" : r.id === "tab-bmi" ? "content-bmi" : r.id === "tab-water" ? "content-water" : "content-stats";
+      state.profileSubTab = r.id === "tab-general" ? "general" : r.id === "tab-person" ? "person" : r.id === "tab-bmi" ? "bmi" : r.id === "tab-water" ? "water" : "stats";
       showProfileTabContent(contentId);
     });
   });
