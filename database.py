@@ -125,6 +125,11 @@ class Database:
                 await db.execute("ALTER TABLE habits ADD COLUMN is_water_calculated INTEGER DEFAULT 0")
             except Exception:
                 pass
+            for tbl, col in [("subgoals", "sort_order"), ("goals", "sort_order"), ("habits", "sort_order")]:
+                try:
+                    await db.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} INTEGER")
+                except Exception:
+                    pass
 
             # Таблица записей привычек (трекинг выполнения)
             await db.execute("""
@@ -429,23 +434,41 @@ class Database:
     async def add_subgoal(self, mission_id: int, title: str, description: str = "") -> int:
         """Добавление подцели к миссии"""
         async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM subgoals WHERE mission_id = ?",
+                (mission_id,)
+            ) as c:
+                row = await c.fetchone()
+                sort_order = row[0] if row and row[0] is not None else 0
             cursor = await db.execute(
-                "INSERT INTO subgoals (mission_id, title, description) VALUES (?, ?, ?)",
-                (mission_id, title, description)
+                "INSERT INTO subgoals (mission_id, title, description, sort_order) VALUES (?, ?, ?, ?)",
+                (mission_id, title, description, sort_order)
             )
             await db.commit()
             return cursor.lastrowid
 
     async def get_subgoals(self, mission_id: int) -> List[Dict]:
-        """Получение всех подцелей миссии"""
+        """Получение всех подцелей миссии (по sort_order, затем по id)."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM subgoals WHERE mission_id = ? ORDER BY created_at ASC",
+                "SELECT * FROM subgoals WHERE mission_id = ? ORDER BY COALESCE(sort_order, 999999), id ASC",
                 (mission_id,)
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def set_subgoals_order(self, mission_id: int, subgoal_ids: List[int]) -> None:
+        """Установить порядок подцелей (список id в нужном порядке)."""
+        if not subgoal_ids:
+            return
+        async with aiosqlite.connect(self.db_path) as db:
+            for i, sg_id in enumerate(subgoal_ids):
+                await db.execute(
+                    "UPDATE subgoals SET sort_order = ? WHERE id = ? AND mission_id = ?",
+                    (i, sg_id, mission_id)
+                )
+            await db.commit()
 
     async def get_subgoal(self, subgoal_id: int) -> Optional[Dict]:
         """Получение подцели по ID"""
@@ -464,6 +487,15 @@ class Database:
             )
             await db.commit()
 
+    async def uncomplete_subgoal(self, subgoal_id: int):
+        """Снять отметку выполнения подцели"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE subgoals SET is_completed = 0, completed_at = NULL WHERE id = ?",
+                (subgoal_id,)
+            )
+            await db.commit()
+
     async def delete_subgoal(self, subgoal_id: int):
         """Удаление подцели"""
         async with aiosqlite.connect(self.db_path) as db:
@@ -475,24 +507,42 @@ class Database:
                       deadline: Optional[str] = None, priority: int = 1, is_example: int = 0) -> int:
         """Добавление цели. is_example=1 — предустановленный пример."""
         async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goals WHERE user_id = ?",
+                (user_id,)
+            ) as c:
+                row = await c.fetchone()
+                sort_order = row[0] if row and row[0] is not None else 0
             cursor = await db.execute(
-                "INSERT INTO goals (user_id, title, description, deadline, priority, is_example) VALUES (?, ?, ?, ?, ?, ?)",
-                (user_id, title, description, deadline, priority, 1 if is_example else 0)
+                "INSERT INTO goals (user_id, title, description, deadline, priority, is_example, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, title, description, deadline, priority, 1 if is_example else 0, sort_order)
             )
             await db.commit()
             return cursor.lastrowid
 
     async def get_goals(self, user_id: int, include_completed: bool = False) -> List[Dict]:
-        """Получение всех целей пользователя"""
+        """Получение всех целей пользователя (по sort_order, затем priority, created_at)."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM goals WHERE user_id = ?"
             if not include_completed:
                 query += " AND is_completed = 0"
-            query += " ORDER BY priority DESC, created_at DESC"
+            query += " ORDER BY COALESCE(sort_order, 999999), priority DESC, created_at DESC"
             async with db.execute(query, (user_id,)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def set_goals_order(self, user_id: int, goal_ids: List[int]) -> None:
+        """Установить порядок целей (список id в нужном порядке)."""
+        if not goal_ids:
+            return
+        async with aiosqlite.connect(self.db_path) as db:
+            for i, gid in enumerate(goal_ids):
+                await db.execute(
+                    "UPDATE goals SET sort_order = ? WHERE id = ? AND user_id = ?",
+                    (i, gid, user_id)
+                )
+            await db.commit()
 
     async def get_goal(self, goal_id: int) -> Optional[Dict]:
         """Получение цели по ID"""
@@ -533,9 +583,15 @@ class Database:
     async def add_habit(self, user_id: int, title: str, description: str = "", is_example: int = 0, is_water_calculated: int = 0) -> int:
         """Добавление привычки. is_example=1 — пример; is_water_calculated=1 — рассчитана автоматически (вода)."""
         async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM habits WHERE user_id = ?",
+                (user_id,)
+            ) as c:
+                row = await c.fetchone()
+                sort_order = row[0] if row and row[0] is not None else 0
             cursor = await db.execute(
-                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated) VALUES (?, ?, ?, ?, ?)",
-                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0)
+                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0, sort_order)
             )
             await db.commit()
             return cursor.lastrowid
@@ -574,10 +630,22 @@ class Database:
             """
             if active_only:
                 query += " AND h.is_active = 1"
-            query += " ORDER BY h.created_at DESC"
+            query += " ORDER BY COALESCE(h.sort_order, 999999), h.created_at DESC"
             async with db.execute(query, (today, user_id)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def set_habits_order(self, user_id: int, habit_ids: List[int]) -> None:
+        """Установить порядок привычек (список id в нужном порядке)."""
+        if not habit_ids:
+            return
+        async with aiosqlite.connect(self.db_path) as db:
+            for i, hid in enumerate(habit_ids):
+                await db.execute(
+                    "UPDATE habits SET sort_order = ? WHERE id = ? AND user_id = ?",
+                    (i, hid, user_id)
+                )
+            await db.commit()
 
     async def toggle_habit_record(self, habit_id: int, date: str) -> bool:
         """Переключение выполнения привычки на дату (возвращает True если выполнена)"""

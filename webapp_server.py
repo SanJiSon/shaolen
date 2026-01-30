@@ -114,6 +114,18 @@ class SubgoalCreate(BaseModel):
     description: Optional[str] = ""
 
 
+class SubgoalsOrderBody(BaseModel):
+    subgoal_ids: List[int]
+
+
+class GoalsOrderBody(BaseModel):
+    goal_ids: List[int]
+
+
+class HabitsOrderBody(BaseModel):
+    habit_ids: List[int]
+
+
 class GoalCreate(BaseModel):
     user_id: int
     title: str
@@ -383,10 +395,26 @@ async def api_complete_subgoal(subgoal_id: int):
     return JSONResponse(content=_row_to_json(subgoal) or {})
 
 
+@app.post("/api/subgoals/{subgoal_id}/uncomplete")
+async def api_uncomplete_subgoal(subgoal_id: int):
+    """Снять отметку выполнения подцели"""
+    await db.uncomplete_subgoal(subgoal_id)
+    subgoal = await db.get_subgoal(subgoal_id)
+    return JSONResponse(content=_row_to_json(subgoal) or {})
+
+
 @app.delete("/api/subgoals/{subgoal_id}")
 async def api_delete_subgoal(subgoal_id: int):
     """Удалить подцель"""
     await db.delete_subgoal(subgoal_id)
+    return JSONResponse(content={"ok": True})
+
+
+@app.put("/api/mission/{mission_id}/subgoals/order")
+async def api_set_subgoals_order(mission_id: int, payload: SubgoalsOrderBody):
+    """Изменить порядок подцелей миссии (перетаскивание)."""
+    if payload.subgoal_ids:
+        await db.set_subgoals_order(mission_id, payload.subgoal_ids)
     return JSONResponse(content={"ok": True})
 
 
@@ -409,6 +437,14 @@ async def api_get_subgoals(mission_id: int):
     except Exception as e:
         logger.error(f"Ошибка получения подцелей для миссии {mission_id}: {e}", exc_info=True)
         return JSONResponse(content=[])
+
+
+@app.put("/api/user/{user_id}/goals/order")
+async def api_set_goals_order(user_id: int, payload: GoalsOrderBody):
+    """Изменить порядок целей (перетаскивание)."""
+    if payload.goal_ids:
+        await db.set_goals_order(user_id, payload.goal_ids)
+    return JSONResponse(content={"ok": True})
 
 
 @app.get("/api/user/{user_id}/goals", response_model=None)
@@ -464,6 +500,14 @@ async def api_update_goal(goal_id: int, payload: GoalUpdate):
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
     return JSONResponse(content=_row_to_json(goal))
+
+
+@app.put("/api/user/{user_id}/habits/order")
+async def api_set_habits_order(user_id: int, payload: HabitsOrderBody):
+    """Изменить порядок привычек (перетаскивание)."""
+    if payload.habit_ids:
+        await db.set_habits_order(user_id, payload.habit_ids)
+    return JSONResponse(content={"ok": True})
 
 
 @app.get("/api/user/{user_id}/habits", response_model=None)
