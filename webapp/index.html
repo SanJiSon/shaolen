@@ -43,6 +43,7 @@
             <h1>Твои цели</h1>
             <p class="subtitle">Миссии, цели, привычки и аналитика</p>
           </div>
+          <button type="button" id="settings-btn" class="icon-btn settings-header-btn" aria-label="Настройки" title="Настройки"><span class="material-symbols-outlined">settings</span></button>
           <button type="button" id="capsule-menu-btn" class="capsule-menu-btn" aria-label="Капсула времени" title="Капсула времени"><span class="capsule-icon-wrap"><img src="images/capsule-icon.png" alt="" class="capsule-icon-img" onerror="this.classList.add('failed')"><span class="capsule-icon-fallback">⏳</span></span></button>
         </div>
       </header>
@@ -94,6 +95,17 @@
           <div id="profile-view"></div>
         </section>
       </main>
+    </div>
+
+    <div id="settings-overlay" class="settings-overlay hidden">
+      <div class="settings-overlay-backdrop"></div>
+      <div class="settings-overlay-panel">
+        <div class="settings-overlay-header">
+          <h2>Настройки</h2>
+          <button type="button" id="settings-overlay-close" class="settings-overlay-close" aria-label="Закрыть">×</button>
+        </div>
+        <div id="settings-view" class="settings-view"></div>
+      </div>
     </div>
 
     <div id="capsule-overlay" class="capsule-overlay hidden">

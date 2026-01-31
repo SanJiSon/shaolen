@@ -224,6 +224,132 @@ body {
   color: var(--text);
 }
 
+/* Кнопка настроек в шапке */
+.settings-header-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.settings-header-btn .material-symbols-outlined {
+  font-size: 24px;
+}
+.settings-header-btn:hover,
+.settings-header-btn:active {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.app-header-row .settings-header-btn { margin-right: 8px; }
+
+/* Оверлей настроек */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.settings-overlay.hidden {
+  display: none;
+}
+.settings-overlay:not(.hidden) {
+  pointer-events: auto;
+}
+.settings-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+.settings-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 16px 24px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+}
+.settings-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--muted-strong);
+}
+.settings-overlay-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-overlay-close {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.settings-overlay-close:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.settings-view { padding-top: 8px; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--muted-strong);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-row-label { font-size: 15px; color: var(--text); }
+.settings-row-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.settings-toggle {
+  width: 52px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--muted-strong);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+}
+.settings-toggle.on { background: var(--accent, #3b82f6); }
+.settings-toggle::after {
+  content: "";
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.settings-toggle.on::after { transform: translateX(24px); }
+
 /* Вкладки — равные промежутки между названиями */
 .tabs {
   display: flex;

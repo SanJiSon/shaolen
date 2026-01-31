@@ -39,7 +39,8 @@ const state = {
   sortableGoals: null,
   sortableHabits: null,
   sortableSubgoals: [],
-  reorderMode: false
+  reorderMode: false,
+  reminderSettings: null
 };
 
 function initUser() {
@@ -572,6 +573,7 @@ function renderHabits(habits) {
   habits.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
+    const remindersOn = h.reminders_enabled !== 0;
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
@@ -581,6 +583,7 @@ function renderHabits(habits) {
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
         <div class="habit-name">${title}${exampleBadge}${waterCalcBadge}</div>
+        <button type="button" class="habit-reminder-toggle icon-btn" data-habit-id="${habitId}" data-enabled="${remindersOn ? "1" : "0"}" aria-label="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}" title="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}"><span class="material-symbols-outlined">${remindersOn ? "notifications" : "notifications_off"}</span></button>
         <div class="habit-count-wrap ${count ? '' : 'hide'}">
           <span class="habit-count-number">${count}</span>
           <span class="habit-count-unit">раз</span>
@@ -627,6 +630,28 @@ function renderHabits(habits) {
       } catch (err) {
         console.error('Ошибка счётчика:', err);
         if (tg) tg.showAlert('Ошибка при обновлении');
+      }
+    });
+  });
+  root.querySelectorAll('.habit-reminder-toggle').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const habitId = parseInt(btn.dataset.habitId);
+      const enabled = btn.dataset.enabled !== "1";
+      try {
+        await fetchJSON(state.baseUrl + "/api/habits/" + habitId + "/reminder", {
+          method: "PUT",
+          body: JSON.stringify({ enabled: enabled })
+        });
+        btn.dataset.enabled = enabled ? "1" : "0";
+        var icon = btn.querySelector(".material-symbols-outlined");
+        if (icon) icon.textContent = enabled ? "notifications" : "notifications_off";
+        btn.setAttribute("aria-label", enabled ? "Напоминания вкл" : "Напоминания выкл");
+        btn.setAttribute("title", enabled ? "Напоминания вкл" : "Напоминания выкл");
+      } catch (err) {
+        console.error("Ошибка настройки напоминаний:", err);
+        if (tg) tg.showAlert("Не удалось изменить настройку");
       }
     });
   });
@@ -2242,11 +2267,73 @@ function closeCapsuleOverlay() {
   if (ov) ov.classList.add("hidden");
 }
 
+async function loadReminderSettings() {
+  if (!state.userId) return null;
+  try {
+    var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/reminder-settings");
+    state.reminderSettings = r;
+    return r;
+  } catch (e) {
+    state.reminderSettings = { notifications_enabled: true };
+    return state.reminderSettings;
+  }
+}
+
+function renderSettings() {
+  var container = $("#settings-view");
+  if (!container) return;
+  var s = state.reminderSettings || { notifications_enabled: true };
+  var on = !!s.notifications_enabled;
+  container.innerHTML =
+    "<div class=\"settings-row\">" +
+      "<div><div class=\"settings-row-label\">Уведомления</div>" +
+      "<div class=\"settings-row-hint\">Напоминания о привычках, целях и миссиях в Telegram. Отключите, чтобы не получать сообщения от бота.</div></div>" +
+      "<button type=\"button\" class=\"settings-toggle " + (on ? "on" : "") + "\" id=\"settings-notifications-toggle\" aria-label=\"Уведомления " + (on ? "вкл" : "выкл") + "\"></button>" +
+    "</div>";
+  var toggle = $("#settings-notifications-toggle");
+  if (toggle) {
+    toggle.addEventListener("click", async function() {
+      var newVal = !toggle.classList.contains("on");
+      toggle.classList.toggle("on", newVal);
+      try {
+        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/reminder-settings", {
+          method: "PUT",
+          body: JSON.stringify({ notifications_enabled: newVal })
+        });
+        state.reminderSettings = state.reminderSettings || {};
+        state.reminderSettings.notifications_enabled = newVal;
+      } catch (e) {
+        if (tg) tg.showAlert("Не удалось сохранить настройку.");
+      }
+    });
+  }
+}
+
+function openSettingsOverlay() {
+  var ov = $("#settings-overlay");
+  if (!ov) return;
+  loadReminderSettings().then(function() {
+    renderSettings();
+    ov.classList.remove("hidden");
+  });
+}
+
+function closeSettingsOverlay() {
+  var ov = $("#settings-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
 function bindEvents() {
   var tabEls = $all(".tab");
   tabEls.forEach(function(btn) {
     btn.addEventListener("click", function() { switchTab(btn.dataset.tab); });
   });
+  var settingsBtn = document.getElementById("settings-btn");
+  if (settingsBtn) settingsBtn.addEventListener("click", openSettingsOverlay);
+  var settingsOverlayClose = document.getElementById("settings-overlay-close");
+  if (settingsOverlayClose) settingsOverlayClose.addEventListener("click", closeSettingsOverlay);
+  var settingsBackdrop = $(".settings-overlay-backdrop");
+  if (settingsBackdrop) settingsBackdrop.addEventListener("click", closeSettingsOverlay);
   var capsuleMenuBtn = document.getElementById("capsule-menu-btn");
   if (capsuleMenuBtn) capsuleMenuBtn.addEventListener("click", openCapsuleOverlay);
   var capsuleOverlayClose = document.getElementById("capsule-overlay-close");
@@ -2481,7 +2568,7 @@ function bindEvents() {
     }
 
     var content = e.target.closest(".swipe-row-content");
-    if (content && !e.target.closest(".habit-btn, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
+    if (content && !e.target.closest(".habit-btn, .habit-reminder-toggle, .habit-water-help, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
       var row = e.target.closest(".swipe-row");
       if (row) {
         var type = row.dataset.type, id = row.dataset.id;
