@@ -151,8 +151,57 @@ class Database:
             # Добавляем колонку count если её нет (для существующих БД)
             try:
                 await db.execute("ALTER TABLE habit_records ADD COLUMN count INTEGER DEFAULT 0")
-            except:
+            except Exception:
                 pass  # Колонка уже существует
+            # Время выполнения привычки в этот день (для умных напоминаний)
+            try:
+                await db.execute("ALTER TABLE habit_records ADD COLUMN completed_at TIMESTAMP")
+            except Exception:
+                pass
+
+            # Настройки умных напоминаний (глобальные для пользователя)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_reminder_settings (
+                    user_id INTEGER PRIMARY KEY,
+                    notifications_enabled INTEGER DEFAULT 1,
+                    quiet_hours_start TEXT,
+                    quiet_hours_end TEXT,
+                    reminder_intensity INTEGER DEFAULT 2,
+                    first_reminder_sent INTEGER DEFAULT 0,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+            for col, typ in [
+                ("quiet_hours_start", "TEXT"), ("quiet_hours_end", "TEXT"),
+                ("reminder_intensity", "INTEGER DEFAULT 2"), ("first_reminder_sent", "INTEGER DEFAULT 0"),
+            ]:
+                try:
+                    await db.execute(f"ALTER TABLE user_reminder_settings ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
+
+            # Включить/выключить напоминания по отдельной привычке (NULL = включено)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS habit_reminder_settings (
+                    habit_id INTEGER PRIMARY KEY,
+                    reminders_enabled INTEGER DEFAULT 1,
+                    FOREIGN KEY (habit_id) REFERENCES habits(id)
+                )
+            """)
+
+            # Лог отправленных напоминаний (чтобы не спамить)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS reminder_sent_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    habit_id INTEGER,
+                    goal_id INTEGER,
+                    mission_id INTEGER,
+                    reminder_type TEXT NOT NULL,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
 
             # Таблица аналитики
             await db.execute("""
@@ -666,10 +715,12 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             query = """
-                SELECT h.*, 
-                       COALESCE(hr.count, 0) as today_count
+                SELECT h.*,
+                       COALESCE(hr.count, 0) as today_count,
+                       COALESCE(hrs.reminders_enabled, 1) as reminders_enabled
                 FROM habits h
                 LEFT JOIN habit_records hr ON h.id = hr.habit_id AND hr.date = ?
+                LEFT JOIN habit_reminder_settings hrs ON h.id = hrs.habit_id
                 WHERE h.user_id = ?
             """
             if active_only:
@@ -734,13 +785,12 @@ class Database:
                 }
 
     async def increment_habit_count(self, habit_id: int, date: str = None) -> int:
-        """Увеличивает счетчик привычки на 1 для указанной даты (по умолчанию сегодня)"""
+        """Увеличивает счетчик привычки на 1 для указанной даты (по умолчанию сегодня). Записывает completed_at."""
         from datetime import date as dt_date
         if date is None:
             date = dt_date.today().isoformat()
-        
+        now = datetime.now()
         async with aiosqlite.connect(self.db_path) as db:
-            # Проверяем существующую запись
             async with db.execute(
                 "SELECT count FROM habit_records WHERE habit_id = ? AND date = ?",
                 (habit_id, date)
@@ -749,14 +799,14 @@ class Database:
                 if row:
                     new_count = (row[0] or 0) + 1
                     await db.execute(
-                        "UPDATE habit_records SET count = ? WHERE habit_id = ? AND date = ?",
-                        (new_count, habit_id, date)
+                        "UPDATE habit_records SET count = ?, completed = 1, completed_at = COALESCE(completed_at, ?) WHERE habit_id = ? AND date = ?",
+                        (new_count, now, habit_id, date)
                     )
                 else:
                     new_count = 1
                     await db.execute(
-                        "INSERT INTO habit_records (habit_id, date, count, completed) VALUES (?, ?, 1, 1)",
-                        (habit_id, date)
+                        "INSERT INTO habit_records (habit_id, date, count, completed, completed_at) VALUES (?, ?, 1, 1, ?)",
+                        (habit_id, date, now)
                     )
             await db.commit()
             return new_count
@@ -798,7 +848,217 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
             await db.execute("DELETE FROM habit_records WHERE habit_id = ?", (habit_id,))
+            await db.execute("DELETE FROM habit_reminder_settings WHERE habit_id = ?", (habit_id,))
             await db.commit()
+
+    # === НАСТРОЙКИ И АНАЛИТИКА УМНЫХ НАПОМИНАНИЙ ===
+
+    async def get_user_reminder_settings(self, user_id: int) -> Dict:
+        """Настройки напоминаний пользователя (по умолчанию включены)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM user_reminder_settings WHERE user_id = ?", (user_id,)
+            ) as c:
+                row = await c.fetchone()
+        if not row:
+            return {
+                "notifications_enabled": True,
+                "quiet_hours_start": None,
+                "quiet_hours_end": None,
+                "reminder_intensity": 2,
+                "first_reminder_sent": False,
+            }
+        r = dict(row)
+        return {
+            "notifications_enabled": bool(r.get("notifications_enabled", 1)),
+            "quiet_hours_start": r.get("quiet_hours_start"),
+            "quiet_hours_end": r.get("quiet_hours_end"),
+            "reminder_intensity": int(r.get("reminder_intensity") or 2),
+            "first_reminder_sent": bool(r.get("first_reminder_sent", 0)),
+        }
+
+    async def set_user_reminder_settings(
+        self,
+        user_id: int,
+        notifications_enabled: Optional[bool] = None,
+        quiet_hours_start: Optional[str] = None,
+        quiet_hours_end: Optional[str] = None,
+        reminder_intensity: Optional[int] = None,
+    ) -> None:
+        """Сохранить настройки напоминаний (None = не менять)."""
+        cur = await self.get_user_reminder_settings(user_id)
+        ne = cur["notifications_enabled"] if notifications_enabled is None else notifications_enabled
+        qs = cur["quiet_hours_start"] if quiet_hours_start is None else quiet_hours_start
+        qe = cur["quiet_hours_end"] if quiet_hours_end is None else quiet_hours_end
+        ri = cur["reminder_intensity"] if reminder_intensity is None else reminder_intensity
+        first = cur["first_reminder_sent"]
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO user_reminder_settings
+                   (user_id, notifications_enabled, quiet_hours_start, quiet_hours_end, reminder_intensity, first_reminder_sent)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                     notifications_enabled = excluded.notifications_enabled,
+                     quiet_hours_start = excluded.quiet_hours_start,
+                     quiet_hours_end = excluded.quiet_hours_end,
+                     reminder_intensity = excluded.reminder_intensity,
+                     first_reminder_sent = excluded.first_reminder_sent
+                """,
+                (user_id, 1 if ne else 0, qs, qe, ri, 1 if first else 0),
+            )
+            await db.commit()
+
+    async def set_first_reminder_sent(self, user_id: int) -> None:
+        """Отметить, что первое напоминание пользователю отправлено."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO user_reminder_settings (user_id, notifications_enabled, first_reminder_sent)
+                   VALUES (?, 1, 1) ON CONFLICT(user_id) DO UPDATE SET first_reminder_sent = 1""",
+                (user_id,),
+            )
+            await db.commit()
+
+    async def get_habit_reminder_enabled(self, habit_id: int) -> bool:
+        """Включены ли напоминания для привычки (по умолчанию да)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT reminders_enabled FROM habit_reminder_settings WHERE habit_id = ?",
+                (habit_id,),
+            ) as c:
+                row = await c.fetchone()
+        return row is None or bool(row[0])
+
+    async def set_habit_reminder_enabled(self, habit_id: int, enabled: bool) -> None:
+        """Включить/выключить напоминания для привычки."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO habit_reminder_settings (habit_id, reminders_enabled)
+                   VALUES (?, ?) ON CONFLICT(habit_id) DO UPDATE SET reminders_enabled = ?""",
+                (habit_id, 1 if enabled else 0, 1 if enabled else 0),
+            )
+            await db.commit()
+
+    async def log_reminder_sent(
+        self,
+        user_id: int,
+        reminder_type: str,
+        habit_id: Optional[int] = None,
+        goal_id: Optional[int] = None,
+        mission_id: Optional[int] = None,
+    ) -> None:
+        """Записать отправку напоминания."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO reminder_sent_log (user_id, habit_id, goal_id, mission_id, reminder_type)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, habit_id, goal_id, mission_id, reminder_type),
+            )
+            await db.commit()
+
+    async def was_reminder_sent_today(
+        self, user_id: int, habit_id: Optional[int], reminder_type: str
+    ) -> bool:
+        """Было ли уже отправлено сегодня напоминание этого типа (для привычки или общее)."""
+        from datetime import date
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            if habit_id is not None:
+                async with db.execute(
+                    """SELECT 1 FROM reminder_sent_log
+                       WHERE user_id = ? AND habit_id = ? AND reminder_type = ?
+                         AND date(sent_at) = ?""",
+                    (user_id, habit_id, reminder_type, today),
+                ) as c:
+                    row = await c.fetchone()
+            else:
+                async with db.execute(
+                    """SELECT 1 FROM reminder_sent_log
+                       WHERE user_id = ? AND reminder_type = ? AND date(sent_at) = ?""",
+                    (user_id, reminder_type, today),
+                ) as c:
+                    row = await c.fetchone()
+        return row is not None
+
+    async def was_reminder_sent_today_mission(
+        self, user_id: int, mission_id: int, reminder_type: str
+    ) -> bool:
+        """Было ли уже отправлено сегодня напоминание по миссии."""
+        from datetime import date
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                """SELECT 1 FROM reminder_sent_log
+                   WHERE user_id = ? AND mission_id = ? AND reminder_type = ? AND date(sent_at) = ?""",
+                (user_id, mission_id, reminder_type, today),
+            ) as c:
+                row = await c.fetchone()
+        return row is not None
+
+    async def get_habit_avg_completion_time(self, habit_id: int, days: int = 30) -> Optional[str]:
+        """Среднее время выполнения привычки за последние days дней (строка HH:MM или None)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                """SELECT completed_at FROM habit_records
+                   WHERE habit_id = ? AND completed_at IS NOT NULL
+                     AND date >= date('now', '-' || ? || ' days')
+                   ORDER BY date DESC""",
+                (habit_id, days),
+            ) as c:
+                rows = await c.fetchall()
+        if not rows:
+            return None
+        from datetime import datetime as dt
+        times = []
+        for (t,) in rows:
+            if t is None:
+                continue
+            try:
+                if isinstance(t, str) and " " in t:
+                    # "2025-01-26 10:30:00"
+                    times.append(dt.strptime(t[:19], "%Y-%m-%d %H:%M:%S"))
+                elif isinstance(t, str):
+                    times.append(dt.strptime(t[:5], "%H:%M") if len(t) >= 5 else None)
+            except Exception:
+                continue
+        times = [x for x in times if x is not None]
+        if not times:
+            return None
+        # Среднее время по минутам от полуночи
+        total_min = sum(t.hour * 60 + t.minute for t in times)
+        avg_min = total_min // len(times)
+        h, m = avg_min // 60, avg_min % 60
+        return f"{h:02d}:{m:02d}"
+
+    async def get_habits_not_done_today(self, user_id: int) -> List[Dict]:
+        """Список активных привычек пользователя, которые сегодня ещё не выполнены (с учётом напоминаний)."""
+        from datetime import date
+        today = date.today().isoformat()
+        habits = await self.get_habits(user_id, active_only=True)
+        out = []
+        for h in habits:
+            habit_id = h["id"]
+            if not await self.get_habit_reminder_enabled(habit_id):
+                continue
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.execute(
+                    "SELECT 1 FROM habit_records WHERE habit_id = ? AND date = ? AND (completed = 1 OR count > 0)",
+                    (habit_id, today),
+                ) as c:
+                    row = await c.fetchone()
+            if row is None:
+                out.append(h)
+        return out
+
+    async def get_users_with_reminders_enabled(self) -> List[int]:
+        """user_id всех пользователей, у которых включены уведомления (по умолчанию включены)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                """SELECT user_id FROM users
+                   WHERE user_id NOT IN (SELECT user_id FROM user_reminder_settings WHERE notifications_enabled = 0)"""
+            ) as c:
+                rows = await c.fetchall()
+        return [r[0] for r in rows]
 
     async def get_todays_habit_titles(self, user_id: int) -> List[str]:
         """Список названий привычек, отмеченных сегодня (хотя бы одно выполнение)."""
@@ -854,6 +1114,54 @@ class Database:
             else:
                 break
         return streak
+
+    async def get_habit_streak_for_habit(self, habit_id: int, days: int = 365) -> int:
+        """Серия дней подряд выполнения данной привычки (считая сегодня)."""
+        from datetime import date, timedelta
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            streak = 0
+            d = date.today()
+            for _ in range(days):
+                key = d.isoformat()
+                async with db.execute(
+                    """SELECT 1 FROM habit_records
+                       WHERE habit_id = ? AND date = ? AND (completed = 1 OR count > 0)""",
+                    (habit_id, key),
+                ) as c:
+                    row = await c.fetchone()
+                if row:
+                    streak += 1
+                    d -= timedelta(days=1)
+                else:
+                    break
+        return streak
+
+    async def get_habit_skip_streak(self, habit_id: int, days: int = 30) -> int:
+        """Сколько дней подряд привычка не выполнялась (считая сегодня; 0 если сегодня выполнена)."""
+        from datetime import date, timedelta
+        today = date.today().isoformat()
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT 1 FROM habit_records WHERE habit_id = ? AND date = ? AND (completed = 1 OR count > 0)",
+                (habit_id, today),
+            ) as c:
+                if await c.fetchone():
+                    return 0
+            skip = 0
+            d = date.today()
+            for _ in range(days):
+                key = d.isoformat()
+                async with db.execute(
+                    "SELECT 1 FROM habit_records WHERE habit_id = ? AND date = ? AND (completed = 1 OR count > 0)",
+                    (habit_id, key),
+                ) as c:
+                    row = await c.fetchone()
+                if row:
+                    break
+                skip += 1
+                d -= timedelta(days=1)
+        return skip
 
     # === АНАЛИТИКА ===
     async def get_user_analytics(self, user_id: int, days: int = 30) -> Dict:

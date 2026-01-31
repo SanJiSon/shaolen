@@ -614,6 +614,20 @@ async def api_update_habit(habit_id: int, payload: HabitUpdate):
     return JSONResponse(content=_row_to_json(habit))
 
 
+class HabitReminderUpdate(BaseModel):
+    enabled: bool
+
+
+@app.put("/api/habits/{habit_id}/reminder")
+async def api_set_habit_reminder(habit_id: int, payload: HabitReminderUpdate):
+    """Включить/выключить напоминания для привычки."""
+    habit = await db.get_habit(habit_id)
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    await db.set_habit_reminder_enabled(habit_id, payload.enabled)
+    return JSONResponse(content={"ok": True, "reminders_enabled": payload.enabled})
+
+
 @app.post("/api/habits/{habit_id}/increment")
 async def api_increment_habit(habit_id: int):
     """Увеличить счетчик привычки на 1"""
@@ -682,6 +696,13 @@ class ProfileUpdate(BaseModel):
     geo_consent: Optional[bool] = None
 
 
+class ReminderSettingsUpdate(BaseModel):
+    notifications_enabled: Optional[bool] = None
+    quiet_hours_start: Optional[str] = None  # "HH:MM" или null
+    quiet_hours_end: Optional[str] = None
+    reminder_intensity: Optional[int] = None  # 1–3
+
+
 class ShaolenAsk(BaseModel):
     message: Optional[str] = ""  # текст или пусто, если отправлено голосовое (тогда используется транскрипция)
     image_base64: Optional[str] = None  # data:image/jpeg;base64,... или только base64
@@ -706,6 +727,27 @@ def _profile_out(user: dict) -> dict:
         "country_code": (user.get("country_code") or "").strip().upper() or None,
         "geo_consent": bool(user.get("geo_consent")),
     }
+
+
+@app.get("/api/user/{user_id}/reminder-settings", response_model=None)
+async def api_get_reminder_settings(user_id: int):
+    """Настройки умных напоминаний: уведомления вкл/выкл, тихие часы, интенсивность."""
+    settings = await db.get_user_reminder_settings(user_id)
+    return JSONResponse(content=settings)
+
+
+@app.put("/api/user/{user_id}/reminder-settings")
+async def api_update_reminder_settings(user_id: int, payload: ReminderSettingsUpdate):
+    """Сохранить настройки напоминаний."""
+    await db.set_user_reminder_settings(
+        user_id,
+        notifications_enabled=payload.notifications_enabled,
+        quiet_hours_start=payload.quiet_hours_start,
+        quiet_hours_end=payload.quiet_hours_end,
+        reminder_intensity=payload.reminder_intensity,
+    )
+    settings = await db.get_user_reminder_settings(user_id)
+    return JSONResponse(content=settings)
 
 
 @app.get("/api/user/{user_id}/profile", response_model=None)
