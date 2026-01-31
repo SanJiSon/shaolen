@@ -129,15 +129,20 @@ async def run_tick(db: Database) -> None:
             first_sent = settings.get("first_reminder_sent", False)
 
             habits = await db.get_habits_not_done_today(user_id)
+            no_history_habits = []  # привычки без истории выполнения (старые пользователи)
+            now_min = now_time.hour * 60 + now_time.minute
+            default_first_lo = _time_to_minutes(DEFAULT_AVG_HOUR, DEFAULT_AVG_MIN) - 15  # 09:45
+            default_first_hi = _time_to_minutes(DEFAULT_AVG_HOUR, DEFAULT_AVG_MIN) + 5   # 10:05
+
             for habit in habits:
                 habit_id = habit["id"]
                 title = (habit.get("title") or "").strip() or "Привычка"
                 avg_str = await db.get_habit_avg_completion_time(habit_id, days=30)
                 parsed = _parse_avg_time(avg_str)
                 if parsed is None:
-                    h_avg, m_avg = DEFAULT_AVG_HOUR, DEFAULT_AVG_MIN
-                else:
-                    h_avg, m_avg = parsed
+                    no_history_habits.append(habit)
+                    continue
+                h_avg, m_avg = parsed
 
                 avg_min = _time_to_minutes(h_avg, m_avg)
                 first_start = _minutes_to_time(avg_min - 15)
@@ -147,7 +152,6 @@ async def run_tick(db: Database) -> None:
                 third_start = _minutes_to_time(avg_min + 120)
                 third_end = _minutes_to_time(avg_min + 135)
 
-                now_min = now_time.hour * 60 + now_time.minute
                 first_lo = _time_to_minutes(*first_start)
                 first_hi = _time_to_minutes(*first_end)
                 second_lo = _time_to_minutes(*second_start)
@@ -184,6 +188,19 @@ async def run_tick(db: Database) -> None:
                     text = _build_habit_third_message(title)
                     if await send_telegram_message(user_id, text):
                         await db.log_reminder_sent(user_id, "habit_third", habit_id=habit_id)
+
+            # Привычки без истории выполнения (пользователи до внедрения напоминаний): одно общее напоминание в 09:45–10:05
+            if no_history_habits and intensity >= 1:
+                if default_first_lo <= now_min < default_first_hi:
+                    if not await db.was_reminder_sent_today(user_id, None, "habit_first_no_history"):
+                        n = len(no_history_habits)
+                        text = f"У тебя есть привычки на сегодня ({n}). Не забудь отметить их в приложении! ✨"
+                        if not first_sent:
+                            text += DISABLE_HINT
+                        if await send_telegram_message(user_id, text):
+                            await db.log_reminder_sent(user_id, "habit_first_no_history", habit_id=None)
+                            if not first_sent:
+                                await db.set_first_reminder_sent(user_id)
 
             # Напоминание за неделю до дедлайна миссии
             missions = await db.get_missions(user_id, include_completed=False)
