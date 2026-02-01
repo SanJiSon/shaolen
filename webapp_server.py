@@ -590,9 +590,9 @@ async def api_get_habits(user_id: int):
                     clean_habit[key] = str(value)
             hid = habit.get("id")
             streak = await db.get_habit_streak_for_habit(hid, days=365) if hid else 0
-            days_total = await db.get_habit_days_total(hid, days=365) if hid else 0
+            total_completions = await db.get_habit_total_completions(hid) if hid else 0
             clean_habit["streak"] = streak
-            clean_habit["days_total"] = days_total
+            clean_habit["total_completions"] = total_completions
             result.append(clean_habit)
 
         return JSONResponse(content=result)
@@ -637,11 +637,39 @@ async def api_set_habit_reminder(habit_id: int, payload: HabitReminderUpdate):
     return JSONResponse(content={"ok": True, "reminders_enabled": payload.enabled})
 
 
+def _send_achievement_telegram(user_id: int, habit_title: str) -> None:
+    """Отправляет уведомление о достижении 21 в Telegram."""
+    if not BOT_TOKEN or not user_id:
+        return
+    msg = (
+        f"🏆 *Достижение разблокировано!*\n\n"
+        f"*{habit_title}*\n\n"
+        f"Ты молодец! 21 повторение — это отличный результат! Продолжай в том же духе! 💪✨"
+    )
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    try:
+        import asyncio
+        async def _send():
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(url, json={"chat_id": user_id, "text": msg, "parse_mode": "Markdown"})
+        asyncio.create_task(_send())
+    except Exception as e:
+        logger.warning("Не удалось отправить уведомление о достижении: %s", e)
+
+
 @app.post("/api/habits/{habit_id}/increment")
 async def api_increment_habit(habit_id: int):
     """Увеличить счетчик привычки на 1"""
     try:
         count = await db.increment_habit_count(habit_id)
+        habit = await db.get_habit(habit_id)
+        if habit:
+            total = await db.get_habit_total_completions(habit_id)
+            notified = habit.get("achievement_21_notified") or 0
+            if total >= 21 and not notified:
+                await db.set_habit_achievement_notified(habit_id)
+                title = (habit.get("title") or "").strip() or "Привычка"
+                await _send_achievement_telegram(habit.get("user_id"), title)
         return {"count": count}
     except Exception as e:
         logger.error(f"Ошибка увеличения счетчика привычки {habit_id}: {e}")
@@ -1372,23 +1400,44 @@ async def api_get_analytics(user_id: int, period: str = "month"):
 
 @app.get("/api/user/{user_id}/achievements", response_model=None)
 async def api_achievements(user_id: int):
-    """Достижения: текущие привычки + сохранённые (привычки с 21 днём, удалённые)."""
+    """Достижения: текущие привычки + сохранённые (привычки с 21+ повторениями, удалённые)."""
     try:
         out = []
         habits = await db.get_habits(user_id, active_only=False)
         for h in (habits or []):
             hid = h.get("id")
-            streak = await db.get_habit_streak_for_habit(hid, days=365) if hid else 0
+            total_completions = await db.get_habit_total_completions(hid) if hid else 0
             title = (h.get("title") or "").strip() or "Привычка"
             out.append({
                 "habit_id": hid,
                 "title": title,
-                "streak": streak,
-                "achieved": streak >= 21,
+                "streak": total_completions,
+                "achieved": total_completions >= 21,
             })
         saved = await db.get_user_achievements(user_id)
         out.extend(saved)
         return JSONResponse(content={"achievements": out})
+
+
+@app.get("/api/user/{user_id}/achievement-check", response_model=None)
+async def api_achievement_check(user_id: int):
+    """Проверка: если есть привычки с 21+ повторениями без уведомления — отправить и пометить."""
+    try:
+        habits = await db.get_habits(user_id, active_only=False)
+        for h in (habits or []):
+            hid = h.get("id")
+            if not hid:
+                continue
+            total = await db.get_habit_total_completions(hid)
+            notified = h.get("achievement_21_notified") or 0
+            if total >= 21 and not notified:
+                await db.set_habit_achievement_notified(hid)
+                title = (h.get("title") or "").strip() or "Привычка"
+                await _send_achievement_telegram(h.get("user_id"), title)
+        return JSONResponse(content={"ok": True})
+    except Exception as e:
+        logger.warning("achievement-check: %s", e)
+        return JSONResponse(content={"ok": False})
     except Exception as e:
         logger.exception("achievements: %s", e)
         return JSONResponse(content={"achievements": []})

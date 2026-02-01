@@ -129,6 +129,10 @@ class Database:
                 await db.execute("ALTER TABLE habits ADD COLUMN is_water_calculated INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                await db.execute("ALTER TABLE habits ADD COLUMN achievement_21_notified INTEGER DEFAULT 0")
+            except Exception:
+                pass
             for tbl, col in [("subgoals", "sort_order"), ("goals", "sort_order"), ("habits", "sort_order")]:
                 try:
                     await db.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} INTEGER")
@@ -866,15 +870,21 @@ class Database:
             await db.commit()
             return new_count
 
+    async def set_habit_achievement_notified(self, habit_id: int) -> None:
+        """Пометить, что уведомление о достижении 21 для привычки уже отправлено."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE habits SET achievement_21_notified = 1 WHERE id = ?", (habit_id,))
+            await db.commit()
+
     async def delete_habit(self, habit_id: int):
-        """Удаление привычки. Если streak >= 21, сохраняем достижение в user_achievements."""
+        """Удаление привычки. Если total_completions >= 21, сохраняем достижение в user_achievements."""
         habit = await self.get_habit(habit_id)
         user_id = habit.get("user_id") if habit else None
         title = ((habit.get("title") or "").strip() or "Привычка") if habit else "Привычка"
-        streak = await self.get_habit_streak_for_habit(habit_id, days=365) if habit else 0
+        total_completions = await self.get_habit_total_completions(habit_id) if habit else 0
 
         async with aiosqlite.connect(self.db_path) as db:
-            if user_id and streak >= 21:
+            if user_id and total_completions >= 21:
                 await db.execute(
                     "INSERT INTO user_achievements (user_id, habit_title) VALUES (?, ?)",
                     (user_id, title),
@@ -1210,6 +1220,16 @@ class Database:
                    WHERE habit_id = ? AND date >= date('now', '-' || ? || ' days')
                      AND (completed = 1 OR COALESCE(count, 0) > 0)""",
                 (habit_id, days),
+            ) as c:
+                row = await c.fetchone()
+                return int(row[0] or 0)
+
+    async def get_habit_total_completions(self, habit_id: int) -> int:
+        """Сумма всех повторений (count) по привычке — для прогресс-бара и достижения 21."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                """SELECT COALESCE(SUM(COALESCE(NULLIF(count, 0), 1)), 0) FROM habit_records WHERE habit_id = ?""",
+                (habit_id,),
             ) as c:
                 row = await c.fetchone()
                 return int(row[0] or 0)
