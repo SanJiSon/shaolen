@@ -18,6 +18,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 import logging
 
+import asyncio
+
+import aiosqlite
 import httpx
 
 from database import Database
@@ -2314,6 +2317,55 @@ async def api_admin_user_data(request: Request, user_id: int):
         })
     except Exception as e:
         logger.exception("admin user data: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/admin/users/sync-telegram-names")
+async def api_admin_sync_telegram_names(request: Request):
+    """Синхронизация имён и username всех пользователей из Telegram API (getChat)."""
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content=_admin_403_body())
+    if not BOT_TOKEN:
+        return JSONResponse(status_code=500, content={"detail": "BOT_TOKEN не задан"})
+    try:
+        user_ids = await db.get_all_user_ids()
+        updated = 0
+        failed_ids = []
+        for uid in user_ids:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    r = await client.get(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/getChat",
+                        params={"chat_id": uid},
+                    )
+                data = r.json()
+                if not data.get("ok"):
+                    failed_ids.append(uid)
+                    continue
+                chat = data.get("result") or {}
+                first_name = (chat.get("first_name") or "").strip() or None
+                last_name = (chat.get("last_name") or "").strip() or None
+                username = (chat.get("username") or "").strip() or None
+                async with aiosqlite.connect(db.db_path) as conn:
+                    await conn.execute(
+                        """UPDATE users SET first_name = ?, last_name = ?, username = ?
+                           WHERE user_id = ?""",
+                        (first_name, last_name, username, uid),
+                    )
+                    await conn.commit()
+                updated += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.warning("sync telegram names for %s: %s", uid, e)
+                failed_ids.append(uid)
+        return JSONResponse(content={
+            "ok": True,
+            "updated": updated,
+            "failed": len(failed_ids),
+            "failed_ids": failed_ids[:50],
+        })
+    except Exception as e:
+        logger.exception("admin sync telegram names: %s", e)
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 

@@ -321,9 +321,9 @@ class Database:
                 """INSERT INTO users (user_id, username, first_name, last_name)
                    VALUES (?, ?, ?, ?)
                    ON CONFLICT(user_id) DO UPDATE SET
-                     username = excluded.username,
-                     first_name = CASE WHEN trim(excluded.first_name) != '' THEN excluded.first_name ELSE users.first_name END,
-                     last_name = CASE WHEN trim(excluded.last_name) != '' THEN excluded.last_name ELSE users.last_name END
+                     username = CASE WHEN trim(excluded.username) != '' THEN excluded.username ELSE COALESCE(users.username, excluded.username) END,
+                     first_name = CASE WHEN trim(excluded.first_name) != '' THEN excluded.first_name ELSE COALESCE(users.first_name, excluded.first_name) END,
+                     last_name = CASE WHEN trim(excluded.last_name) != '' THEN excluded.last_name ELSE COALESCE(users.last_name, excluded.last_name) END
                 """,
                 (user_id, un, fn, ln),
             )
@@ -1117,6 +1117,13 @@ class Database:
                 rows = await c.fetchall()
         return [r[0] for r in rows]
 
+    async def get_all_user_ids(self) -> List[int]:
+        """Список user_id всех пользователей в БД."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT user_id FROM users") as c:
+                rows = await c.fetchall()
+        return [r[0] for r in rows]
+
     async def get_todays_habit_titles(self, user_id: int) -> List[str]:
         """Список названий привычек, отмеченных сегодня (хотя бы одно выполнение)."""
         from datetime import date
@@ -1444,7 +1451,7 @@ class Database:
         await self.add_goal(user_id, "Прочитать одну книгу", "Выбрать книгу и читать по 15 минут в день", d2, 1, is_example=1)
 
     async def reset_user_data(self, user_id: int) -> None:
-        """Сброс миссий, целей, привычек и аналитики. Профиль (рост, вес и т.д.) не трогаем.
+        """Сброс миссий, целей, привычек и аналитики. Профиль (имя, username, рост, вес и т.д.) не трогаем.
         После сброса добавляются предустановленные примеры (с плашкой «Пример»)."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
@@ -1465,7 +1472,6 @@ class Database:
             await db.execute("DELETE FROM analytics WHERE user_id = ?", (user_id,))
             await db.execute("DELETE FROM user_examples_seeded WHERE user_id = ?", (user_id,))
             await db.commit()
-        await self.add_user(user_id)
         await self.seed_user_examples(user_id)
         await self._mark_examples_seeded(user_id)
 
