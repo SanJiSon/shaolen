@@ -694,9 +694,24 @@ function renderHabits(habits) {
   });
 }
 
+var analyticsChartInstance = null;
+
+function formatShortDate(iso) {
+  if (!iso) return "";
+  var d = new Date(iso);
+  var day = d.getDate();
+  var month = d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
+  return day + " " + month;
+}
+
 function renderAnalytics(data) {
   var root = $("#analytics-view");
   if (!root) return;
+
+  if (analyticsChartInstance) {
+    analyticsChartInstance.destroy();
+    analyticsChartInstance = null;
+  }
 
   var period = data && data.period ? data.period : (state.analyticsPeriod || "month");
   state.analyticsPeriod = period;
@@ -712,41 +727,107 @@ function renderAnalytics(data) {
   var chart = data?.habit_chart || { labels: [], values: [] };
   var labels = Array.isArray(chart.labels) ? chart.labels : [];
   var values = Array.isArray(chart.values) ? chart.values : [];
-  var maxVal = values.length ? Math.max(1, Math.max.apply(null, values)) : 1;
+
+  var isDark = document.documentElement.getAttribute("data-theme") === "dark" || !document.documentElement.getAttribute("data-theme");
+  var textColor = isDark ? "rgba(226, 232, 240, 0.9)" : "rgba(30, 41, 59, 0.9)";
+  var gridColor = isDark ? "rgba(148, 163, 184, 0.2)" : "rgba(148, 163, 184, 0.3)";
 
   var periodTabsHtml = "<div class=\"analytics-period-tabs\">" +
     "<button type=\"button\" class=\"analytics-period-btn" + (period === "week" ? " active" : "") + "\" data-period=\"week\">Неделя</button>" +
     "<button type=\"button\" class=\"analytics-period-btn" + (period === "month" ? " active" : "") + "\" data-period=\"month\">Месяц</button>" +
     "<button type=\"button\" class=\"analytics-period-btn" + (period === "all" ? " active" : "") + "\" data-period=\"all\">Всё</button>" +
     "</div>";
-  var chartHtml = "<div class=\"analytics-chart-wrap\"><div class=\"analytics-chart-title\">Выполнения привычек по дням</div>" + periodTabsHtml;
-  if (labels.length) {
-    chartHtml += "<div class=\"analytics-chart\">" +
-      labels.map(function(l, i) {
-        var v = values[i] || 0;
-        var h = Math.round((v / maxVal) * 100);
-        var short = (l + "").slice(-5);
-        return "<div class=\"analytics-chart-bar-wrap\"><div class=\"analytics-chart-bar\" style=\"height:" + h + "%\"></div><span class=\"analytics-chart-label\">" + escapeHtml(short) + "</span></div>";
-      }).join("") +
-      "</div>";
-  }
-  chartHtml += "</div>";
 
-  root.innerHTML =
-    (streak > 0 ? "<div class=\"streak-badge\">🔥 Серия: " + streak + " дн.</div>" : "") +
-    chartHtml +
-    "<div class=\"metric-group\"><h4>Миссии</h4>" +
-    "<div class=\"metric-row\"><span>Всего</span><span>" + missionsTotal + "</span></div>" +
-    "<div class=\"metric-row\"><span>Завершено</span><span>" + missionsCompleted + "</span></div>" +
-    "<div class=\"metric-row\"><span>Средний прогресс</span><span>" + missionsProgress.toFixed(1) + "%</span></div></div>" +
-    "<div class=\"metric-group\"><h4>Цели</h4>" +
-    "<div class=\"metric-row\"><span>Всего</span><span>" + goalsTotal + "</span></div>" +
-    "<div class=\"metric-row\"><span>Завершено</span><span>" + goalsCompleted + "</span></div>" +
-    "<div class=\"metric-row\"><span>Выполнение</span><span>" + goalsRate.toFixed(1) + "%</span></div></div>" +
-    "<div class=\"metric-group\"><h4>Привычки</h4>" +
-    "<div class=\"metric-row\"><span>Активных</span><span>" + habitsTotal + "</span></div>" +
-    "<div class=\"metric-row\"><span>Выполнений</span><span>" + habitsCompletions + "</span></div>" +
-    "<div class=\"metric-row\"><span>Серия</span><span>" + streak + " дн.</span></div></div>";
+  var summaryHtml = "<div class=\"analytics-summary-cards\">" +
+    "<div class=\"analytics-card\">" +
+    "<span class=\"analytics-card-icon\" aria-hidden=\"true\"><span class=\"material-symbols-outlined\">flag</span></span>" +
+    "<div class=\"analytics-card-body\"><span class=\"analytics-card-value\">" + missionsCompleted + "/" + missionsTotal + "</span><span class=\"analytics-card-label\">Миссии</span><div class=\"analytics-card-progress\"><div class=\"analytics-card-progress-fill\" style=\"width:" + (missionsTotal > 0 ? Math.min(100, (missionsProgress || 0)) : 0) + "%\"></div></div></div>" +
+    "</div>" +
+    "<div class=\"analytics-card\">" +
+    "<span class=\"analytics-card-icon\" aria-hidden=\"true\"><span class=\"material-symbols-outlined\">track_changes</span></span>" +
+    "<div class=\"analytics-card-body\"><span class=\"analytics-card-value\">" + goalsCompleted + "/" + goalsTotal + "</span><span class=\"analytics-card-label\">Цели</span><div class=\"analytics-card-progress\"><div class=\"analytics-card-progress-fill\" style=\"width:" + (goalsRate || 0) + "%\"></div></div></div>" +
+    "</div>" +
+    "<div class=\"analytics-card\">" +
+    "<span class=\"analytics-card-icon\" aria-hidden=\"true\"><span class=\"material-symbols-outlined\">repeat</span></span>" +
+    "<div class=\"analytics-card-body\"><span class=\"analytics-card-value\">" + habitsCompletions + "</span><span class=\"analytics-card-label\">Привычки " + (streak > 0 ? "· серия " + streak + " дн." : "") + "</span><div class=\"analytics-card-progress\"><div class=\"analytics-card-progress-fill\" style=\"width:" + Math.min(100, (streak / 21) * 100) + "%\"></div></div></div>" +
+    "</div>" +
+    "</div>";
+
+  var chartPlaceholder = labels.length === 0 ? "<div class=\"analytics-chart-empty\">Нет данных за выбранный период</div>" : "";
+  var chartContainerHtml = "<div class=\"analytics-chart-section\">" +
+    "<div class=\"analytics-chart-header\">" +
+    "<span class=\"analytics-chart-title\">Выполнения привычек по дням</span>" +
+    periodTabsHtml +
+    "</div>" +
+    "<div class=\"analytics-chart-canvas-wrap\">" +
+    chartPlaceholder +
+    "<canvas id=\"analytics-habit-chart\" role=\"img\" aria-label=\"График выполнений привычек по дням\" style=\"" + (labels.length === 0 ? "display:none" : "") + "\"></canvas>" +
+    "</div>" +
+    "</div>";
+
+  root.innerHTML = summaryHtml + chartContainerHtml;
+
+  if (typeof Chart !== "undefined" && labels.length > 0) {
+    var ctx = document.getElementById("analytics-habit-chart");
+    if (ctx) {
+      var shortLabels = labels.map(function(l) { return formatShortDate(l); });
+      analyticsChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: shortLabels,
+          datasets: [{
+            label: "Выполнений",
+            data: values,
+            backgroundColor: "rgba(124, 58, 237, 0.6)",
+            borderColor: "rgba(124, 58, 237, 1)",
+            borderWidth: 1,
+            borderRadius: 6,
+            borderSkipped: false,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { intersect: false, mode: "index" },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? "rgba(30, 41, 59, 0.95)" : "rgba(255,255,255,0.95)",
+              titleColor: textColor,
+              bodyColor: textColor,
+              padding: 12,
+              cornerRadius: 8,
+              callbacks: {
+                title: function(items) { return items[0] && items[0].label ? items[0].label : ""; },
+                label: function(ctx) { return "Выполнений: " + (ctx.raw || 0); }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                color: "rgba(148, 163, 184, 0.8)",
+                maxRotation: 45,
+                minRotation: 0,
+                maxTicksLimit: 12,
+                font: { size: 11 }
+              }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: gridColor },
+              ticks: {
+                color: "rgba(148, 163, 184, 0.8)",
+                stepSize: 1,
+                font: { size: 11 }
+              }
+            }
+          }
+        }
+      });
+    }
+  }
 }
 
 function bmi(weightKg, heightM) {

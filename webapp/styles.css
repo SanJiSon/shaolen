@@ -1195,54 +1195,125 @@ body.reorder-mode .swipe-row-actions {
 #analytics-view {
   font-size: 13px;
   color: var(--muted);
-  display: grid;
-  gap: 12px;
-  overflow-x: hidden;
-  padding-bottom: 16px;
-}
-
-.metric-group h4 {
-  margin: 0 0 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.metric-row {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
-  font-size: 13px;
+  flex-direction: column;
+  gap: 16px;
+  overflow-x: hidden;
+  padding-bottom: 20px;
 }
 
-.analytics-chart-wrap {
-  margin: 12px 0;
-  padding: 12px 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.analytics-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.analytics-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  min-height: 72px;
+}
+
+.analytics-card-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(124, 58, 237, 0.1));
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.analytics-card-icon .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.analytics-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.analytics-card-value {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.analytics-card-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.analytics-card-progress {
+  height: 4px;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.analytics-card-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.analytics-chart-section {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 16px;
+  overflow: hidden;
+}
+
+.analytics-chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .analytics-chart-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  margin: 0 0 8px;
+  margin: 0;
 }
 
 .analytics-period-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
 }
 
 .analytics-period-btn {
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--muted-strong);
-  background: var(--bg-card);
+  background: var(--bg);
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.analytics-period-btn:hover {
+  background: rgba(124, 58, 237, 0.15);
+  border-color: var(--accent);
 }
 
 .analytics-period-btn.active {
@@ -1251,51 +1322,32 @@ body.reorder-mode .swipe-row-actions {
   color: white;
 }
 
-.analytics-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 100px;
-  min-width: min-content;
-  padding: 8px 0;
-}
-
-.analytics-chart-bar-wrap {
-  flex: 1;
-  min-width: 14px;
-  max-width: 28px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.analytics-chart-bar {
+.analytics-chart-canvas-wrap {
+  position: relative;
   width: 100%;
-  min-height: 4px;
-  background: linear-gradient(180deg, var(--accent), var(--accent-hover));
-  border-radius: 4px 4px 0 0;
-  transition: height 0.2s;
+  height: 220px;
+  min-height: 180px;
 }
 
-.analytics-chart-label {
-  font-size: 9px;
+#analytics-habit-chart {
+  max-height: 220px;
+}
+
+.analytics-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
   color: var(--muted);
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  font-size: 14px;
+  text-align: center;
+  padding: 20px;
 }
 
-.streak-badge {
-  display: inline-block;
-  background: linear-gradient(135deg, var(--success), #16a34a);
-  color: white;
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
+@media (max-width: 380px) {
+  .analytics-summary-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Профиль */
