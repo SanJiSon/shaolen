@@ -111,9 +111,11 @@ function switchTab(tabName) {
     t.setAttribute("aria-selected", t.dataset.tab === tabName ? "true" : "false");
   });
   if (tabName === "profile") {
-    loadGoogleFitStatus().then(function(connected) {
-      if (connected) return loadGoogleFitSteps();
-    }).then(function() { renderProfile(); });
+    if (state.googleFitConnected) {
+      loadGoogleFitSteps().then(function() { renderProfile(); });
+    } else {
+      renderProfile();
+    }
   }
 }
 
@@ -867,6 +869,7 @@ function renderProfile() {
   var hasWeightData = (currentWeight != null || weight) && heightM;
   var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
   var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
+  var stepsWidgetHtml = (state.googleFitConnected && state.googleFitSteps != null) ? "<div class=\"profile-widget profile-widget-steps\"><div class=\"profile-widget-title\">Шаги</div><div class=\"profile-widget-bmi-value\">" + state.googleFitSteps + " шагов сегодня</div></div>" : "";
   var ageText = age != null ? age + " лет" : "";
   var generalChecked = state.profileSubTab === "general" ? " checked" : "";
   var personChecked = state.profileSubTab === "person" ? " checked" : "";
@@ -1812,7 +1815,7 @@ async function loadAll() {
       username: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username) || "",
       display_name: ""
     };
-    const [missions, goals, habits, analytics, profile, weightHistoryRes, gfStatus, gfStepsRes] = await Promise.all([
+    const [missions, goals, habits, analytics, profile, weightHistoryRes] = await Promise.all([
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
@@ -1822,9 +1825,7 @@ async function loadAll() {
         return { period: "month", missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
       }),
       fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; }),
-      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; }),
-      fetchJSON(base + "/api/user/" + uid + "/google-fit/status").catch(function() { return { connected: false }; }),
-      fetchJSON(base + "/api/user/" + uid + "/google-fit/steps").catch(function() { return { steps: null }; })
+      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; })
     ]);
     
     console.log('✅ Данные получены:');
@@ -1849,8 +1850,6 @@ async function loadAll() {
     state.cache.analytics = analyticsData;
     state.cache.profile = (profile && typeof profile === "object") ? profile : profileFallback;
     state.cache.weightHistory = (weightHistoryRes && Array.isArray(weightHistoryRes.data)) ? weightHistoryRes.data : [];
-    state.googleFitConnected = !!(gfStatus && gfStatus.connected);
-    state.googleFitSteps = gfStepsRes && gfStepsRes.steps != null ? gfStepsRes.steps : null;
 
     state.cache.subgoalsByMission = {};
     if (missionsList.length) {
@@ -2289,16 +2288,42 @@ async function loadReminderSettings() {
   }
 }
 
+async function loadGoogleFitStatus() {
+  if (!state.userId) return;
+  try {
+    var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/google-fit/status");
+    state.googleFitConnected = !!(r && r.connected);
+  } catch (e) {
+    state.googleFitConnected = false;
+  }
+}
+
+async function loadGoogleFitSteps() {
+  if (!state.userId || !state.googleFitConnected) return;
+  try {
+    var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/google-fit/steps");
+    state.googleFitSteps = (r && r.steps != null) ? r.steps : null;
+  } catch (e) {
+    state.googleFitSteps = null;
+  }
+}
+
 function renderSettings() {
   var container = $("#settings-view");
   if (!container) return;
   var s = state.reminderSettings || { notifications_enabled: true };
   var on = !!s.notifications_enabled;
+  var gfConnected = !!state.googleFitConnected;
   container.innerHTML =
     "<div class=\"settings-row\">" +
       "<div><div class=\"settings-row-label\">Уведомления</div>" +
       "<div class=\"settings-row-hint\">Напоминания о привычках, целях и миссиях в Telegram. Отключите, чтобы не получать сообщения от бота.</div></div>" +
       "<button type=\"button\" class=\"settings-toggle " + (on ? "on" : "") + "\" id=\"settings-notifications-toggle\" aria-label=\"Уведомления " + (on ? "вкл" : "выкл") + "\"></button>" +
+    "</div>" +
+    "<div class=\"settings-row\">" +
+      "<div><div class=\"settings-row-label\">Авторизация Google Fit</div>" +
+      "<div class=\"settings-row-hint\">Подключите аккаунт Google, чтобы видеть шаги в профиле.</div></div>" +
+      "<button type=\"button\" class=\"btn-sm " + (gfConnected ? "" : "primary-btn") + "\" id=\"settings-google-fit-btn\">" + (gfConnected ? "Отключить" : "Подключить") + "</button>" +
     "</div>";
   var toggle = $("#settings-notifications-toggle");
   if (toggle) {
@@ -2317,14 +2342,42 @@ function renderSettings() {
       }
     });
   }
+  var gfBtn = $("#settings-google-fit-btn");
+  if (gfBtn) {
+    gfBtn.addEventListener("click", async function() {
+      if (state.googleFitConnected) {
+        try {
+          await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/google-fit", { method: "DELETE" });
+          state.googleFitConnected = false;
+          state.googleFitSteps = null;
+          renderSettings();
+          renderProfile();
+        } catch (e) {
+          if (tg) tg.showAlert("Не удалось отключить.");
+        }
+      } else {
+        try {
+          var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/google-fit/auth-url");
+          var url = r && r.auth_url;
+          if (url && tg && tg.openLink) tg.openLink(url);
+          else if (url) window.open(url, "_blank");
+          else if (tg) tg.showAlert("Google Fit не настроен на сервере.");
+        } catch (e) {
+          if (tg) tg.showAlert("Не удалось получить ссылку. Проверьте настройки сервера.");
+        }
+      }
+    });
+  }
 }
 
 function openSettingsOverlay() {
   var ov = $("#settings-overlay");
   if (!ov) return;
-  Promise.all([loadReminderSettings(), loadGoogleFitStatus()]).then(function() {
-    renderSettings();
-    ov.classList.remove("hidden");
+  loadReminderSettings().then(function() {
+    loadGoogleFitStatus().then(function() {
+      renderSettings();
+      ov.classList.remove("hidden");
+    }).catch(function() { renderSettings(); ov.classList.remove("hidden"); });
   });
 }
 
