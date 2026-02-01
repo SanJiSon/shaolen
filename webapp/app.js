@@ -111,11 +111,9 @@ function switchTab(tabName) {
     t.setAttribute("aria-selected", t.dataset.tab === tabName ? "true" : "false");
   });
   if (tabName === "profile") {
-    if (state.googleFitConnected) {
-      loadGoogleFitSteps().then(function() { renderProfile(); });
-    } else {
-      renderProfile();
-    }
+    loadGoogleFitStatus().then(function() {
+      if (state.googleFitConnected) return loadGoogleFitSteps();
+    }).then(function() { renderProfile(); });
   }
 }
 
@@ -869,7 +867,11 @@ function renderProfile() {
   var hasWeightData = (currentWeight != null || weight) && heightM;
   var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
   var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
-  var stepsWidgetHtml = (state.googleFitConnected && state.googleFitSteps != null) ? "<div class=\"profile-widget profile-widget-steps\"><div class=\"profile-widget-title\">Шаги</div><div class=\"profile-widget-bmi-value\">" + state.googleFitSteps + " шагов сегодня</div></div>" : "";
+  var stepsWidgetHtml = "";
+  if (state.googleFitConnected) {
+    var stepsVal = state.googleFitSteps != null ? state.googleFitSteps + " шагов сегодня" : "Загрузка…";
+    stepsWidgetHtml = "<div class=\"profile-widget profile-widget-steps\"><div class=\"profile-widget-title\">Шаги (Google Fit)</div><div class=\"profile-widget-bmi-value\" id=\"profile-steps-value\">" + stepsVal + "</div>" + (state.googleFitSteps == null ? "<button type=\"button\" class=\"link-btn profile-steps-refresh\" id=\"profile-steps-refresh\">Обновить</button>" : "") + "</div>";
+  }
   var ageText = age != null ? age + " лет" : "";
   var generalChecked = state.profileSubTab === "general" ? " checked" : "";
   var personChecked = state.profileSubTab === "person" ? " checked" : "";
@@ -2560,6 +2562,15 @@ function bindEvents() {
   });
 
   document.body.addEventListener("click", async function(e) {
+    var stepsRefreshBtn = e.target.closest(".profile-steps-refresh");
+    if (stepsRefreshBtn) {
+      e.preventDefault();
+      if (state.googleFitConnected) {
+        await loadGoogleFitSteps();
+        renderProfile();
+      }
+      return;
+    }
     var periodBtn = e.target.closest(".analytics-period-btn");
     if (periodBtn) {
       e.preventDefault();
