@@ -2597,8 +2597,10 @@ function renderSettings() {
       var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/calendar-sync", { method: "POST" });
       var n = r && r.created != null ? r.created : 0;
       var errs = r && r.errors && r.errors.length ? r.errors.join("; ") : "";
+      var hint = r && r.hint ? r.hint : "";
       if (calSyncMsg) calSyncMsg.textContent = errs ? "Создано: " + n + ". Ошибки: " + errs : "Создано событий: " + n;
       if (n > 0 && tg) tg.showAlert("В календарь добавлено " + n + " событий.");
+      if (hint && tg) tg.showAlert(hint);
     } catch (e) {
       if (calSyncMsg) calSyncMsg.textContent = "Ошибка";
       if (tg) tg.showAlert("Не удалось выгрузить. Проверьте подключение Google.");
