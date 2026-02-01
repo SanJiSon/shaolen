@@ -1,5 +1,21 @@
 const tg = window.Telegram?.WebApp;
 
+// В браузере вне Telegram tg.showAlert/showConfirm кидают WebAppMethodUnsupported — подменяем на alert/confirm
+if (tg) {
+  if (typeof tg.showAlert === "function") {
+    var _showAlert = tg.showAlert.bind(tg);
+    tg.showAlert = function(msg) {
+      try { _showAlert(msg); } catch (e) { alert(msg); }
+    };
+  }
+  if (typeof tg.showConfirm === "function") {
+    var _showConfirm = tg.showConfirm.bind(tg);
+    tg.showConfirm = function(msg, cb) {
+      try { _showConfirm(msg, cb); } catch (e) { if (typeof cb === "function") cb(confirm(msg)); }
+    };
+  }
+}
+
 const state = {
   userId: null,
   baseUrl: "",
@@ -19,6 +35,14 @@ const state = {
   capsuleHistory: [],
   lastWaterResult: null,
   profileSubTab: "general", // "general" | "person" | "bmi" | "water" | "stats"
+  sortableMissions: null,
+  sortableGoals: null,
+  sortableHabits: null,
+  sortableSubgoals: [],
+  reorderMode: false,
+  reminderSettings: null,
+  googleFitConnected: false,
+  googleFitSteps: null
 };
 
 function initUser() {
@@ -38,6 +62,10 @@ function initUser() {
 
   if (tg && tg.MainButton) { try { tg.MainButton.hide(); } catch (_) {} }
   if (tg && tg.BackButton) { try { tg.BackButton.hide(); } catch (_) {} }
+  if (tg) {
+    try { if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes(); } catch (_) {}
+    try { if (typeof tg.disableHorizontalSwipes === "function") tg.disableHorizontalSwipes(); } catch (_) {}
+  }
   // Определяем базовый URL API
   const loc = window.location;
   // Используем текущий origin (протокол + хост) для API
@@ -82,14 +110,18 @@ function switchTab(tabName) {
     t.classList.toggle("active", t.dataset.tab === tabName);
     t.setAttribute("aria-selected", t.dataset.tab === tabName ? "true" : "false");
   });
-  if (tabName === "profile") renderProfile();
+  if (tabName === "profile") {
+    loadGoogleFitStatus().then(function(connected) {
+      if (connected) return loadGoogleFitSteps();
+    }).then(function() { renderProfile(); });
+  }
 }
 
 async function fetchJSON(url, options = {}) {
   try {
     var headers = { 'Content-Type': 'application/json' };
     if (options.headers) Object.assign(headers, options.headers);
-    if ((url.indexOf("/api/user/") !== -1 || url.indexOf("/api/me") !== -1) && tg && tg.initData) {
+    if (url.indexOf("/api/") !== -1 && tg && tg.initData) {
       headers["X-Telegram-Init-Data"] = tg.initData;
     }
     console.log(`📡 Запрос: ${options.method || 'GET'} ${url}`);
@@ -151,7 +183,7 @@ async function fetchJSON(url, options = {}) {
   }
 }
 
-function openDialog({ title, extraHtml = "", onSave, initialValues }) {
+function openDialog({ title, extraHtml = "", onSave, onDelete, initialValues }) {
   if (tg && tg.MainButton) tg.MainButton.hide();
   var titleEl = $("#dialog-title");
   var titleInput = $("#dialog-title-input");
@@ -159,12 +191,33 @@ function openDialog({ title, extraHtml = "", onSave, initialValues }) {
   var extraEl = $("#dialog-extra");
   var backdrop = $("#dialog-backdrop");
   var form = $("#dialog-form");
+  var deleteBtn = $("#dialog-delete");
   var iv = initialValues || {};
   if (titleEl) titleEl.textContent = title || "";
   if (titleInput) titleInput.value = (iv.title != null ? iv.title : "") || "";
   if (descInput) descInput.value = (iv.description != null ? iv.description : "") || "";
   if (extraEl) extraEl.innerHTML = extraHtml || "";
   if (backdrop) backdrop.classList.remove("hidden");
+  if (deleteBtn) {
+    if (onDelete) {
+      deleteBtn.classList.remove("hidden");
+      deleteBtn.onclick = function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var p = onDelete();
+        var promise = (p && typeof p.then === "function" ? p : Promise.resolve());
+        promise.then(function() {
+          if (backdrop) backdrop.classList.add("hidden");
+          if (form) form.onsubmit = null;
+        }).catch(function(err) {
+          if (tg) tg.showAlert("Не удалось удалить");
+        });
+      };
+    } else {
+      deleteBtn.classList.add("hidden");
+      deleteBtn.onclick = null;
+    }
+  }
   if (extraEl && iv.deadline != null) {
     setTimeout(function() {
       var de = document.getElementById("deadline-input");
@@ -247,6 +300,7 @@ function wrapSwipeDelete(node, type, id) {
   wrap.dataset.type = type;
   wrap.dataset.id = String(id);
   wrap.innerHTML = `
+    <div class="swipe-row-drag-handle" aria-label="Перетащить"><span class="material-symbols-outlined">drag_indicator</span></div>
     <div class="swipe-row-content">${node.outerHTML}</div>
     <div class="swipe-row-actions"><button type="button" class="swipe-delete-btn">Удалить</button></div>
   `;
@@ -269,7 +323,8 @@ function setupSwipeDelete(container) {
       row.classList.toggle("swiped", v <= -w / 2);
     };
     const onStart = (e) => {
-      if (e.target.closest(".habit-btn, .swipe-delete-btn")) return;
+      if (e.target.closest(".habit-btn, .swipe-delete-btn, .swipe-row-drag-handle")) return;
+      if (window._sortableDragging) return;
       startX = e.touches ? e.touches[0].clientX : e.clientX;
       startY = e.touches ? e.touches[0].clientY : e.clientY;
       startLeft = content && content.style.transform ? parseFloat(String(content.style.transform).replace(/[^-\d.]/g, "")) || 0 : 0;
@@ -322,6 +377,10 @@ function setupSwipeDelete(container) {
 
 function renderMissions(missions) {
   var root = $("#missions-list");
+  if (state.sortableMissions) {
+    state.sortableMissions.destroy();
+    state.sortableMissions = null;
+  }
   root.innerHTML = "";
 
   if (!missions || missions.length === 0) {
@@ -341,7 +400,7 @@ function renderMissions(missions) {
     var subs = subgoalsByMission[m.id] || [];
     var subsHtml = subs.map(function(s) {
       var doneClass = s.is_completed ? " subgoal-done" : "";
-      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\" draggable=\"true\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Перетащить\">⋮⋮</span></div>";
+      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML =
@@ -359,62 +418,94 @@ function renderMissions(missions) {
     root.appendChild(wrapSwipeDelete(card, "mission", m.id));
   });
   setupSwipeDelete(root);
-  setupSubgoalsDragDrop(root);
+  setupSortableSubgoals(root);
+  setupSortableMissions(root);
 }
 
-function setupSubgoalsDragDrop(container) {
-  if (!container) return;
-  var lists = container.querySelectorAll(".subgoals-list[data-mission-id]");
-  lists.forEach(function(list) {
+function resetSwipeState(el) {
+  if (!el) return;
+  var content = el.querySelector(".swipe-row-content");
+  if (content) content.style.transform = "";
+  el.classList.remove("swiped");
+}
+
+function createSortableCommon(listEl, options) {
+  if (typeof Sortable === "undefined") return null;
+  var userOnEnd = options.onEnd;
+  var userOnStart = options.onStart;
+  options.onEnd = function(evt) {
+    document.querySelectorAll(".swipe-row.subgoal-dragging").forEach(function(el) { el.classList.remove("subgoal-dragging"); });
+    window._sortableDragging = false;
+    document.body.classList.remove("drag-active");
+    document.body.style.paddingRight = "";
+    if (userOnEnd) userOnEnd.call(this, evt);
+  };
+  options.onStart = function(evt) {
+    window._sortableDragging = true;
+    resetSwipeState(evt.item);
+    document.body.classList.add("drag-active");
+    var scrollbarW = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarW > 0) document.body.style.paddingRight = scrollbarW + "px";
+    if (userOnStart) userOnStart.call(this, evt);
+  };
+  return new Sortable(listEl, Object.assign({
+    animation: 150,
+    dataIdAttr: "data-id",
+    draggable: ".swipe-row",
+    forceFallback: true,
+    fallbackOnBody: true,
+    swapThreshold: 0.65,
+    chosenClass: "sortable-chosen",
+    ghostClass: "sortable-ghost",
+    onClone: function(evt) {
+      resetSwipeState(evt.clone);
+    }
+  }, options));
+}
+
+function setupSortableSubgoals(container) {
+  if (!container || typeof Sortable === "undefined") return;
+  state.sortableSubgoals.forEach(function(s) { if (s && s.destroy) s.destroy(); });
+  state.sortableSubgoals = [];
+  container.querySelectorAll(".subgoals-list[data-mission-id]").forEach(function(list) {
     var missionId = list.dataset.missionId;
-    var rows = list.querySelectorAll(".subgoal-row[draggable]");
-    var draggedEl = null;
-    list.addEventListener("dragstart", function(e) {
-      if (!e.target.classList || !e.target.classList.contains("subgoal-row")) return;
-      if (e.target.closest(".subgoal-cb-wrap")) return;
-      draggedEl = e.target;
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", e.target.dataset.id || "");
-      e.target.classList.add("drag-source");
-    });
-    list.addEventListener("dragend", function(e) {
-      if (e.target.classList) e.target.classList.remove("drag-source");
-      draggedEl = null;
-    });
-    list.addEventListener("dragover", function(e) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      var row = e.target.closest(".subgoal-row");
-      if (row && row !== draggedEl) row.classList.add("drag-over");
-    });
-    list.addEventListener("dragleave", function(e) {
-      var row = e.target.closest(".subgoal-row");
-      if (row) row.classList.remove("drag-over");
-    });
-    list.addEventListener("drop", function(e) {
-      e.preventDefault();
-      list.querySelectorAll(".subgoal-row").forEach(function(r) { r.classList.remove("drag-over"); });
-      var dropRow = e.target.closest(".subgoal-row");
-      if (!dropRow || !draggedEl || dropRow === draggedEl) return;
-      var next = dropRow.nextElementSibling;
-      list.insertBefore(draggedEl, dropRow === draggedEl.nextElementSibling ? next : dropRow);
-      var ids = [];
-      list.querySelectorAll(".subgoal-row").forEach(function(r) {
-        var id = r.dataset.id;
-        if (id) ids.push(parseInt(id, 10));
-      });
-      if (ids.length) {
-        fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", {
-          method: "PUT",
-          body: JSON.stringify({ subgoal_ids: ids })
-        }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+    var sortable = createSortableCommon(list, {
+      draggable: ".subgoal-row",
+      handle: ".subgoal-drag-handle",
+      onStart: function(evt) {
+        var swipeRow = evt.item.closest(".swipe-row");
+        if (swipeRow) swipeRow.classList.add("subgoal-dragging");
+      },
+      onEnd: function(evt) {
+        var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+        if (ids.length && missionId) {
+          fetchJSON(state.baseUrl + "/api/mission/" + missionId + "/subgoals/order", { method: "PUT", body: JSON.stringify({ subgoal_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+        }
       }
     });
+    if (sortable) state.sortableSubgoals.push(sortable);
+  });
+}
+
+function setupSortableMissions(container) {
+  if (!container || !state.userId || typeof Sortable === "undefined") return;
+  state.sortableMissions = createSortableCommon(container, {
+    handle: ".swipe-row-drag-handle",
+    onEnd: function(evt) {
+      var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/missions/order", { method: "PUT", body: JSON.stringify({ mission_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+      }
+    }
   });
 }
 
 function renderGoals(goals) {
   var root = $("#goals-list");
+  if (state.sortableGoals) {
+    state.sortableGoals.destroy();
+    state.sortableGoals = null;
+  }
   root.innerHTML = "";
 
   if (!goals || goals.length === 0) {
@@ -426,7 +517,7 @@ function renderGoals(goals) {
     var done = g.is_completed ? "Завершена" : "В процессе";
     var priority = g.priority === 3 ? "🔥 Высокий" : g.priority === 2 ? "⭐ Средний" : "📌 Низкий";
     var card = document.createElement("div");
-    card.className = "card card-goal";
+    card.className = "card card-goal" + (g.is_completed ? " goal-done" : "");
     var title = escapeHtml(g.title || "");
     var description = escapeHtml(g.description || "Без описания");
     var dl = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
@@ -443,64 +534,41 @@ function renderGoals(goals) {
     root.appendChild(wrapSwipeDelete(card, "goal", g.id));
   });
   setupSwipeDelete(root);
-  setupListDragDrop(root, "goal", "goals", "goal_ids");
+  setupSortableGoals(root);
 }
 
-function setupListDragDrop(container, itemType, apiPath, idsKey) {
-  if (!container || !state.userId) return;
-  var rows = container.querySelectorAll(".swipe-row[data-type=\"" + itemType + "\"]");
-  rows.forEach(function(row) { row.draggable = true; });
-  var draggedEl = null;
-  container.addEventListener("dragstart", function(e) {
-    var row = e.target.closest(".swipe-row");
-    if (!row || row.dataset.type !== itemType) return;
-    draggedEl = row;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", row.dataset.id || "");
-    row.classList.add("drag-source");
-  });
-  container.addEventListener("dragend", function(e) {
-    if (e.target.closest) {
-      var r = e.target.closest(".swipe-row");
-      if (r) r.classList.remove("drag-source");
+function setupSortableGoals(container) {
+  if (!container || !state.userId || typeof Sortable === "undefined") return;
+  state.sortableGoals = createSortableCommon(container, {
+    handle: ".swipe-row-drag-handle",
+    onEnd: function(evt) {
+      var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/goals/order", { method: "PUT", body: JSON.stringify({ goal_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+      }
     }
-    draggedEl = null;
   });
-  container.addEventListener("dragover", function(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    var row = e.target.closest(".swipe-row");
-    if (row && row.dataset.type === itemType && row !== draggedEl) row.classList.add("drag-over");
-  });
-  container.addEventListener("dragleave", function(e) {
-    var row = e.target.closest(".swipe-row");
-    if (row) row.classList.remove("drag-over");
-  });
-  container.addEventListener("drop", function(e) {
-    e.preventDefault();
-    container.querySelectorAll(".swipe-row").forEach(function(r) { r.classList.remove("drag-over"); });
-    var dropRow = e.target.closest(".swipe-row");
-    if (!dropRow || dropRow.dataset.type !== itemType || !draggedEl || dropRow === draggedEl) return;
-    var next = dropRow.nextElementSibling;
-    container.insertBefore(draggedEl, dropRow === draggedEl.nextElementSibling ? next : dropRow);
-    var ids = [];
-    container.querySelectorAll(".swipe-row[data-type=\"" + itemType + "\"]").forEach(function(r) {
-      var id = r.dataset.id;
-      if (id) ids.push(parseInt(id, 10));
-    });
-    if (ids.length) {
-      var payload = {};
-      payload[idsKey] = ids;
-      fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/" + apiPath + "/order", {
-        method: "PUT",
-        body: JSON.stringify(payload)
-      }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+}
+
+function setupSortableHabits(container) {
+  if (!container || !state.userId || typeof Sortable === "undefined") return;
+  state.sortableHabits = createSortableCommon(container, {
+    handle: ".swipe-row-drag-handle",
+    onEnd: function(evt) {
+      var ids = this.toArray().map(function(id) { return parseInt(id, 10); }).filter(function(n) { return !isNaN(n); });
+      if (ids.length) {
+        fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habits/order", { method: "PUT", body: JSON.stringify({ habit_ids: ids }) }).then(function() { loadAll(); }).catch(function() { loadAll(); });
+      }
     }
   });
 }
 
 function renderHabits(habits) {
   const root = $("#habits-list");
+  if (state.sortableHabits) {
+    state.sortableHabits.destroy();
+    state.sortableHabits = null;
+  }
   root.innerHTML = "";
 
   if (!habits || habits.length === 0) {
@@ -511,6 +579,7 @@ function renderHabits(habits) {
   habits.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
+    const remindersOn = h.reminders_enabled !== 0;
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
@@ -520,6 +589,7 @@ function renderHabits(habits) {
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
         <div class="habit-name">${title}${exampleBadge}${waterCalcBadge}</div>
+        <button type="button" class="habit-reminder-toggle icon-btn" data-habit-id="${habitId}" data-enabled="${remindersOn ? "1" : "0"}" aria-label="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}" title="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}"><span class="material-symbols-outlined">${remindersOn ? "notifications" : "notifications_off"}</span></button>
         <div class="habit-count-wrap ${count ? '' : 'hide'}">
           <span class="habit-count-number">${count}</span>
           <span class="habit-count-unit">раз</span>
@@ -541,7 +611,7 @@ function renderHabits(habits) {
     }
   });
   setupSwipeDelete(root);
-  setupListDragDrop(root, "habit", "habits", "habit_ids");
+  setupSortableHabits(root);
 
   root.querySelectorAll('.habit-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -566,6 +636,28 @@ function renderHabits(habits) {
       } catch (err) {
         console.error('Ошибка счётчика:', err);
         if (tg) tg.showAlert('Ошибка при обновлении');
+      }
+    });
+  });
+  root.querySelectorAll('.habit-reminder-toggle').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const habitId = parseInt(btn.dataset.habitId);
+      const enabled = btn.dataset.enabled !== "1";
+      try {
+        await fetchJSON(state.baseUrl + "/api/habits/" + habitId + "/reminder", {
+          method: "PUT",
+          body: JSON.stringify({ enabled: enabled })
+        });
+        btn.dataset.enabled = enabled ? "1" : "0";
+        var icon = btn.querySelector(".material-symbols-outlined");
+        if (icon) icon.textContent = enabled ? "notifications" : "notifications_off";
+        btn.setAttribute("aria-label", enabled ? "Напоминания вкл" : "Напоминания выкл");
+        btn.setAttribute("title", enabled ? "Напоминания вкл" : "Напоминания выкл");
+      } catch (err) {
+        console.error("Ошибка настройки напоминаний:", err);
+        if (tg) tg.showAlert("Не удалось изменить настройку");
       }
     });
   });
@@ -904,8 +996,13 @@ function renderProfile() {
     </div>
   `;
 
-  var contentGeneral = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p>";
-  root.innerHTML = `
+  var contentGeneral = (bmiWidgetHtml || weightWidgetHtml || stepsWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + stepsWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса. Подключите Google Fit в настройках для отображения шагов.</p>";
+
+  var subPageTitles = { person: "Человек", bmi: "ИМТ", water: "Вода", stats: "Статистика" };
+  var subPageContent = { person: contentPerson, bmi: contentBmi, water: contentWater, stats: contentStats };
+
+  if (state.profileSubTab === "general") {
+    root.innerHTML = `
     <div class="profile-main">
       <div class="profile-content-wrapper">
         <div class="profile-tabs-container">
@@ -917,40 +1014,42 @@ function renderProfile() {
             </div>
           </div>
           <div class="vertical-tabs">
-            <input type="radio" id="tab-general" name="profile-tabs" class="profile-tab-radio"${generalChecked}>
-            <label for="tab-general" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</label>
-            <input type="radio" id="tab-person" name="profile-tabs" class="profile-tab-radio"${personChecked}>
-            <label for="tab-person" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</label>
-            <input type="radio" id="tab-bmi" name="profile-tabs" class="profile-tab-radio"${bmiChecked}>
-            <label for="tab-bmi" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</label>
-            <input type="radio" id="tab-water" name="profile-tabs" class="profile-tab-radio"${waterChecked}>
-            <label for="tab-water" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</label>
-            <input type="radio" id="tab-stats" name="profile-tabs" class="profile-tab-radio"${statsChecked}>
-            <label for="tab-stats" class="profile-subtab"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</label>
+            <span class="profile-subtab profile-subtab-current"><span class="material-symbols-outlined profile-tab-icon">dashboard</span> Общие</span>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="person"><span class="material-symbols-outlined profile-tab-icon">person</span> Человек</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="bmi"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="water"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="stats"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</button>
           </div>
         </div>
         <div class="profile-content-area" id="profile-content-area">
           <section id="content-general" class="profile-tab-content">${contentGeneral}</section>
-          <section id="content-person" class="profile-tab-content">${contentPerson}</section>
-          <section id="content-bmi" class="profile-tab-content">${contentBmi}</section>
-          <section id="content-water" class="profile-tab-content">${contentWater}</section>
-          <section id="content-stats" class="profile-tab-content">${contentStats}</section>
         </div>
       </div>
     </div>
   `;
-
-  function showProfileTabContent(tabId) {
-    var ids = ["content-general", "content-person", "content-bmi", "content-water", "content-stats"];
-    ids.forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.style.display = id === tabId ? "block" : "none";
+    root.querySelectorAll(".profile-subtab-link").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var tab = btn.dataset.profileTab;
+        if (tab) { state.profileSubTab = tab; renderProfile(); }
+      });
     });
-    var area = document.getElementById("profile-content-area");
-    if (area) area.scrollTop = 0;
+  } else {
+    var currentTitle = subPageTitles[state.profileSubTab] || "";
+    var currentContent = subPageContent[state.profileSubTab] || "";
+    root.innerHTML = `
+    <div class="profile-main profile-subpage">
+      <header class="profile-subpage-header">
+        <button type="button" class="profile-back-btn" id="profile-back-btn" aria-label="Назад"><span class="material-symbols-outlined">arrow_back</span></button>
+        <h2 class="profile-subpage-title">${escapeHtml(currentTitle)}</h2>
+      </header>
+      <div class="profile-content-area profile-subpage-content" id="profile-content-area">
+        ${currentContent}
+      </div>
+    </div>
+  `;
+    var backBtn = document.getElementById("profile-back-btn");
+    if (backBtn) backBtn.addEventListener("click", function() { state.profileSubTab = "general"; renderProfile(); });
   }
-  var initialTabId = state.profileSubTab === "general" ? "content-general" : state.profileSubTab === "person" ? "content-person" : state.profileSubTab === "bmi" ? "content-bmi" : state.profileSubTab === "water" ? "content-water" : "content-stats";
-  showProfileTabContent(initialTabId);
 
   var gaugeEl = document.getElementById("profile-bmi-gauge");
   if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
@@ -1041,14 +1140,6 @@ function renderProfile() {
   var waterCalcBtn = root.querySelector("#profile-water-calc-btn");
   if (waterCalcBtn) waterCalcBtn.addEventListener("click", function() { openWaterFlow(); });
   initHeightRuler(root);
-  var profileRadios = root.querySelectorAll('input[name="profile-tabs"]');
-  profileRadios.forEach(function(r) {
-    r.addEventListener("change", function() {
-      var contentId = r.id === "tab-general" ? "content-general" : r.id === "tab-person" ? "content-person" : r.id === "tab-bmi" ? "content-bmi" : r.id === "tab-water" ? "content-water" : "content-stats";
-      state.profileSubTab = r.id === "tab-general" ? "general" : r.id === "tab-person" ? "person" : r.id === "tab-bmi" ? "bmi" : r.id === "tab-water" ? "water" : "stats";
-      showProfileTabContent(contentId);
-    });
-  });
 }
 
 function initHeightRuler(container) {
@@ -1247,9 +1338,29 @@ async function runWaterCalculate(useGeo, city, country, countryCode) {
   }
 }
 
+function showInfoPopup(title, message) {
+  var backdrop = $("#info-popup-backdrop");
+  var titleEl = $("#info-popup-title");
+  var messageEl = $("#info-popup-message");
+  var okBtn = $("#info-popup-ok");
+  if (!backdrop) return;
+  if (titleEl) titleEl.textContent = title || "";
+  if (messageEl) messageEl.textContent = message || "";
+  backdrop.classList.remove("hidden");
+  function close() {
+    backdrop.classList.add("hidden");
+  }
+  if (okBtn) okBtn.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); close(); };
+  backdrop.onclick = function(ev) {
+    if (ev.target === backdrop) { ev.preventDefault(); close(); }
+  };
+  var dialog = backdrop.querySelector(".info-popup-dialog");
+  if (dialog) dialog.onclick = function(ev) { ev.stopPropagation(); };
+}
+
 function showProfileHelpBmi() {
   var text = "ИМТ = вес (кг) / рост² (м). Оценка по ВОЗ: <18.5 — недостаток веса; 18.5–24.9 — норма; 25–29.9 — избыточный вес; ≥30 — ожирение. Идеальный диапазон веса — вес при ИМТ 18.5–24.9 для вашего роста. Идеальный ИМТ по формуле Девина (пол и рост) — золотой стандарт в клинической практике.";
-  if (tg && tg.showAlert) tg.showAlert(text); else alert(text);
+  showInfoPopup("Справка ИМТ", text);
 }
 function showWaterHelp() {
   var text = "Вода (л) = (Вес_кг × 30 мл) + (Активность_мин × 15 мл) + климатическая поправка (ВОЗ/Mayo). 15 мл/мин — коэффициент потери жидкости при умеренной активности (MyFitnessPal, WaterMinder, Samsung Health).";
@@ -1701,7 +1812,7 @@ async function loadAll() {
       username: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username) || "",
       display_name: ""
     };
-    const [missions, goals, habits, analytics, profile, weightHistoryRes] = await Promise.all([
+    const [missions, goals, habits, analytics, profile, weightHistoryRes, gfStatus, gfStepsRes] = await Promise.all([
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
@@ -1711,7 +1822,9 @@ async function loadAll() {
         return { period: "month", missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
       }),
       fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; }),
-      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; })
+      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; }),
+      fetchJSON(base + "/api/user/" + uid + "/google-fit/status").catch(function() { return { connected: false }; }),
+      fetchJSON(base + "/api/user/" + uid + "/google-fit/steps").catch(function() { return { steps: null }; })
     ]);
     
     console.log('✅ Данные получены:');
@@ -1736,6 +1849,8 @@ async function loadAll() {
     state.cache.analytics = analyticsData;
     state.cache.profile = (profile && typeof profile === "object") ? profile : profileFallback;
     state.cache.weightHistory = (weightHistoryRes && Array.isArray(weightHistoryRes.data)) ? weightHistoryRes.data : [];
+    state.googleFitConnected = !!(gfStatus && gfStatus.connected);
+    state.googleFitSteps = gfStepsRes && gfStepsRes.steps != null ? gfStepsRes.steps : null;
 
     state.cache.subgoalsByMission = {};
     if (missionsList.length) {
@@ -2162,11 +2277,73 @@ function closeCapsuleOverlay() {
   if (ov) ov.classList.add("hidden");
 }
 
+async function loadReminderSettings() {
+  if (!state.userId) return null;
+  try {
+    var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/reminder-settings");
+    state.reminderSettings = r;
+    return r;
+  } catch (e) {
+    state.reminderSettings = { notifications_enabled: true };
+    return state.reminderSettings;
+  }
+}
+
+function renderSettings() {
+  var container = $("#settings-view");
+  if (!container) return;
+  var s = state.reminderSettings || { notifications_enabled: true };
+  var on = !!s.notifications_enabled;
+  container.innerHTML =
+    "<div class=\"settings-row\">" +
+      "<div><div class=\"settings-row-label\">Уведомления</div>" +
+      "<div class=\"settings-row-hint\">Напоминания о привычках, целях и миссиях в Telegram. Отключите, чтобы не получать сообщения от бота.</div></div>" +
+      "<button type=\"button\" class=\"settings-toggle " + (on ? "on" : "") + "\" id=\"settings-notifications-toggle\" aria-label=\"Уведомления " + (on ? "вкл" : "выкл") + "\"></button>" +
+    "</div>";
+  var toggle = $("#settings-notifications-toggle");
+  if (toggle) {
+    toggle.addEventListener("click", async function() {
+      var newVal = !toggle.classList.contains("on");
+      toggle.classList.toggle("on", newVal);
+      try {
+        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/reminder-settings", {
+          method: "PUT",
+          body: JSON.stringify({ notifications_enabled: newVal })
+        });
+        state.reminderSettings = state.reminderSettings || {};
+        state.reminderSettings.notifications_enabled = newVal;
+      } catch (e) {
+        if (tg) tg.showAlert("Не удалось сохранить настройку.");
+      }
+    });
+  }
+}
+
+function openSettingsOverlay() {
+  var ov = $("#settings-overlay");
+  if (!ov) return;
+  Promise.all([loadReminderSettings(), loadGoogleFitStatus()]).then(function() {
+    renderSettings();
+    ov.classList.remove("hidden");
+  });
+}
+
+function closeSettingsOverlay() {
+  var ov = $("#settings-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
 function bindEvents() {
   var tabEls = $all(".tab");
   tabEls.forEach(function(btn) {
     btn.addEventListener("click", function() { switchTab(btn.dataset.tab); });
   });
+  var settingsBtn = document.getElementById("settings-btn");
+  if (settingsBtn) settingsBtn.addEventListener("click", openSettingsOverlay);
+  var settingsOverlayClose = document.getElementById("settings-overlay-close");
+  if (settingsOverlayClose) settingsOverlayClose.addEventListener("click", closeSettingsOverlay);
+  var settingsBackdrop = $(".settings-overlay-backdrop");
+  if (settingsBackdrop) settingsBackdrop.addEventListener("click", closeSettingsOverlay);
   var capsuleMenuBtn = document.getElementById("capsule-menu-btn");
   if (capsuleMenuBtn) capsuleMenuBtn.addEventListener("click", openCapsuleOverlay);
   var capsuleOverlayClose = document.getElementById("capsule-overlay-close");
@@ -2303,10 +2480,14 @@ function bindEvents() {
       } catch (err) { if (tg) tg.showAlert("Ошибка"); }
       return;
     }
-    if (cb.classList && cb.classList.contains("goal-done-cb") && cb.checked) {
+    if (cb.classList && cb.classList.contains("goal-done-cb")) {
       e.preventDefault();
       try {
-        await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/complete", { method: "POST" });
+        if (cb.checked) {
+          await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/complete", { method: "POST" });
+        } else {
+          await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/uncomplete", { method: "POST" });
+        }
         await loadAll();
       } catch (err) { if (tg) tg.showAlert("Ошибка"); }
       return;
@@ -2356,8 +2537,48 @@ function bindEvents() {
       return;
     }
 
+    var subgoalRow = e.target.closest(".subgoal-row");
+    /* Открывать редактирование при клике по подцели, кроме чекбокса и ручки перетаскивания */
+    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest("input.subgoal-done-cb")) {
+      e.preventDefault();
+      e.stopPropagation();
+      var subgoalId = subgoalRow.dataset.id;
+      if (!subgoalId) return;
+      var subgoal = null;
+      var subgoalsByMission = state.cache.subgoalsByMission || {};
+      for (var mid in subgoalsByMission) {
+        var list = subgoalsByMission[mid] || [];
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i].id) === String(subgoalId)) { subgoal = list[i]; break; }
+        }
+        if (subgoal) break;
+      }
+      if (subgoal) {
+        if (tg && tg.MainButton) tg.MainButton.hide();
+        openDialog({
+          title: "Редактировать подцель",
+          initialValues: { title: subgoal.title || "", description: subgoal.description || "" },
+          onSave: async function(p) {
+            var title = (p && p.title != null) ? String(p.title).trim() : "";
+            var description = (p && p.description != null) ? String(p.description) : "";
+            if (!title) { if (tg) tg.showAlert("Введите название"); throw new Error("validate"); }
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId + "/update", {
+              method: "POST",
+              body: JSON.stringify({ title: title, description: description })
+            });
+            await loadAll();
+          },
+          onDelete: async function() {
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "DELETE" });
+            await loadAll();
+          }
+        });
+        return;
+      }
+    }
+
     var content = e.target.closest(".swipe-row-content");
-    if (content && !e.target.closest(".habit-btn, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .add-subgoal-btn")) {
+    if (content && !e.target.closest(".habit-btn, .habit-reminder-toggle, .habit-water-help, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
       var row = e.target.closest(".swipe-row");
       if (row) {
         var type = row.dataset.type, id = row.dataset.id;
@@ -2413,6 +2634,25 @@ function bindEvents() {
         }
       }
     }
+  });
+
+  function updateReorderModeUI() {
+    document.body.classList.toggle("reorder-mode", state.reorderMode);
+    $all(".panel-edit-btn").forEach(function(btn) {
+      var icon = btn.querySelector(".panel-edit-btn-icon");
+      if (icon) icon.textContent = state.reorderMode ? "check" : "edit";
+      btn.setAttribute("aria-label", state.reorderMode ? "Готово" : "Режим перетаскивания");
+      btn.setAttribute("title", state.reorderMode ? "Готово" : "Режим перетаскивания");
+    });
+  }
+
+  $all(".panel-edit-btn").forEach(function(btn) {
+    btn.addEventListener("click", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.reorderMode = !state.reorderMode;
+      updateReorderModeUI();
+    });
   });
 
   var addMissionBtn = $("#add-mission-btn");

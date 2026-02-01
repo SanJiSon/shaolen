@@ -61,11 +61,11 @@ body {
 
 [data-theme="dark"] body,
 :root body {
-  background: linear-gradient(180deg, #12151c 0%, #0c0e14 100%);
+  background: #0c0e14;
 }
 
 [data-theme="light"] body {
-  background: linear-gradient(180deg, #e2e8f0 0%, #f8fafc 50%);
+  background: #ffffff;
 }
 
 #app {
@@ -224,6 +224,134 @@ body {
   color: var(--text);
 }
 
+/* Кнопка настроек в шапке */
+.settings-header-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.settings-header-btn .material-symbols-outlined {
+  font-size: 24px;
+}
+.settings-header-btn:hover,
+.settings-header-btn:active {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.app-header-row .settings-header-btn { margin-right: 8px; }
+
+/* Оверлей настроек */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.settings-overlay.hidden {
+  display: none;
+}
+.settings-overlay:not(.hidden) {
+  pointer-events: auto;
+}
+.settings-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+.settings-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 16px 24px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+}
+.settings-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--muted-strong);
+}
+.settings-overlay-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-overlay-close {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.settings-overlay-close:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.settings-view { padding-top: 8px; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--muted-strong);
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-row-label { font-size: 15px; color: var(--text); }
+.settings-row-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.settings-toggle {
+  width: 52px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--muted-strong);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.settings-toggle.on { background: var(--accent, #3b82f6); }
+.settings-toggle::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.settings-toggle.on::after { transform: translateX(24px); }
+
 /* Вкладки — равные промежутки между названиями */
 .tabs {
   display: flex;
@@ -329,10 +457,56 @@ body {
 
 .tab-panel.analytics-panel > h2 { margin-bottom: 10px; }
 
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.panel-edit-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.panel-edit-btn:hover,
+.panel-edit-btn:focus {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.panel-edit-btn .panel-edit-btn-icon {
+  font-size: 22px;
+}
+
 .panel-header .primary-btn,
 .panel-header .add-btn {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.panel-header .add-btn.icon-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-header .add-btn.icon-btn .material-symbols-outlined {
+  font-size: 22px;
 }
 
 .primary-btn,
@@ -369,6 +543,25 @@ body {
 .secondary-btn:hover {
   border-color: var(--muted);
   color: var(--text-soft);
+}
+
+.danger-btn {
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.danger-btn:hover {
+  opacity: 0.9;
+}
+
+.danger-btn.hidden {
+  display: none;
 }
 
 .cards {
@@ -511,11 +704,22 @@ body {
   text-decoration: line-through;
 }
 
+/* Завершённая цель — зачёркнутый текст */
+.card-goal.goal-done {
+  opacity: 0.85;
+}
+
+.card-goal.goal-done .card-title,
+.card-goal.goal-done .card-description {
+  text-decoration: line-through;
+}
+
 .subgoal-row .subgoal-cb-wrap {
   flex: 1;
   min-width: 0;
 }
 
+/* Ручка перетаскивания подцели видна только в режиме редактирования порядка */
 .subgoal-drag-handle {
   flex-shrink: 0;
   padding: 4px 6px;
@@ -523,6 +727,12 @@ body {
   color: var(--muted);
   font-size: 14px;
   user-select: none;
+  display: none;
+}
+
+body.reorder-mode .subgoal-drag-handle {
+  display: flex;
+  align-items: center;
 }
 
 .subgoal-drag-handle:active {
@@ -537,7 +747,32 @@ body {
 
 .subgoal-row.drag-source,
 .swipe-row.drag-source {
-  opacity: 0.6;
+  opacity: 0.5;
+}
+
+body.drag-active {
+  overflow: hidden;
+  touch-action: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+.reorder-placeholder {
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  min-height: 8px;
+  margin: 4px 0;
+  transition: height 0.1s ease;
+}
+
+.reorder-ghost {
+  box-shadow: var(--shadow);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.reorder-drag-overlay {
+  background: transparent;
+  cursor: grabbing;
 }
 
 .subgoal-cb-wrap {
@@ -574,6 +809,8 @@ body {
 
 /* Свайп: экран не двигается, только строка */
 .swipe-row {
+  display: flex;
+  align-items: stretch;
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-md);
@@ -582,7 +819,33 @@ body {
   user-select: none;
 }
 
+/* Ручки перетаскивания видны только в режиме редактирования порядка */
+.swipe-row-drag-handle {
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  cursor: grab;
+  color: var(--muted);
+  touch-action: none;
+}
+
+body.reorder-mode .swipe-row-drag-handle {
+  display: flex;
+}
+
+.swipe-row-drag-handle:active {
+  cursor: grabbing;
+}
+
+.swipe-row-drag-handle .material-symbols-outlined {
+  font-size: 20px;
+}
+
 .swipe-row-content {
+  flex: 1;
+  min-width: 0;
   position: relative;
   z-index: 1;
   background: var(--bg-card);
@@ -623,6 +886,18 @@ body {
 
 .swipe-row.swiped .swipe-row-content {
   transform: translateX(-72px);
+}
+
+/* Скрыть кнопку «Удалить» при перетаскивании подцелей внутри карточки */
+.swipe-row.subgoal-dragging .swipe-row-actions {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* В режиме перетаскивания скрыть кнопки «Удалить», чтобы не дёргались */
+body.reorder-mode .swipe-row-actions {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Привычки */
@@ -1025,6 +1300,10 @@ body {
 }
 .profile-widget-weight .weight-card-value { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
 .profile-widget-weight .weight-card-trend { margin-top: 8px; }
+.profile-widget-steps {
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+}
+.profile-widget-steps .profile-widget-steps-value { font-size: 24px; font-weight: 700; }
 .weight-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; opacity: 0.9; }
 .weight-card-title { font-weight: 600; }
 .weight-trend-link { font-size: 13px; cursor: pointer; text-decoration: underline; }
@@ -1132,6 +1411,26 @@ body {
   position: relative;
   padding-left: 18px;
 }
+.vertical-tabs .profile-subtab-current {
+  color: var(--text);
+  background: var(--accent-soft);
+  font-weight: 600;
+  padding-left: 18px;
+  cursor: default;
+}
+.vertical-tabs .profile-subtab-link {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  margin: 0;
+}
+.vertical-tabs .profile-subtab-link:hover {
+  background: var(--bg-card);
+  color: var(--text);
+}
 .profile-content-area {
   flex: 1;
   width: 100%;
@@ -1140,8 +1439,58 @@ body {
   background: var(--bg-card);
   overflow: auto;
 }
+/* Подстраницы профиля (Человек, ИМТ, Вода, Статистика) — без блока вкладок, только шапка с «Назад» и контент */
+.profile-main.profile-subpage {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.profile-subpage-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--muted-strong);
+}
+.profile-back-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.profile-back-btn:hover,
+.profile-back-btn:focus {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.profile-back-btn .material-symbols-outlined {
+  font-size: 24px;
+}
+.profile-subpage-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.profile-subpage-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .profile-tab-content {
-  display: none;
+  display: block;
   padding: 0;
   background: transparent;
   min-width: 0;
@@ -1661,6 +2010,21 @@ body {
   font-size: 16px;
   font-weight: 600;
   color: var(--text);
+}
+
+.info-popup-dialog .dialog-actions {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.info-popup-message {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  max-height: 60vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .input {
