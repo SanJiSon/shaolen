@@ -81,6 +81,7 @@
           <div class="panel-header">
             <h2>Привычки</h2>
             <div class="panel-header-actions">
+              <button type="button" id="habit-calendar-btn" class="icon-btn" aria-label="Календарь привычек" title="Календарь привычек"><span class="material-symbols-outlined">calendar_month</span></button>
               <button type="button" class="panel-edit-btn icon-btn" data-panel="habits" aria-label="Режим перетаскивания" title="Режим перетаскивания"><span class="material-symbols-outlined panel-edit-btn-icon">edit</span></button>
               <button type="button" id="add-habit-btn" class="primary-btn add-btn icon-btn" aria-label="Добавить привычку"><span class="material-symbols-outlined">add</span></button>
             </div>
@@ -116,6 +117,24 @@
           <button type="button" id="capsule-overlay-close" class="capsule-overlay-close" aria-label="Закрыть">×</button>
         </div>
         <div id="capsule-view" class="capsule-view"></div>
+      </div>
+    </div>
+
+    <div id="habit-calendar-overlay" class="habit-calendar-overlay hidden">
+      <div class="habit-calendar-backdrop"></div>
+      <div class="habit-calendar-panel">
+        <div class="habit-calendar-header">
+          <button type="button" class="habit-calendar-prev icon-btn" aria-label="Предыдущий месяц"><span class="material-symbols-outlined">chevron_left</span></button>
+          <h2 id="habit-calendar-title">Январь 2024</h2>
+          <button type="button" class="habit-calendar-next icon-btn" aria-label="Следующий месяц"><span class="material-symbols-outlined">chevron_right</span></button>
+        </div>
+        <div id="habit-calendar-view" class="habit-calendar-view"></div>
+        <div class="habit-calendar-legend">
+          <span class="habit-calendar-legend-item"><span class="habit-calendar-cell habit-calendar-cell-done intensity-4"></span> Выполнено</span>
+          <span class="habit-calendar-legend-item"><span class="habit-calendar-cell habit-calendar-cell-skip"></span> Пропущено</span>
+          <span class="habit-calendar-legend-hint">Цвет — интенсивность выполнения</span>
+        </div>
+        <button type="button" id="habit-calendar-close" class="habit-calendar-close" aria-label="Закрыть">×</button>
       </div>
     </div>
 

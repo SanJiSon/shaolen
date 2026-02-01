@@ -42,7 +42,9 @@ const state = {
   reorderMode: false,
   reminderSettings: null,
   googleFitConnected: false,
-  googleFitSteps: null
+  googleFitSteps: null,
+  habitCalendarYear: new Date().getFullYear(),
+  habitCalendarMonth: new Date().getMonth() + 1
 };
 
 function initUser() {
@@ -398,11 +400,15 @@ function renderMissions(missions) {
     var createdAt = m.created_at ? String(m.created_at).slice(0, 10) : "";
     var deadline = m.deadline ? String(m.deadline).slice(0, 10) : "";
     var subs = subgoalsByMission[m.id] || [];
+    var completedSubs = subs.filter(function(s) { return s.is_completed; }).length;
+    var totalSubs = subs.length;
+    var subProgressPct = totalSubs > 0 ? Math.round((completedSubs / totalSubs) * 100) : 0;
     var subsHtml = subs.map(function(s) {
       var doneClass = s.is_completed ? " subgoal-done" : "";
       return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
+    var progressBarHtml = totalSubs > 0 ? "<div class=\"mission-progress\"><div class=\"mission-progress-bar\"><div class=\"mission-progress-fill\" style=\"width:" + subProgressPct + "%\"></div></div><span class=\"mission-progress-label\">" + completedSubs + "/" + totalSubs + " подцелей</span></div>" : "";
     card.innerHTML =
       "<div class=\"card-header card-header-with-cb\">" +
       "<label class=\"mission-done-cb-wrap\"><input type=\"checkbox\" class=\"mission-done-cb\" data-id=\"" + m.id + "\" " + (m.is_completed ? "checked" : "") + " /></label>" +
@@ -412,6 +418,7 @@ function renderMissions(missions) {
       "<div class=\"card-description\">" + description + "</div>" +
       "<div class=\"card-meta\"><span>Создана: " + createdAt + "</span>" + (deadline ? "<span>Окончание: " + deadline + "</span>" : "") + "</div>" +
       (subs.length || true ? "<div class=\"card-subgoals\"><div class=\"subgoals-title\">Подцели</div><div class=\"subgoals-list\" data-mission-id=\"" + m.id + "\">" + subsHtml + "</div><button type=\"button\" class=\"link-btn add-subgoal-btn\" data-mission-id=\"" + m.id + "\">＋ Подцель</button></div>" : "") +
+      progressBarHtml +
       "";
     card.dataset.editId = String(m.id);
     card.dataset.editType = "mission";
@@ -576,15 +583,24 @@ function renderHabits(habits) {
     return;
   }
 
+  var HABIT_TARGET_DAYS = 21;
   habits.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
+    const streak = parseInt(h.streak || 0);
     const remindersOn = h.reminders_enabled !== 0;
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
     var exampleBadge = (h.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var waterCalcBadge = (h.is_water_calculated ? "<span class=\"water-calc-badge\">Рассчитана автоматически</span><button type=\"button\" class=\"habit-water-help icon-btn\" aria-label=\"Как рассчитано\" title=\"Как рассчитано\" data-desc=\"" + escapeHtml((h.description || "").replace(/"/g, "&quot;")) + "\">?</button>" : "");
+    var pct = HABIT_TARGET_DAYS > 0 ? Math.round((streak / HABIT_TARGET_DAYS) * 100) : 0;
+    var barPct = Math.min(100, pct);
+    var barSegments = 10;
+    var filledSegments = Math.round((barPct / 100) * barSegments);
+    var barHtml = "";
+    for (var i = 0; i < barSegments; i++) barHtml += "<span class=\"habit-progress-seg " + (i < filledSegments ? "filled" : "") + "\"></span>";
+    var progressHtml = "<div class=\"habit-progress\"><div class=\"habit-progress-bar\">" + barHtml + "</div><span class=\"habit-progress-text\">" + pct + "% (" + streak + "/" + HABIT_TARGET_DAYS + ")</span></div>";
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
@@ -596,6 +612,7 @@ function renderHabits(habits) {
         </div>
         <button type="button" class="habit-btn habit-btn-minus" data-habit-id="${habitId}" data-action="decrement">−</button>
       </div>
+      ${progressHtml}
     `;
     card.dataset.editId = String(h.id);
     card.dataset.editType = "habit";
@@ -863,7 +880,7 @@ function renderProfile() {
   var selectedCountry = (p.country || "").trim() ? escapeHtml((p.country || "").trim()) : "";
 
   if (state.profileSubTab === "bmi-water") state.profileSubTab = "bmi";
-  if (!["general", "person", "bmi", "water", "stats"].includes(state.profileSubTab)) state.profileSubTab = "general";
+  if (!["general", "person", "bmi", "water", "stats", "achievements"].includes(state.profileSubTab)) state.profileSubTab = "general";
   var hasWeightData = (currentWeight != null || weight) && heightM;
   var bmiWidgetHtml = hasWeightData ? "<div class=\"profile-widget profile-widget-bmi\"><div class=\"profile-widget-title\">ИМТ</div><div class=\"profile-widget-bmi-value\">ИМТ: " + (bmiVal != null ? bmiVal : "—") + (bmiCat ? " — " + escapeHtml(bmiCat.label) : "") + (idealRange ? " · Диапазон нормы: " + idealRange.minKg + "–" + idealRange.maxKg + " кг" : "") + "</div></div>" : "";
   var weightWidgetHtml = (currentWeight != null || weightHistory.length || weight != null) ? "<div class=\"profile-widget profile-widget-weight\" id=\"profile-weight-widget-card\"><div class=\"weight-card-header\"><span class=\"weight-card-title\">Вес</span><span class=\"weight-card-date\">" + new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" }) + "</span></div><div class=\"weight-card-value\">" + (currentWeight != null ? currentWeight : weight).toFixed(1) + " кг</div>" + (weightHistory.length ? "<div class=\"weight-card-trend\"><span class=\"weight-trend-link\" id=\"weight-trend-link\">Тенденции &gt;</span><div id=\"profile-weight-chart-mini\" class=\"weight-chart-mini\"></div></div>" : "") + "</div>" : "";
@@ -878,6 +895,7 @@ function renderProfile() {
   var bmiChecked = state.profileSubTab === "bmi" ? " checked" : "";
   var waterChecked = state.profileSubTab === "water" ? " checked" : "";
   var statsChecked = state.profileSubTab === "stats" ? " checked" : "";
+  var achievementsChecked = state.profileSubTab === "achievements" ? " checked" : "";
 
   var contentPerson = `
     <div class="profile-form-section">
@@ -1001,10 +1019,27 @@ function renderProfile() {
     </div>
   `;
 
+  var achievements = state.cache.achievements || [];
+  var achievedCount = achievements.filter(function(a) { return a.achieved; }).length;
+  var contentAchievements = `
+    <div class="profile-achievements">
+      <h3 class="profile-section-title">21 день подряд</h3>
+      <p class="profile-achievements-hint">Достижение за 21 день выполнения привычки без пропусков.</p>
+      <div class="achievements-grid">
+        ${achievements.length ? achievements.map(function(a) {
+          var cls = a.achieved ? "achievement-badge achieved" : "achievement-badge locked";
+          var icon = a.achieved ? "military_tech" : "lock";
+          return "<div class=\"" + cls + "\"><span class=\"material-symbols-outlined achievement-icon\">" + icon + "</span><span class=\"achievement-title\">" + escapeHtml(a.title || "Привычка") + "</span><span class=\"achievement-streak\">" + a.streak + " дн.</span></div>";
+        }).join("") : "<p class=\"profile-hint\">Нет привычек. Добавьте привычки на вкладке «Привычки».</p>"}
+      </div>
+      ${achievedCount > 0 ? "<p class=\"achievements-summary\">Получено: " + achievedCount + " из " + achievements.length + "</p>" : ""}
+    </div>
+  `;
+
   var contentGeneral = (bmiWidgetHtml || weightWidgetHtml || stepsWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + stepsWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса. Подключите Google Fit в настройках для отображения шагов.</p>";
 
-  var subPageTitles = { person: "Человек", bmi: "ИМТ", water: "Вода", stats: "Статистика" };
-  var subPageContent = { person: contentPerson, bmi: contentBmi, water: contentWater, stats: contentStats };
+  var subPageTitles = { person: "Человек", bmi: "ИМТ", water: "Вода", stats: "Статистика", achievements: "Достижения" };
+  var subPageContent = { person: contentPerson, bmi: contentBmi, water: contentWater, stats: contentStats, achievements: contentAchievements };
 
   if (state.profileSubTab === "general") {
     root.innerHTML = `
@@ -1024,6 +1059,7 @@ function renderProfile() {
             <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="bmi"><span class="material-symbols-outlined profile-tab-icon">monitor_weight</span> ИМТ</button>
             <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="water"><span class="material-symbols-outlined profile-tab-icon">water_drop</span> Вода</button>
             <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="stats"><span class="material-symbols-outlined profile-tab-icon">bar_chart</span> Статистика</button>
+            <button type="button" class="profile-subtab profile-subtab-link" data-profile-tab="achievements"><span class="material-symbols-outlined profile-tab-icon">military_tech</span> Достижения</button>
           </div>
         </div>
         <div class="profile-content-area" id="profile-content-area">
@@ -1817,7 +1853,7 @@ async function loadAll() {
       username: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username) || "",
       display_name: ""
     };
-    const [missions, goals, habits, analytics, profile, weightHistoryRes] = await Promise.all([
+    const [missions, goals, habits, analytics, profile, weightHistoryRes, achievementsRes] = await Promise.all([
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
@@ -1827,7 +1863,8 @@ async function loadAll() {
         return { period: "month", missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
       }),
       fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; }),
-      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; })
+      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; }),
+      fetchJSON(base + "/api/user/" + uid + "/achievements").catch(function() { return { achievements: [] }; })
     ]);
     
     console.log('✅ Данные получены:');
@@ -1852,6 +1889,7 @@ async function loadAll() {
     state.cache.analytics = analyticsData;
     state.cache.profile = (profile && typeof profile === "object") ? profile : profileFallback;
     state.cache.weightHistory = (weightHistoryRes && Array.isArray(weightHistoryRes.data)) ? weightHistoryRes.data : [];
+    state.cache.achievements = (achievementsRes && achievementsRes.achievements) ? achievementsRes.achievements : [];
 
     state.cache.subgoalsByMission = {};
     if (missionsList.length) {
@@ -1889,6 +1927,7 @@ async function loadAll() {
     state.cache.missions = [];
     state.cache.goals = [];
     state.cache.habits = [];
+    state.cache.achievements = [];
     state.cache.analytics = {
       missions: { total: 0, completed: 0, avg_progress: 0 },
       goals: { total: 0, completed: 0, completion_rate: 0 },
@@ -2388,6 +2427,92 @@ function closeSettingsOverlay() {
   if (ov) ov.classList.add("hidden");
 }
 
+var MONTH_NAMES_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+var WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+function openHabitCalendar() {
+  var ov = $("#habit-calendar-overlay");
+  if (!ov || !state.userId) return;
+  state.habitCalendarYear = new Date().getFullYear();
+  state.habitCalendarMonth = new Date().getMonth() + 1;
+  renderHabitCalendar();
+  ov.classList.remove("hidden");
+}
+
+function closeHabitCalendar() {
+  var ov = $("#habit-calendar-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
+function getIntensityLevel(completed, total) {
+  if (completed <= 0) return 0;
+  if (!total) return 4;
+  var ratio = completed / total;
+  if (ratio <= 0.25) return 1;
+  if (ratio <= 0.5) return 2;
+  if (ratio <= 0.75) return 3;
+  return 4;
+}
+
+async function renderHabitCalendar() {
+  var view = $("#habit-calendar-view");
+  var titleEl = $("#habit-calendar-title");
+  if (!view || !titleEl) return;
+  view.innerHTML = "<p class=\"habit-calendar-loading\">Загрузка…</p>";
+  var y = state.habitCalendarYear;
+  var m = state.habitCalendarMonth;
+  titleEl.textContent = MONTH_NAMES_RU[m - 1] + " " + y;
+  try {
+    var data = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-calendar?year=" + y + "&month=" + m);
+    var days = (data && data.days) || {};
+    var totalHabits = (data && data.total_habits) || 0;
+  } catch (e) {
+    view.innerHTML = "<p class=\"habit-calendar-error\">Ошибка загрузки</p>";
+    return;
+  }
+  var firstDay = new Date(y, m - 1, 1);
+  var lastDay = new Date(y, m - 1 + 1, 0);
+  var startWeekday = firstDay.getDay();
+  startWeekday = startWeekday === 0 ? 6 : startWeekday - 1;
+  var daysInMonth = lastDay.getDate();
+  var today = new Date();
+  var todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+  var html = "<div class=\"habit-calendar-weekdays\">";
+  WEEKDAYS_RU.forEach(function(wd) { html += "<span>" + wd + "</span>"; });
+  html += "</div>";
+  var cells = [];
+  for (var i = 0; i < startWeekday; i++) cells.push({ empty: true });
+  for (var d = 1; d <= daysInMonth; d++) {
+    var key = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    var info = days[key] || { completed: 0, total: totalHabits, completions: 0 };
+    var isToday = key === todayStr;
+    cells.push({ key: key, day: d, info: info, isToday: isToday });
+  }
+  var rows = [];
+  for (var j = 0; j < cells.length; j += 7) {
+    var week = cells.slice(j, j + 7);
+    while (week.length < 7) week.push({ empty: true });
+    rows.push(week);
+  }
+  rows.forEach(function(week) {
+    html += "<div class=\"habit-calendar-week\">";
+    week.forEach(function(cell) {
+      if (cell.empty) {
+        html += "<div class=\"habit-calendar-cell habit-calendar-cell-empty\"></div>";
+      } else {
+        var info = cell.info;
+        var done = info.completed > 0 || info.completions > 0;
+        var cls = done ? "habit-calendar-cell-done" : "habit-calendar-cell-skip";
+        if (done && info.total > 0) cls += " intensity-" + getIntensityLevel(info.completed, info.total);
+        if (cell.isToday) cls += " habit-calendar-cell-today";
+        html += "<div class=\"habit-calendar-cell " + cls + "\" title=\"" + (done ? info.completed + "/" + info.total + " привычек" : "Пропущено") + "\"></div>";
+      }
+    });
+    html += "</div>";
+  });
+  view.innerHTML = html;
+}
+
 function bindEvents() {
   var tabEls = $all(".tab");
   tabEls.forEach(function(btn) {
@@ -2399,6 +2524,24 @@ function bindEvents() {
   if (settingsOverlayClose) settingsOverlayClose.addEventListener("click", closeSettingsOverlay);
   var settingsBackdrop = $(".settings-overlay-backdrop");
   if (settingsBackdrop) settingsBackdrop.addEventListener("click", closeSettingsOverlay);
+  var habitCalendarBtn = document.getElementById("habit-calendar-btn");
+  if (habitCalendarBtn) habitCalendarBtn.addEventListener("click", openHabitCalendar);
+  var habitCalendarClose = document.getElementById("habit-calendar-close");
+  if (habitCalendarClose) habitCalendarClose.addEventListener("click", closeHabitCalendar);
+  var habitCalendarBackdrop = $(".habit-calendar-backdrop");
+  if (habitCalendarBackdrop) habitCalendarBackdrop.addEventListener("click", closeHabitCalendar);
+  var habitCalPrev = $(".habit-calendar-prev");
+  if (habitCalPrev) habitCalPrev.addEventListener("click", function() {
+    state.habitCalendarMonth--;
+    if (state.habitCalendarMonth < 1) { state.habitCalendarMonth = 12; state.habitCalendarYear--; }
+    renderHabitCalendar();
+  });
+  var habitCalNext = $(".habit-calendar-next");
+  if (habitCalNext) habitCalNext.addEventListener("click", function() {
+    state.habitCalendarMonth++;
+    if (state.habitCalendarMonth > 12) { state.habitCalendarMonth = 1; state.habitCalendarYear++; }
+    renderHabitCalendar();
+  });
   var capsuleMenuBtn = document.getElementById("capsule-menu-btn");
   if (capsuleMenuBtn) capsuleMenuBtn.addEventListener("click", openCapsuleOverlay);
   var capsuleOverlayClose = document.getElementById("capsule-overlay-close");
