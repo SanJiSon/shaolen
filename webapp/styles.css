@@ -316,7 +316,7 @@ body {
 }
 .settings-view { padding-top: 8px; }
 
-/* Календарь привычек */
+/* Календарь привычек — последние 7 дней по каждой привычке */
 .habit-calendar-overlay {
   position: fixed;
   inset: 0;
@@ -336,6 +336,7 @@ body {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
 }
 .habit-calendar-panel {
   position: relative;
@@ -344,17 +345,19 @@ body {
   max-width: 420px;
   max-height: 88vh;
   overflow-y: auto;
-  background: var(--bg);
+  background: var(--bg-elevated);
   border-radius: 20px 20px 0 0;
-  padding: 20px 16px 28px;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  padding: 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
 }
 .habit-calendar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding: 0 4px;
+  padding: 18px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 .habit-calendar-header h2 {
   margin: 0;
@@ -362,113 +365,125 @@ body {
   font-weight: 600;
   color: var(--text);
 }
-.habit-calendar-prev, .habit-calendar-next {
-  width: 36px;
-  height: 36px;
+.habit-calendar-close {
+  width: 40px;
+  height: 40px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-elevated);
+  background: rgba(148, 163, 184, 0.15);
   border: none;
   border-radius: 10px;
-  color: var(--text);
-  cursor: pointer;
-}
-.habit-calendar-prev:hover, .habit-calendar-next:hover {
-  background: var(--accent-soft, rgba(59, 130, 246, 0.15));
-  color: var(--accent);
-}
-.habit-calendar-view {
-  padding: 8px 0 16px;
-}
-.habit-calendar-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  margin-bottom: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  text-align: center;
-}
-.habit-calendar-week {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-  margin-bottom: 4px;
-}
-.habit-calendar-cell {
-  aspect-ratio: 1;
-  border-radius: 8px;
-  min-height: 28px;
-  max-height: 44px;
-}
-.habit-calendar-cell-skip {
-  background: var(--surface-2, #2d3748);
-}
-.habit-calendar-cell-done {
-  background: rgba(34, 197, 94, 0.4);
-}
-.habit-calendar-cell-done.intensity-1 { background: rgba(34, 197, 94, 0.35); }
-.habit-calendar-cell-done.intensity-2 { background: rgba(34, 197, 94, 0.55); }
-.habit-calendar-cell-done.intensity-3 { background: rgba(34, 197, 94, 0.75); }
-.habit-calendar-cell-done.intensity-4 { background: rgba(34, 197, 94, 0.95); }
-.habit-calendar-cell-empty {
-  background: transparent;
-}
-.habit-calendar-cell-today {
-  box-shadow: 0 0 0 2px var(--accent);
-}
-.habit-calendar-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--muted);
-  padding-top: 12px;
-  border-top: 1px solid var(--muted-strong);
-}
-.habit-calendar-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.habit-calendar-legend-item .habit-calendar-cell {
-  width: 16px;
-  height: 16px;
-  min-height: 0;
-  max-height: none;
-}
-.habit-calendar-legend-hint {
-  font-size: 11px;
-  opacity: 0.8;
-}
-.habit-calendar-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  font-size: 24px;
-  line-height: 1;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
   color: var(--muted);
   cursor: pointer;
 }
 .habit-calendar-close:hover {
-  background: var(--bg-elevated);
+  background: rgba(124, 58, 237, 0.2);
+  color: var(--accent);
+}
+.habit-calendar-dates-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(7, 32px);
+  gap: 8px;
+  align-items: center;
+  padding: 14px 16px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+.habit-cal-dates-label {
+  font-weight: 600;
   color: var(--text);
+}
+.habit-cal-date {
+  text-align: center;
+}
+.habit-calendar-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+.habit-cal-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  min-height: 52px;
+}
+.habit-cal-row:last-child {
+  border-bottom: none;
+}
+.habit-cal-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  word-break: break-word;
+}
+.habit-cal-days {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.habit-cal-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+.habit-cal-dot-done {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(34, 197, 94, 0.45));
+  color: #22c55e;
+}
+.habit-cal-dot-skip {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--muted);
+}
+.habit-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 14px 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+.habit-calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.habit-calendar-legend-item .habit-cal-dot {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+.habit-calendar-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 40px 16px;
+  line-height: 1.6;
 }
 .habit-calendar-loading, .habit-calendar-error {
   text-align: center;
-  padding: 24px;
+  padding: 32px 24px;
   color: var(--muted);
   font-size: 14px;
+}
+
+@media (max-width: 380px) {
+  .habit-cal-dot { width: 26px; height: 26px; font-size: 12px; }
+  .habit-calendar-dates-row { grid-template-columns: 1fr repeat(7, 26px); }
 }
 .settings-row {
   display: flex;
@@ -1385,6 +1400,23 @@ body.reorder-mode .swipe-row-actions {
   font-weight: 600;
   color: white;
   margin-bottom: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .profile-name {

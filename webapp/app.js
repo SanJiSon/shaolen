@@ -946,6 +946,8 @@ function renderProfile() {
   var lastName = (p.last_name || "").trim();
   var name = displayName || [firstName, lastName].filter(Boolean).join(" ").trim() || "Пользователь";
   var initial = (name && name.charAt(0)) ? name.charAt(0).toUpperCase() : "?";
+  var avatarBase = gender === "f" ? "ona" : (gender === "m" ? "on" : null);
+  var avatarImg = avatarBase ? "images/" + avatarBase + ".png" : null;
   var username = (p.username && String(p.username).trim()) ? "@" + escapeHtml(String(p.username).trim()) : "";
   var gender = (p.gender || "").trim() || "";
   var weight = p.weight != null ? Number(p.weight) : null;
@@ -1143,7 +1145,7 @@ function renderProfile() {
         <div class="profile-tabs-container">
           <div id="profile-identity" class="profile-identity">
             <div class="profile-identity-content">
-              <div class="profile-avatar">${escapeHtml(initial)}</div>
+              <div class="profile-avatar">${avatarImg ? "<img src=\"" + avatarImg + "\" alt=\"\" class=\"profile-avatar-img\" data-jpg=\"images/" + avatarBase + ".jpg\" onerror=\"var i=this;if(i.dataset.jpg&&i.src.endsWith('.png')){i.src=i.dataset.jpg;i.onerror=function(){i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}}else{i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}\"><span class=\"profile-avatar-fallback\" style=\"display:none\">" + escapeHtml(initial) + "</span>" : "<span class=\"profile-avatar-fallback\">" + escapeHtml(initial) + "</span>"}</div>
               <h2 class="profile-name">${escapeHtml(name)}</h2>
               <p class="profile-age">${escapeHtml(ageText)}</p>
             </div>
@@ -2551,8 +2553,6 @@ var WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 function openHabitCalendar() {
   var ov = $("#habit-calendar-overlay");
   if (!ov || !state.userId) return;
-  state.habitCalendarYear = new Date().getFullYear();
-  state.habitCalendarMonth = new Date().getMonth() + 1;
   renderHabitCalendar();
   ov.classList.remove("hidden");
 }
@@ -2562,71 +2562,40 @@ function closeHabitCalendar() {
   if (ov) ov.classList.add("hidden");
 }
 
-function getIntensityLevel(completed, total) {
-  if (completed <= 0) return 0;
-  if (!total) return 4;
-  var ratio = completed / total;
-  if (ratio <= 0.25) return 1;
-  if (ratio <= 0.5) return 2;
-  if (ratio <= 0.75) return 3;
-  return 4;
+function formatCalDate(iso) {
+  if (!iso) return "";
+  var d = new Date(iso);
+  return d.getDate() + " " + d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
 }
 
 async function renderHabitCalendar() {
   var view = $("#habit-calendar-view");
-  var titleEl = $("#habit-calendar-title");
-  if (!view || !titleEl) return;
+  var datesEl = $("#habit-calendar-dates");
+  if (!view || !datesEl) return;
   view.innerHTML = "<p class=\"habit-calendar-loading\">Загрузка…</p>";
-  var y = state.habitCalendarYear;
-  var m = state.habitCalendarMonth;
-  titleEl.textContent = MONTH_NAMES_RU[m - 1] + " " + y;
+  datesEl.innerHTML = "";
   try {
-    var data = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-calendar?year=" + y + "&month=" + m);
-    var days = (data && data.days) || {};
-    var totalHabits = (data && data.total_habits) || 0;
+    var data = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-last-7-days");
+    var dates = (data && data.dates) || [];
+    var habits = (data && data.habits) || [];
   } catch (e) {
     view.innerHTML = "<p class=\"habit-calendar-error\">Ошибка загрузки</p>";
     return;
   }
-  var firstDay = new Date(y, m - 1, 1);
-  var lastDay = new Date(y, m - 1 + 1, 0);
-  var startWeekday = firstDay.getDay();
-  startWeekday = startWeekday === 0 ? 6 : startWeekday - 1;
-  var daysInMonth = lastDay.getDate();
-  var today = new Date();
-  var todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-  var html = "<div class=\"habit-calendar-weekdays\">";
-  WEEKDAYS_RU.forEach(function(wd) { html += "<span>" + wd + "</span>"; });
-  html += "</div>";
-  var cells = [];
-  for (var i = 0; i < startWeekday; i++) cells.push({ empty: true });
-  for (var d = 1; d <= daysInMonth; d++) {
-    var key = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
-    var info = days[key] || { completed: 0, total: totalHabits, completions: 0 };
-    var isToday = key === todayStr;
-    cells.push({ key: key, day: d, info: info, isToday: isToday });
+  if (habits.length === 0) {
+    view.innerHTML = "<p class=\"habit-calendar-empty\">Нет активных привычек. Добавьте привычку на вкладке «Привычки».</p>";
+    return;
   }
-  var rows = [];
-  for (var j = 0; j < cells.length; j += 7) {
-    var week = cells.slice(j, j + 7);
-    while (week.length < 7) week.push({ empty: true });
-    rows.push(week);
-  }
-  rows.forEach(function(week) {
-    html += "<div class=\"habit-calendar-week\">";
-    week.forEach(function(cell) {
-      if (cell.empty) {
-        html += "<div class=\"habit-calendar-cell habit-calendar-cell-empty\"></div>";
-      } else {
-        var info = cell.info;
-        var done = info.completed > 0 || info.completions > 0;
-        var cls = done ? "habit-calendar-cell-done" : "habit-calendar-cell-skip";
-        if (done && info.total > 0) cls += " intensity-" + getIntensityLevel(info.completed, info.total);
-        if (cell.isToday) cls += " habit-calendar-cell-today";
-        html += "<div class=\"habit-calendar-cell " + cls + "\" title=\"" + (done ? info.completed + "/" + info.total + " привычек" : "Пропущено") + "\"></div>";
-      }
-    });
-    html += "</div>";
+  datesEl.innerHTML = "<span class=\"habit-cal-dates-label\">Привычка</span>" +
+    dates.map(function(d) { return "<span class=\"habit-cal-date\">" + formatCalDate(d) + "</span>"; }).join("");
+  var html = "";
+  habits.forEach(function(h) {
+    var title = escapeHtml(h.title || "Привычка");
+    var daysStr = (h.days || []).map(function(d) { return d ? "<span class=\"habit-cal-dot habit-cal-dot-done\" title=\"Выполнено\">✓</span>" : "<span class=\"habit-cal-dot habit-cal-dot-skip\" title=\"Пропущено\">−</span>"; }).join("");
+    html += "<div class=\"habit-cal-row\">" +
+      "<span class=\"habit-cal-name\">" + title + "</span>" +
+      "<span class=\"habit-cal-days\">" + daysStr + "</span>" +
+      "</div>";
   });
   view.innerHTML = html;
 }
@@ -2648,18 +2617,6 @@ function bindEvents() {
   if (habitCalendarClose) habitCalendarClose.addEventListener("click", closeHabitCalendar);
   var habitCalendarBackdrop = $(".habit-calendar-backdrop");
   if (habitCalendarBackdrop) habitCalendarBackdrop.addEventListener("click", closeHabitCalendar);
-  var habitCalPrev = $(".habit-calendar-prev");
-  if (habitCalPrev) habitCalPrev.addEventListener("click", function() {
-    state.habitCalendarMonth--;
-    if (state.habitCalendarMonth < 1) { state.habitCalendarMonth = 12; state.habitCalendarYear--; }
-    renderHabitCalendar();
-  });
-  var habitCalNext = $(".habit-calendar-next");
-  if (habitCalNext) habitCalNext.addEventListener("click", function() {
-    state.habitCalendarMonth++;
-    if (state.habitCalendarMonth > 12) { state.habitCalendarMonth = 1; state.habitCalendarYear++; }
-    renderHabitCalendar();
-  });
   var capsuleMenuBtn = document.getElementById("capsule-menu-btn");
   if (capsuleMenuBtn) capsuleMenuBtn.addEventListener("click", openCapsuleOverlay);
   var capsuleOverlayClose = document.getElementById("capsule-overlay-close");

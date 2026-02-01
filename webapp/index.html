@@ -125,17 +125,15 @@
       <div class="habit-calendar-backdrop"></div>
       <div class="habit-calendar-panel">
         <div class="habit-calendar-header">
-          <button type="button" class="habit-calendar-prev icon-btn" aria-label="Предыдущий месяц"><span class="material-symbols-outlined">chevron_left</span></button>
-          <h2 id="habit-calendar-title">Январь 2024</h2>
-          <button type="button" class="habit-calendar-next icon-btn" aria-label="Следующий месяц"><span class="material-symbols-outlined">chevron_right</span></button>
+          <h2 id="habit-calendar-title">Последние 7 дней</h2>
+          <button type="button" id="habit-calendar-close" class="habit-calendar-close icon-btn" aria-label="Закрыть"><span class="material-symbols-outlined">close</span></button>
         </div>
+        <div class="habit-calendar-dates-row" id="habit-calendar-dates"></div>
         <div id="habit-calendar-view" class="habit-calendar-view"></div>
         <div class="habit-calendar-legend">
-          <span class="habit-calendar-legend-item"><span class="habit-calendar-cell habit-calendar-cell-done intensity-4"></span> Выполнено</span>
-          <span class="habit-calendar-legend-item"><span class="habit-calendar-cell habit-calendar-cell-skip"></span> Пропущено</span>
-          <span class="habit-calendar-legend-hint">Цвет — интенсивность выполнения</span>
+          <span class="habit-calendar-legend-item"><span class="habit-cal-dot habit-cal-dot-done"></span> Выполнено</span>
+          <span class="habit-calendar-legend-item"><span class="habit-cal-dot habit-cal-dot-skip"></span> Пропущено</span>
         </div>
-        <button type="button" id="habit-calendar-close" class="habit-calendar-close" aria-label="Закрыть">×</button>
       </div>
     </div>
 
