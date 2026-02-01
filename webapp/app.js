@@ -973,51 +973,62 @@ function renderProfile() {
 
   var contentPerson = `
     <div class="person-form">
-      <div class="person-row person-row-gender">
+      <div class="person-row person-gender">
         <span class="person-label">Пол</span>
-        <div class="person-gender">
-          <button type="button" class="person-gender-btn ${gender === "m" ? "active" : ""}" data-gender="m"><span class="material-symbols-outlined">male</span>Муж</button>
-          <button type="button" class="person-gender-btn ${gender === "f" ? "active" : ""}" data-gender="f"><span class="material-symbols-outlined">female</span>Жен</button>
+        <div class="profile-gender-cards">
+          <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-m">face</span><span>Мужской</span></button>
+          <button type="button" class="profile-gender-card ${gender === "f" ? "selected" : ""}" data-gender="f" aria-label="Женский"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-f">face_3</span><span>Женский</span></button>
         </div>
       </div>
-      <div class="person-row person-row-height">
-        <span class="person-label">Рост <span id="profile-height-value" class="person-value">${height != null ? height : "—"}</span> см</span>
-        <div class="person-slider-wrap">
-          <input type="range" id="profile-height-slider" class="person-slider" min="100" max="220" value="${height != null && height >= 100 && height <= 220 ? height : 165}" step="1" aria-label="Рост" />
+      <div class="person-row person-height">
+        <span class="person-label">Рост</span>
+        <div class="profile-height-ruler-block">
+        <div class="profile-height-display">
+          <span id="profile-height-value" class="profile-height-value">${height != null ? height : "—"}</span><span class="profile-height-unit"> см</span>
         </div>
-        <div class="person-presets">
-          <button type="button" class="person-preset" data-height="150">150</button>
-          <button type="button" class="person-preset" data-height="160">160</button>
-          <button type="button" class="person-preset" data-height="170">170</button>
-          <button type="button" class="person-preset" data-height="180">180</button>
-          <button type="button" class="person-preset" data-height="190">190</button>
+        <div class="profile-ruler-container">
+          <div class="profile-ruler-track">
+            <div class="profile-ruler-scale" id="profile-ruler-scale"></div>
+          </div>
+          <div class="profile-height-slider-wrap">
+            <input type="range" id="profile-height-slider" class="profile-height-slider" min="100" max="220" value="${height != null && height >= 100 && height <= 220 ? height : 165}" step="1" aria-label="Рост в см" />
+            <span class="profile-height-slider-hint">Перемещайте ползунок</span>
+          </div>
+        </div>
+        <div class="profile-height-presets">
+          <button type="button" class="profile-height-preset-btn" data-height="150">150</button>
+          <button type="button" class="profile-height-preset-btn" data-height="160">160</button>
+          <button type="button" class="profile-height-preset-btn" data-height="170">170</button>
+          <button type="button" class="profile-height-preset-btn" data-height="180">180</button>
+          <button type="button" class="profile-height-preset-btn" data-height="190">190</button>
+        </div>
         </div>
         <input type="hidden" id="profile-height" value="${height != null ? height : ""}" />
       </div>
-      <div class="person-row person-row-stats">
+      <div class="person-row person-stats">
         <div class="person-stat">
           <span class="person-label">Возраст</span>
           <div class="person-stepper">
-            <button type="button" class="person-step-btn" id="profile-age-minus" aria-label="−"><span class="material-symbols-outlined">remove</span></button>
-            <span class="person-stat-value" id="profile-age-value">${age != null ? age : "—"}</span>
-            <button type="button" class="person-step-btn" id="profile-age-plus" aria-label="+"><span class="material-symbols-outlined">add</span></button>
+            <button type="button" class="person-stepper-btn" id="profile-age-minus" aria-label="Уменьшить"><span class="material-symbols-outlined">remove</span></button>
+            <span class="person-stepper-value" id="profile-age-value">${age != null ? age : "—"}</span>
+            <button type="button" class="person-stepper-btn" id="profile-age-plus" aria-label="Увеличить"><span class="material-symbols-outlined">add</span></button>
           </div>
         </div>
         <div class="person-stat">
-          <span class="person-label">Вес</span>
+          <span class="person-label">Вес, кг</span>
           <div class="person-stepper">
-            <button type="button" class="person-step-btn" id="profile-weight-minus" aria-label="−"><span class="material-symbols-outlined">remove</span></button>
-            <span class="person-stat-value" id="profile-weight-value">${weight != null ? weight : "—"}</span>
-            <button type="button" class="person-step-btn" id="profile-weight-plus" aria-label="+"><span class="material-symbols-outlined">add</span></button>
+            <button type="button" class="person-stepper-btn" id="profile-weight-minus" aria-label="Уменьшить"><span class="material-symbols-outlined">remove</span></button>
+            <span class="person-stepper-value" id="profile-weight-value">${weight != null ? weight : "—"}</span>
+            <button type="button" class="person-stepper-btn" id="profile-weight-plus" aria-label="Увеличить"><span class="material-symbols-outlined">add</span></button>
           </div>
-          <button type="button" class="person-add-weight" id="profile-add-weight-btn">+ запись</button>
+          <button type="button" class="person-add-weight" id="profile-add-weight-btn">+ запись веса</button>
         </div>
-        <input type="hidden" id="profile-age-input" value="${age != null ? age : ""}" />
-        <input type="hidden" id="profile-weight-input" value="${weight != null ? weight : ""}" />
       </div>
-      <div class="person-row person-row-target">
+      <input type="hidden" id="profile-age-input" value="${age != null ? age : ""}" />
+      <input type="hidden" id="profile-weight-input" value="${weight != null ? weight : ""}" />
+      <div class="person-row person-target">
         <span class="person-label">Целевой вес</span>
-        <input type="number" id="profile-target-weight" class="person-input" step="0.1" min="0" placeholder="кг" value="${targetWeight != null ? targetWeight : ""}" />
+        <input type="number" id="profile-target-weight" class="person-input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
       </div>
       <button type="button" class="person-save primary-btn profile-save-fields-btn">Сохранить</button>
     </div>
@@ -1257,7 +1268,7 @@ function renderProfile() {
   if (saveFieldsBtn) {
     saveFieldsBtn.addEventListener("click", async function() {
       var dn = (state.cache.profile && state.cache.profile.display_name || "").trim();
-      var gEl = root.querySelector(".person-gender-btn.active");
+      var gEl = root.querySelector(".profile-gender-card.selected");
       var g = gEl ? gEl.dataset.gender || null : null;
       var h = parseFloat(root.querySelector("#profile-height") && root.querySelector("#profile-height").value);
       var ag = parseInt(ageInput && ageInput.value, 10);
@@ -1294,24 +1305,54 @@ function renderProfile() {
 }
 
 function initHeightRuler(container) {
+  var scaleEl = document.getElementById("profile-ruler-scale");
   var sliderEl = document.getElementById("profile-height-slider");
   var valueEl = document.getElementById("profile-height-value");
   var hiddenEl = document.getElementById("profile-height");
-  if (!sliderEl || !valueEl || !hiddenEl) return;
-  var minH = 100, maxH = 220;
-  function syncFromSlider() {
-    var v = parseInt(sliderEl.value, 10);
+  var trackEl = container ? container.querySelector(".profile-ruler-track") : document.querySelector(".profile-ruler-track");
+  if (!scaleEl || !sliderEl || !valueEl || !hiddenEl || !trackEl) return;
+  var minH = 100;
+  var maxH = 220;
+  var pixelsPerCm = 10;
+  function buildScale() {
+    scaleEl.innerHTML = "";
+    for (var i = minH; i <= maxH; i++) {
+      var mark = document.createElement("div");
+      mark.className = "profile-cm-mark";
+      if (i % 10 === 0) mark.classList.add("tall");
+      else if (i % 5 === 0) mark.classList.add("medium");
+      else mark.classList.add("short");
+      if (i % 10 === 0) {
+        var num = document.createElement("div");
+        num.className = "profile-cm-number";
+        num.textContent = i;
+        mark.appendChild(num);
+      }
+      scaleEl.appendChild(mark);
+    }
+  }
+  function updateRulerPosition(val) {
+    var v = parseInt(val, 10);
     if (isNaN(v)) v = 165;
     v = Math.max(minH, Math.min(maxH, v));
+    var trackW = trackEl.offsetWidth || 280;
+    var offset = (trackW / 2) - (v - minH) * pixelsPerCm;
+    scaleEl.style.transform = "translateX(" + offset + "px)";
+  }
+  function syncFromSlider() {
+    var v = parseInt(sliderEl.value, 10);
     valueEl.textContent = v;
     hiddenEl.value = v;
+    updateRulerPosition(v);
   }
+  buildScale();
   var initialVal = parseInt(sliderEl.value, 10);
   if (isNaN(initialVal)) initialVal = 165;
   valueEl.textContent = initialVal;
   hiddenEl.value = initialVal;
+  updateRulerPosition(initialVal);
   sliderEl.addEventListener("input", syncFromSlider);
-  $all(".person-preset").forEach(function(btn) {
+  $all(".profile-height-preset-btn").forEach(function(btn) {
     btn.addEventListener("click", function() {
       var h = parseInt(btn.dataset.height, 10);
       if (isNaN(h)) return;
