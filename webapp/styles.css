@@ -1404,11 +1404,19 @@ body.reorder-mode .swipe-row-actions {
   flex-shrink: 0;
 }
 
+.profile-avatar.has-avatar-img {
+  width: 128px;
+  height: 128px;
+  font-size: 48px;
+}
+
 .profile-avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  max-width: 128px;
+  max-height: 128px;
 }
 
 .profile-avatar-fallback {
@@ -1667,6 +1675,12 @@ body.reorder-mode .swipe-row-actions {
   width: 48px;
   height: 48px;
   font-size: 20px;
+}
+
+.profile-identity .profile-avatar.has-avatar-img {
+  width: 128px;
+  height: 128px;
+  font-size: 48px;
 }
 .profile-identity .profile-name {
   font-size: 16px;
@@ -2131,16 +2145,98 @@ body.reorder-mode .swipe-row-actions {
 .profile-bmi-page-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--text); }
 .profile-bmi-gauge-section { margin-bottom: 20px; }
 .profile-bmi-section-label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.05em;
-  margin: 0 0 8px 0;
+  color: var(--text-soft);
+  letter-spacing: 0.02em;
+  margin: 0 0 12px 0;
 }
 .profile-bmi-gauge { display: flex; justify-content: center; margin: 0 auto; }
-.bmi-gauge-svg { display: block; max-width: 100%; height: auto; }
-.bmi-gauge-value { font-family: inherit; }
-.bmi-gauge-category { font-family: inherit; }
+
+.bmi-card-modern {
+  width: 100%;
+  max-width: 320px;
+  padding: 24px 20px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--muted-strong);
+  text-align: center;
+}
+
+.bmi-card-value {
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.bmi-card-value.bmi-under { color: #818cf8; }
+.bmi-card-value.bmi-normal { color: #22c55e; }
+.bmi-card-value.bmi-over { color: #f59e0b; }
+.bmi-card-value.bmi-obese { color: #ef4444; }
+
+.bmi-card-label {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  margin-bottom: 20px;
+}
+
+.bmi-card-label.bmi-under { background: #5c6bc0; }
+.bmi-card-label.bmi-normal { background: #22c55e; }
+.bmi-card-label.bmi-over { background: #f59e0b; }
+.bmi-card-label.bmi-obese { background: #ef4444; }
+
+.bmi-scale-wrap {
+  margin-top: 8px;
+}
+
+.bmi-scale-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  overflow: visible;
+  display: grid;
+  grid-template-columns: 17.3% 25% 19.2% 38.5%;
+  background: transparent;
+}
+
+.bmi-scale-seg {
+  height: 100%;
+}
+
+.bmi-scale-seg.bmi-under { background: #5c6bc0; }
+.bmi-scale-seg.bmi-normal { background: #22c55e; }
+.bmi-scale-seg.bmi-over { background: #f59e0b; }
+.bmi-scale-seg.bmi-obese { background: #ef4444; }
+
+.bmi-scale-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 18px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+
+.bmi-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.bmi-scale-labels span { flex: 1; text-align: center; }
 .profile-bmi-details-section { margin-bottom: 16px; }
 .profile-bmi-details-card {
   padding: 14px;
@@ -2148,7 +2244,12 @@ body.reorder-mode .swipe-row-actions {
   border-radius: var(--radius-md);
   border: 1px solid var(--muted-strong);
 }
-.profile-bmi-details-text { margin: 0 0 14px 0; font-size: 14px; line-height: 1.5; color: var(--text); }
+.profile-bmi-details-text { margin: 0 0 14px 0; font-size: 14px; line-height: 1.6; color: var(--text); }
+.profile-bmi-details-text .bmi-detail-value { color: var(--text); }
+.profile-bmi-details-text .bmi-detail-cat.bmi-under { color: #a5b4fc; }
+.profile-bmi-details-text .bmi-detail-cat.bmi-normal { color: #4ade80; }
+.profile-bmi-details-text .bmi-detail-cat.bmi-over { color: #fbbf24; }
+.profile-bmi-details-text .bmi-detail-cat.bmi-obese { color: #f87171; }
 .profile-bmi-categories-table { display: flex; flex-direction: column; gap: 10px; }
 .profile-bmi-cat-row {
   display: flex;

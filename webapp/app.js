@@ -856,58 +856,35 @@ function devineIdealKg(gender, heightCm) {
   return gender === "f" ? 45.5 + 2.3 * (heightIn - 60) : 50 + 2.3 * (heightIn - 60);
 }
 
-/** SVG полукруговая шкала ИМТ: сегменты по ВОЗ, указатель на текущем значении */
-function bmiGaugeSvg(bmiVal, opts) {
+/** Современная шкала ИМТ: карточка с цифрой + горизонтальная шкала с маркером */
+function bmiGaugeHtml(bmiVal, opts) {
   opts = opts || {};
-  var w = opts.width || 280;
-  var h = opts.height || 160;
-  var cx = w / 2;
-  var cy = h - 10;
-  var r = Math.min(cx, cy) - 16;
-  var bmiMax = 40;
   var bmiMin = 14;
-  var angleStart = 180;
-  var angleEnd = 0;
-  function bmiToAngle(b) {
-    var t = (b - bmiMin) / (bmiMax - bmiMin);
-    t = Math.max(0, Math.min(1, t));
-    return angleStart + t * (angleEnd - angleStart);
-  }
-  function angleToRad(a) { return (a * Math.PI) / 180; }
-  function arcPath(startAngle, endAngle) {
-    var x1 = cx + r * Math.cos(angleToRad(startAngle));
-    var y1 = cy + r * Math.sin(angleToRad(startAngle));
-    var x2 = cx + r * Math.cos(angleToRad(endAngle));
-    var y2 = cy + r * Math.sin(angleToRad(endAngle));
-    var large = Math.abs(endAngle - startAngle) > 180 ? 1 : 0;
-    return "M " + cx + " " + cy + " L " + x1 + " " + y1 + " A " + r + " " + r + " 0 " + large + " 1 " + x2 + " " + y2 + " Z";
-  }
-  var segments = [
-    { max: 18.5, color: "#5c6bc0" },
-    { max: 24.9, color: "#43a047" },
-    { max: 29.9, color: "#fb8c00" },
-    { max: bmiMax, color: "#e53935" }
-  ];
-  var prev = bmiMin;
-  var paths = segments.map(function(s) {
-    var startA = bmiToAngle(prev);
-    var endA = bmiToAngle(s.max);
-    prev = s.max;
-    return "<path fill=\"" + s.color + "\" opacity=\"0.85\" d=\"" + arcPath(startA, endA) + "\"/>";
-  }).join("");
-  var pointerAngle = bmiVal != null && !isNaN(bmiVal) ? bmiToAngle(Math.max(bmiMin, Math.min(bmiMax, bmiVal))) : bmiToAngle(22);
-  var ptrLen = r - 8;
-  var px = cx + ptrLen * Math.cos(angleToRad(pointerAngle));
-  var py = cy + ptrLen * Math.sin(angleToRad(pointerAngle));
-  var pointerPath = "M " + cx + " " + cy + " L " + px + " " + py;
-  var svg = "<svg width=\"" + w + "\" height=\"" + h + "\" class=\"bmi-gauge-svg\" viewBox=\"0 0 " + w + " " + h + "\">" + paths + "<path d=\"" + pointerPath + "\" stroke=\"#1a237e\" stroke-width=\"3\" fill=\"none\" stroke-linecap=\"round\"/>";
-  if (bmiVal != null && !isNaN(bmiVal)) {
-    svg += "<text x=\"" + cx + "\" y=\"" + (cy - r * 0.5) + "\" text-anchor=\"middle\" class=\"bmi-gauge-value\" font-size=\"28\" font-weight=\"bold\" fill=\"#1a237e\">" + bmiVal + "</text>";
-    var cat = bmiCategory(bmiVal);
-    if (cat) svg += "<text x=\"" + cx + "\" y=\"" + (cy - r * 0.35) + "\" text-anchor=\"middle\" class=\"bmi-gauge-category\" font-size=\"11\" fill=\"#37474f\">" + escapeHtml(cat.label.toUpperCase()) + "</text>";
-  }
-  svg += "</svg>";
-  return svg;
+  var bmiMax = 40;
+  var cat = bmiVal != null && !isNaN(bmiVal) ? bmiCategory(bmiVal) : null;
+  var val = bmiVal != null && !isNaN(bmiVal) ? Math.max(bmiMin, Math.min(bmiMax, bmiVal)) : 22;
+  var t = (val - bmiMin) / (bmiMax - bmiMin);
+  t = Math.max(0, Math.min(1, t));
+  var markerLeft = t * 100;
+  var catClass = cat && cat.className ? " bmi-" + cat.className : "";
+  var catLabel = cat ? escapeHtml(cat.label) : "—";
+  var valText = bmiVal != null && !isNaN(bmiVal) ? String(bmiVal) : "—";
+  return "<div class=\"bmi-card-modern\">" +
+    "<div class=\"bmi-card-value" + catClass + "\">" + valText + "</div>" +
+    "<span class=\"bmi-card-label" + catClass + "\">" + catLabel + "</span>" +
+    "<div class=\"bmi-scale-wrap\">" +
+    "<div class=\"bmi-scale-bar\">" +
+    "<span class=\"bmi-scale-seg bmi-under\"></span>" +
+    "<span class=\"bmi-scale-seg bmi-normal\"></span>" +
+    "<span class=\"bmi-scale-seg bmi-over\"></span>" +
+    "<span class=\"bmi-scale-seg bmi-obese\"></span>" +
+    "<span class=\"bmi-scale-marker\" style=\"left:" + markerLeft + "%\"></span>" +
+    "</div>" +
+    "<div class=\"bmi-scale-labels\">" +
+    "<span>14</span><span>18.5</span><span>25</span><span>30</span><span>40</span>" +
+    "</div>" +
+    "</div>" +
+    "</div>";
 }
 
 function drawWeightChart(container, data, targetWeight, opts) {
@@ -941,15 +918,15 @@ function renderProfile() {
   const root = $("#profile-view");
   if (!root) return;
   var p = state.cache.profile || {};
+  var gender = (p.gender || "").trim() || "";
   var displayName = (p.display_name || "").trim();
   var firstName = (p.first_name || "").trim();
   var lastName = (p.last_name || "").trim();
   var name = displayName || [firstName, lastName].filter(Boolean).join(" ").trim() || "Пользователь";
   var initial = (name && name.charAt(0)) ? name.charAt(0).toUpperCase() : "?";
   var avatarBase = gender === "f" ? "ona" : (gender === "m" ? "on" : null);
-  var avatarImg = avatarBase ? "images/" + avatarBase + ".png" : null;
+  var avatarImg = avatarBase ? "images/" + avatarBase + ".png?t=" + Date.now() : null;
   var username = (p.username && String(p.username).trim()) ? "@" + escapeHtml(String(p.username).trim()) : "";
-  var gender = (p.gender || "").trim() || "";
   var weight = p.weight != null ? Number(p.weight) : null;
   var height = p.height != null ? Number(p.height) : null;
   var age = p.age != null ? Number(p.age) : null;
@@ -1069,13 +1046,13 @@ function renderProfile() {
         <button type="button" class="icon-btn profile-help-btn profile-bmi-help" aria-label="Справка ИМТ" title="Как считается ИМТ">?</button>
       </div>
       <div class="profile-bmi-gauge-section">
-        <p class="profile-bmi-section-label">ВАШ ИМТ</p>
+        <p class="profile-bmi-section-label">Ваш индекс массы тела</p>
         <div id="profile-bmi-gauge" class="profile-bmi-gauge"></div>
       </div>
       <div class="profile-bmi-details-section">
-        <p class="profile-bmi-section-label">ПОДРОБНЫЕ РЕЗУЛЬТАТЫ</p>
+        <p class="profile-bmi-section-label">Подробные результаты</p>
         <div class="profile-bmi-details-card">
-          <p class="profile-bmi-details-text">${bmiVal != null && bmiCat ? "По введённым данным ваш индекс массы тела (ИМТ) составляет <strong>" + bmiVal + "</strong>, что соответствует категории <strong>" + escapeHtml(bmiCat.label) + "</strong> для вашего роста." : "Укажите вес и рост во вкладке «Человек»."}</p>
+          <p class="profile-bmi-details-text">${bmiVal != null && bmiCat ? "По введённым данным ваш индекс массы тела (ИМТ) составляет <strong class=\"bmi-detail-value\">" + bmiVal + "</strong>, что соответствует категории <strong class=\"bmi-detail-cat bmi-" + (bmiCat.className || "") + "\">" + escapeHtml(bmiCat.label) + "</strong> для вашего роста." : "Укажите вес и рост во вкладке «Человек»."}</p>
           <div class="profile-bmi-categories-table">
             <div class="profile-bmi-cat-row"><span class="profile-bmi-cat-bar bmi-under"></span><span>Недостаток веса</span><span>&lt; 18.5</span></div>
             <div class="profile-bmi-cat-row"><span class="profile-bmi-cat-bar bmi-normal"></span><span>Норма</span><span>18.5 – 24.9</span></div>
@@ -1145,7 +1122,7 @@ function renderProfile() {
         <div class="profile-tabs-container">
           <div id="profile-identity" class="profile-identity">
             <div class="profile-identity-content">
-              <div class="profile-avatar">${avatarImg ? "<img src=\"" + avatarImg + "\" alt=\"\" class=\"profile-avatar-img\" data-jpg=\"images/" + avatarBase + ".jpg\" onerror=\"var i=this;if(i.dataset.jpg&&i.src.endsWith('.png')){i.src=i.dataset.jpg;i.onerror=function(){i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}}else{i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}\"><span class=\"profile-avatar-fallback\" style=\"display:none\">" + escapeHtml(initial) + "</span>" : "<span class=\"profile-avatar-fallback\">" + escapeHtml(initial) + "</span>"}</div>
+              <div class="profile-avatar${avatarImg ? " has-avatar-img" : ""}">${avatarImg ? "<img src=\"" + avatarImg + "\" alt=\"\" class=\"profile-avatar-img\" data-jpg=\"images/" + avatarBase + ".jpg\" onerror=\"var i=this;if(i.dataset.jpg&&i.src.indexOf('.png')!==-1){i.src=i.dataset.jpg;i.onerror=function(){i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}}else{i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}\"><span class=\"profile-avatar-fallback\" style=\"display:none\">" + escapeHtml(initial) + "</span>" : "<span class=\"profile-avatar-fallback\">" + escapeHtml(initial) + "</span>"}</div>
               <h2 class="profile-name">${escapeHtml(name)}</h2>
               <p class="profile-age">${escapeHtml(ageText)}</p>
             </div>
@@ -1190,7 +1167,7 @@ function renderProfile() {
   }
 
   var gaugeEl = document.getElementById("profile-bmi-gauge");
-  if (gaugeEl && bmiVal != null) gaugeEl.innerHTML = bmiGaugeSvg(bmiVal, { width: 280, height: 160 });
+  if (gaugeEl && hasWeightData) gaugeEl.innerHTML = bmiGaugeHtml(bmiVal, {});
 
   if (weightHistory.length) {
     var miniChart = root.querySelector("#profile-weight-chart-mini");
@@ -1264,6 +1241,8 @@ function renderProfile() {
             target_weight: isNaN(tw) || tw <= 0 ? undefined : tw
           })
         });
+        if (g) state.cache.profile = Object.assign({}, state.cache.profile || {}, { gender: g });
+        state.profileSubTab = "general";
         await loadAll();
         if (tg) tg.showAlert("Профиль сохранён");
       } catch (err) {
