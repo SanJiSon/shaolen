@@ -40,7 +40,9 @@ const state = {
   sortableHabits: null,
   sortableSubgoals: [],
   reorderMode: false,
-  reminderSettings: null
+  reminderSettings: null,
+  googleFitConnected: false,
+  googleFitSteps: null
 };
 
 function initUser() {
@@ -108,7 +110,11 @@ function switchTab(tabName) {
     t.classList.toggle("active", t.dataset.tab === tabName);
     t.setAttribute("aria-selected", t.dataset.tab === tabName ? "true" : "false");
   });
-  if (tabName === "profile") renderProfile();
+  if (tabName === "profile") {
+    loadGoogleFitStatus().then(function(connected) {
+      if (connected) return loadGoogleFitSteps();
+    }).then(function() { renderProfile(); });
+  }
 }
 
 async function fetchJSON(url, options = {}) {
@@ -990,7 +996,7 @@ function renderProfile() {
     </div>
   `;
 
-  var contentGeneral = (bmiWidgetHtml || weightWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса.</p>";
+  var contentGeneral = (bmiWidgetHtml || weightWidgetHtml || stepsWidgetHtml) ? "<div class=\"profile-widgets-row\">" + bmiWidgetHtml + weightWidgetHtml + stepsWidgetHtml + "</div>" : "<p class=\"profile-hint\">Укажите вес и рост во вкладке «Человек», чтобы здесь отображались виджеты ИМТ и веса. Подключите Google Fit в настройках для отображения шагов.</p>";
 
   var subPageTitles = { person: "Человек", bmi: "ИМТ", water: "Вода", stats: "Статистика" };
   var subPageContent = { person: contentPerson, bmi: contentBmi, water: contentWater, stats: contentStats };
@@ -1806,7 +1812,7 @@ async function loadAll() {
       username: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username) || "",
       display_name: ""
     };
-    const [missions, goals, habits, analytics, profile, weightHistoryRes] = await Promise.all([
+    const [missions, goals, habits, analytics, profile, weightHistoryRes, gfStatus, gfStepsRes] = await Promise.all([
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
@@ -1816,7 +1822,9 @@ async function loadAll() {
         return { period: "month", missions: { total: 0, completed: 0, avg_progress: 0 }, goals: { total: 0, completed: 0, completion_rate: 0 }, habits: { total: 0, total_completions: 0, streak: 0 }, habit_chart: { labels: [], values: [] } };
       }),
       fetchJSON(base + "/api/user/" + uid + "/profile").catch(e => { if (e && e.status === 401) throw e; return profileFallback; }),
-      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; })
+      fetchJSON(base + "/api/user/" + uid + "/weight-history?period=7").catch(function() { return { data: [] }; }),
+      fetchJSON(base + "/api/user/" + uid + "/google-fit/status").catch(function() { return { connected: false }; }),
+      fetchJSON(base + "/api/user/" + uid + "/google-fit/steps").catch(function() { return { steps: null }; })
     ]);
     
     console.log('✅ Данные получены:');
@@ -1841,6 +1849,8 @@ async function loadAll() {
     state.cache.analytics = analyticsData;
     state.cache.profile = (profile && typeof profile === "object") ? profile : profileFallback;
     state.cache.weightHistory = (weightHistoryRes && Array.isArray(weightHistoryRes.data)) ? weightHistoryRes.data : [];
+    state.googleFitConnected = !!(gfStatus && gfStatus.connected);
+    state.googleFitSteps = gfStepsRes && gfStepsRes.steps != null ? gfStepsRes.steps : null;
 
     state.cache.subgoalsByMission = {};
     if (missionsList.length) {
@@ -2312,7 +2322,7 @@ function renderSettings() {
 function openSettingsOverlay() {
   var ov = $("#settings-overlay");
   if (!ov) return;
-  loadReminderSettings().then(function() {
+  Promise.all([loadReminderSettings(), loadGoogleFitStatus()]).then(function() {
     renderSettings();
     ov.classList.remove("hidden");
   });

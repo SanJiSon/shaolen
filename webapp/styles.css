@@ -1300,6 +1300,10 @@ body.reorder-mode .swipe-row-actions {
 }
 .profile-widget-weight .weight-card-value { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
 .profile-widget-weight .weight-card-trend { margin-top: 8px; }
+.profile-widget-steps {
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+}
+.profile-widget-steps .profile-widget-steps-value { font-size: 24px; font-weight: 700; }
 .weight-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; opacity: 0.9; }
 .weight-card-title { font-weight: 600; }
 .weight-trend-link { font-size: 13px; cursor: pointer; text-decoration: underline; }
