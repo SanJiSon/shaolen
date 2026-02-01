@@ -654,7 +654,10 @@ function renderHabits(habits) {
         const endpoint = action === 'increment' 
           ? `${state.baseUrl}/api/habits/${habitId}/increment`
           : `${state.baseUrl}/api/habits/${habitId}/decrement`;
-        await fetchJSON(endpoint, { method: 'POST' });
+        const result = await fetchJSON(endpoint, { method: 'POST' });
+        if (result && result.achievement_unlocked && result.habit_title) {
+          showAchievementPopup(result.habit_title);
+        }
         loadAll();
       } catch (err) {
         if (h) {
@@ -1410,6 +1413,24 @@ function showInfoPopup(title, message) {
   if (dialog) dialog.onclick = function(ev) { ev.stopPropagation(); };
 }
 
+function showAchievementPopup(habitTitle) {
+  var backdrop = $("#achievement-popup-backdrop");
+  var habitEl = $("#achievement-popup-habit");
+  var okBtn = $("#achievement-popup-ok");
+  if (!backdrop) return;
+  if (habitEl) habitEl.textContent = habitTitle || "Привычка";
+  backdrop.classList.remove("hidden");
+  function close() {
+    backdrop.classList.add("hidden");
+  }
+  if (okBtn) okBtn.onclick = function(ev) { ev.preventDefault(); ev.stopPropagation(); close(); };
+  backdrop.onclick = function(ev) {
+    if (ev.target === backdrop) { ev.preventDefault(); close(); }
+  };
+  var dialog = backdrop.querySelector(".achievement-popup-dialog");
+  if (dialog) dialog.onclick = function(ev) { ev.stopPropagation(); };
+}
+
 function showProfileHelpBmi() {
   var text = "ИМТ = вес (кг) / рост² (м). Оценка по ВОЗ: <18.5 — недостаток веса; 18.5–24.9 — норма; 25–29.9 — избыточный вес; ≥30 — ожирение. Идеальный диапазон веса — вес при ИМТ 18.5–24.9 для вашего роста. Идеальный ИМТ по формуле Девина (пол и рост) — золотой стандарт в клинической практике.";
   showInfoPopup("Справка ИМТ", text);
@@ -1921,6 +1942,10 @@ async function loadAll() {
     renderAnalytics(analyticsData);
     renderProfile();
     renderCapsule();
+
+    if (achievementCheckRes && achievementCheckRes.achievement_unlocked && achievementCheckRes.habit_title) {
+      showAchievementPopup(achievementCheckRes.habit_title);
+    }
 
     console.log('✅ Данные успешно отображены');
   } catch (e) {

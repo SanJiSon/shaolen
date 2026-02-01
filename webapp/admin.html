@@ -58,6 +58,9 @@
     .user-data-modal .modal-body li { margin: 4px 0; }
     .user-data-modal .modal-close { background: #334155; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
     .user-data-modal .modal-close:hover { background: #475569; }
+    .user-data-modal #user-data-reset-btn { background: #dc2626; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .user-data-modal #user-data-reset-btn:hover { background: #ef4444; }
+    .user-data-modal #user-data-reset-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .control-hint { font-size: 12px; color: #94a3b8; margin-top: 8px; }
   </style>
 </head>
@@ -117,6 +120,10 @@
     <div class="modal-inner">
       <div class="modal-header"><span id="user-data-title">Данные пользователя</span><button type="button" class="modal-close" id="user-data-close">Закрыть</button></div>
       <div class="modal-body" id="user-data-body"></div>
+      <div class="modal-footer" id="user-data-footer" style="padding:12px 16px; border-top:1px solid #334155;">
+        <button type="button" id="user-data-reset-btn">Сбросить миссии, цели, привычки и аналитику</button>
+        <span class="control-hint" style="display:block; margin-top:8px;">Удалит все добавленные данные и восстановит примеры. Профиль (рост, вес и т.д.) не трогается.</span>
+      </div>
     </div>
   </div>
 
@@ -284,6 +291,7 @@
           q('#user-data-title').textContent = 'Миссии, цели, привычки — ' + uname;
           q('#user-data-body').innerHTML = '<p>Загрузка…</p>';
           q('#user-data-modal').style.display = 'flex';
+          q('#user-data-modal').dataset.currentUserId = uid || '';
           api('/api/admin/users/' + uid + '/data').then(function(data) {
             var html = '';
             var p = data.profile || {};
@@ -310,6 +318,42 @@
 
   q('#user-data-close').onclick = function() { q('#user-data-modal').style.display = 'none'; };
   q('#user-data-modal').onclick = function(e) { if (e.target.id === 'user-data-modal') q('#user-data-modal').style.display = 'none'; };
+
+  q('#user-data-reset-btn').onclick = function() {
+    var uid = q('#user-data-modal').dataset.currentUserId;
+    if (!uid) return;
+    if (!confirm('Сбросить миссии, цели, привычки и аналитику для этого пользователя? Будут восстановлены только примеры. Профиль не изменится.')) return;
+    q('#user-data-reset-btn').disabled = true;
+    q('#user-data-reset-btn').textContent = 'Сброс…';
+    api('/api/admin/users/' + uid + '/reset-data', { method: 'POST' }).then(function(res) {
+      q('#user-data-reset-btn').disabled = false;
+      q('#user-data-reset-btn').textContent = 'Сбросить миссии, цели, привычки и аналитику';
+      q('#user-data-body').innerHTML = '<p>Загрузка…</p>';
+      return api('/api/admin/users/' + uid + '/data');
+    }).then(function(data) {
+      var html = '';
+      var p = data.profile || {};
+      html += '<div class="user-data-profile">';
+      html += '<h3>Профиль</h3>';
+      html += '<p><strong>Рост:</strong> ' + (p.height != null ? escapeHtml(p.height) + ' см' : '—') + ' &nbsp; <strong>Вес:</strong> ' + (p.weight != null ? escapeHtml(p.weight) + ' кг' : '—') + ' &nbsp; <strong>Возраст:</strong> ' + (p.age != null ? escapeHtml(p.age) + ' лет' : '—') + '</p>';
+      html += '<p><strong>ИМТ:</strong> ' + (p.bmi != null ? escapeHtml(p.bmi) : '—') + (p.bmi_category ? ' &nbsp; <strong>Категория:</strong> ' + escapeHtml(p.bmi_category) : '') + '</p>';
+      html += '</div>';
+      html += '<h3>Миссии (' + (data.missions && data.missions.length) + ')</h3><ul>';
+      (data.missions || []).forEach(function(m) { html += '<li>' + escapeHtml(m.title || '—') + (m.is_completed ? ' <em>завершена</em>' : '') + '</li>'; });
+      html += '</ul>';
+      html += '<h3>Цели (' + (data.goals && data.goals.length) + ')</h3><ul>';
+      (data.goals || []).forEach(function(g) { html += '<li>' + escapeHtml(g.title || '—') + (g.is_completed ? ' <em>завершена</em>' : '') + '</li>'; });
+      html += '</ul>';
+      html += '<h3>Привычки (' + (data.habits && data.habits.length) + ')</h3><ul>';
+      (data.habits || []).forEach(function(h) { html += '<li>' + escapeHtml(h.title || '—') + '</li>'; });
+      html += '</ul>';
+      q('#user-data-body').innerHTML = html || '<p>Нет данных</p>';
+    }).catch(function(e) {
+      q('#user-data-reset-btn').disabled = false;
+      q('#user-data-reset-btn').textContent = 'Сбросить миссии, цели, привычки и аналитику';
+      alert('Ошибка: ' + (e.message || e));
+    });
+  };
 
   function loadRequests() {
     if (!token) return;

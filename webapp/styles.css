@@ -2285,6 +2285,52 @@ body.reorder-mode .swipe-row-actions {
   word-break: break-word;
 }
 
+.achievement-popup-backdrop { z-index: 110; }
+.achievement-popup-dialog {
+  width: min(320px, 90vw);
+  background: linear-gradient(145deg, var(--bg-elevated) 0%, rgba(250, 204, 21, 0.08) 100%);
+  border-radius: var(--radius-lg);
+  padding: 24px 20px;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  text-align: center;
+}
+.achievement-popup-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.achievement-popup-icon .material-symbols-outlined {
+  font-size: 36px;
+  color: #1e293b;
+}
+.achievement-popup-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+.achievement-popup-habit {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 12px;
+}
+.achievement-popup-message {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  margin: 0 0 20px;
+}
+.achievement-popup-btn {
+  min-width: 140px;
+}
+
 .input {
   width: 100%;
   background: var(--bg);
