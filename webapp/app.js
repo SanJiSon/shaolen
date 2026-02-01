@@ -972,66 +972,93 @@ function renderProfile() {
   var achievementsChecked = state.profileSubTab === "achievements" ? " checked" : "";
 
   var contentPerson = `
-    <div class="profile-form-section">
-      <h3 class="profile-section-title">Информация о пользователе</h3>
-      <label class="profile-field-label">Пол</label>
-      <div class="profile-gender-cards">
-        <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-m">face</span><span>Мужской</span></button>
-        <button type="button" class="profile-gender-card ${gender === "f" ? "selected" : ""}" data-gender="f" aria-label="Женский"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-f">face_3</span><span>Женский</span></button>
-      </div>
-      <label class="profile-field-label">Рост (см)</label>
-      <div class="profile-height-ruler-block">
-        <div class="profile-height-display">
-          <span id="profile-height-value" class="profile-height-value">${height != null ? height : "—"}</span><span class="profile-height-unit"> см</span>
-        </div>
-        <div class="profile-ruler-container">
-          <div class="profile-ruler-track">
-            <div class="profile-ruler-scale" id="profile-ruler-scale"></div>
-          </div>
-          <div class="profile-height-slider-wrap">
-            <input type="range" id="profile-height-slider" class="profile-height-slider" min="100" max="220" value="${height != null && height >= 100 && height <= 220 ? height : 165}" step="1" aria-label="Рост в см" />
-            <span class="profile-height-slider-hint">Перемещайте ползунок</span>
-          </div>
-        </div>
-        <div class="profile-height-presets">
-          <button type="button" class="profile-height-preset-btn" data-height="150">150</button>
-          <button type="button" class="profile-height-preset-btn" data-height="160">160</button>
-          <button type="button" class="profile-height-preset-btn" data-height="170">170</button>
-          <button type="button" class="profile-height-preset-btn" data-height="180">180</button>
-          <button type="button" class="profile-height-preset-btn" data-height="190">190</button>
+    <div class="person-page">
+      <div class="person-card person-card-gender">
+        <span class="person-card-label"><span class="material-symbols-outlined person-card-icon">wc</span>Пол</span>
+        <div class="profile-gender-cards">
+          <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской">
+            <span class="profile-gender-icon profile-gender-icon-m material-symbols-outlined">male</span>
+            <span>Мужской</span>
+          </button>
+          <button type="button" class="profile-gender-card ${gender === "f" ? "selected" : ""}" data-gender="f" aria-label="Женский">
+            <span class="profile-gender-icon profile-gender-icon-f material-symbols-outlined">female</span>
+            <span>Женский</span>
+          </button>
         </div>
       </div>
-      <input type="hidden" id="profile-height" value="${height != null ? height : ""}" />
-      <div class="profile-row-two">
-        <div class="profile-stepper-block">
-          <label class="profile-field-label">Возраст</label>
-          <div class="profile-stepper-card">
-            <span class="profile-stepper-value" id="profile-age-value">${age != null ? age : "—"}</span>
-            <div class="profile-stepper-btns">
-              <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-age-minus" aria-label="Уменьшить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-down">arrow_drop_down_circle</span></button>
-              <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-age-plus" aria-label="Увеличить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-up">arrow_drop_down_circle</span></button>
+
+      <div class="person-card person-card-height">
+        <span class="person-card-label"><span class="material-symbols-outlined person-card-icon">straighten</span>Рост</span>
+        <div class="profile-height-ruler-block">
+          <div class="profile-height-display">
+            <span id="profile-height-value" class="profile-height-value">${height != null ? height : "—"}</span>
+            <span class="profile-height-unit">см</span>
+          </div>
+          <div class="profile-ruler-container">
+            <div class="profile-ruler-track">
+              <div class="profile-ruler-scale" id="profile-ruler-scale"></div>
+            </div>
+            <div class="profile-height-slider-wrap">
+              <input type="range" id="profile-height-slider" class="profile-height-slider" min="100" max="220" value="${height != null && height >= 100 && height <= 220 ? height : 165}" step="1" aria-label="Рост в см" />
+              <span class="profile-height-slider-hint">Сдвиньте ползунок</span>
+            </div>
+          </div>
+          <div class="profile-height-presets">
+            <button type="button" class="profile-height-preset-btn" data-height="150">150</button>
+            <button type="button" class="profile-height-preset-btn" data-height="160">160</button>
+            <button type="button" class="profile-height-preset-btn" data-height="170">170</button>
+            <button type="button" class="profile-height-preset-btn" data-height="180">180</button>
+            <button type="button" class="profile-height-preset-btn" data-height="190">190</button>
+          </div>
+        </div>
+        <input type="hidden" id="profile-height" value="${height != null ? height : ""}" />
+      </div>
+
+      <div class="person-card person-card-stats">
+        <span class="person-card-label"><span class="material-symbols-outlined person-card-icon">monitor_weight</span>Возраст и вес</span>
+        <div class="profile-row-two">
+          <div class="profile-stepper-block">
+            <div class="profile-stepper-card">
+              <span class="profile-stepper-label">Возраст</span>
+              <span class="profile-stepper-value" id="profile-age-value">${age != null ? age : "—"}</span>
+              <span class="profile-stepper-unit">лет</span>
+              <div class="profile-stepper-btns">
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-age-minus" aria-label="Уменьшить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-down">remove</span></button>
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-age-plus" aria-label="Увеличить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-up">add</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="profile-stepper-block">
+            <div class="profile-stepper-card profile-stepper-card-weight">
+              <span class="profile-stepper-label">Вес</span>
+              <span class="profile-stepper-value" id="profile-weight-value">${weight != null ? weight : "—"}</span>
+              <span class="profile-stepper-unit">кг</span>
+              <div class="profile-stepper-btns">
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-weight-minus" aria-label="Уменьшить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-down">remove</span></button>
+                <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-weight-plus" aria-label="Увеличить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-up">add</span></button>
+              </div>
+              <button type="button" class="profile-add-weight-inline" id="profile-add-weight-btn"><span class="material-symbols-outlined">add_circle</span> Добавить запись</button>
             </div>
           </div>
         </div>
-        <div class="profile-stepper-block">
-          <label class="profile-field-label">Вес (кг)</label>
-          <div class="profile-stepper-card profile-stepper-card-weight">
-            <span class="profile-stepper-value" id="profile-weight-value">${weight != null ? weight : "—"}</span>
-            <div class="profile-stepper-btns profile-stepper-btns-weight">
-              <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-weight-minus" aria-label="Уменьшить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-down">arrow_drop_down_circle</span></button>
-              <button type="button" class="profile-stepper-btn profile-stepper-btn-icon" id="profile-weight-plus" aria-label="Увеличить"><span class="material-symbols-outlined profile-stepper-icon profile-stepper-icon-up">arrow_drop_down_circle</span></button>
-            </div>
-            <button type="button" class="profile-add-weight-inline" id="profile-add-weight-btn">+ Добавить запись веса</button>
-          </div>
+        <input type="hidden" id="profile-age-input" value="${age != null ? age : ""}" />
+        <input type="hidden" id="profile-weight-input" value="${weight != null ? weight : ""}" />
+      </div>
+
+      <div class="person-card person-card-target">
+        <span class="person-card-label"><span class="material-symbols-outlined person-card-icon">flag</span>Целевой вес</span>
+        <div class="person-target-wrap">
+          <input type="number" id="profile-target-weight" class="person-target-input input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
+          <span class="person-target-unit">кг</span>
         </div>
       </div>
-      <input type="hidden" id="profile-age-input" value="${age != null ? age : ""}" />
-      <input type="hidden" id="profile-weight-input" value="${weight != null ? weight : ""}" />
-      <label class="profile-field-label">Целевой вес (кг)</label>
-      <input type="number" id="profile-target-weight" class="input" step="0.1" min="0" placeholder="—" value="${targetWeight != null ? targetWeight : ""}" />
-    </div>
-    <div class="profile-save-block">
-      <button type="button" class="primary-btn profile-save-fields-btn">Сохранить изменения</button>
+
+      <div class="profile-save-block">
+        <button type="button" class="primary-btn profile-save-fields-btn">
+          <span class="material-symbols-outlined">check_circle</span>
+          Сохранить
+        </button>
+      </div>
     </div>
   `;
 
