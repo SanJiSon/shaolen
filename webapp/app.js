@@ -587,20 +587,22 @@ function renderHabits(habits) {
   habits.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
-    const streak = parseInt(h.streak || 0);
+    var daysTotal = parseInt(h.days_total || 0);
+    var streak = parseInt(h.streak || 0);
+    if (daysTotal === 0 && streak > 0) daysTotal = streak;
     const remindersOn = h.reminders_enabled !== 0;
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
     var exampleBadge = (h.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var waterCalcBadge = (h.is_water_calculated ? "<span class=\"water-calc-badge\">Рассчитана автоматически</span><button type=\"button\" class=\"habit-water-help icon-btn\" aria-label=\"Как рассчитано\" title=\"Как рассчитано\" data-desc=\"" + escapeHtml((h.description || "").replace(/"/g, "&quot;")) + "\">?</button>" : "");
-    var pct = HABIT_TARGET_DAYS > 0 ? Math.round((streak / HABIT_TARGET_DAYS) * 100) : 0;
+    var pct = HABIT_TARGET_DAYS > 0 ? Math.round((daysTotal / HABIT_TARGET_DAYS) * 100) : 0;
     var barPct = Math.min(100, pct);
     var barSegments = 10;
-    var filledSegments = Math.round((barPct / 100) * barSegments);
+    var filledSegments = pct >= 100 ? 10 : Math.round((barPct / 100) * barSegments);
     var barHtml = "";
     for (var i = 0; i < barSegments; i++) barHtml += "<span class=\"habit-progress-seg " + (i < filledSegments ? "filled" : "") + "\"></span>";
-    var progressHtml = "<div class=\"habit-progress\"><div class=\"habit-progress-bar\">" + barHtml + "</div><span class=\"habit-progress-text\">" + pct + "% (" + streak + "/" + HABIT_TARGET_DAYS + ")</span></div>";
+    var progressHtml = "<div class=\"habit-progress\"><div class=\"habit-progress-bar\">" + barHtml + "</div><span class=\"habit-progress-text\">" + pct + "% (" + daysTotal + "/" + HABIT_TARGET_DAYS + ")</span></div>";
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
