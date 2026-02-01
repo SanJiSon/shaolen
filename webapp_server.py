@@ -2253,6 +2253,7 @@ async def api_admin_users(request: Request):
                 "goals_count": r.get("goals_count") or 0,
                 "habits_count": r.get("habits_count") or 0,
                 "shaolen_requests": r.get("shaolen_requests") or 0,
+                "reminders_count": r.get("reminders_count") or 0,
             })
         total = len(out)
         with_requests = sum(1 for x in out if (x.get("shaolen_requests") or 0) > 0)

@@ -1534,7 +1534,8 @@ class Database:
                           (SELECT COUNT(*) FROM missions m WHERE m.user_id = u.user_id) AS missions_count,
                           (SELECT COUNT(*) FROM goals g WHERE g.user_id = u.user_id) AS goals_count,
                           (SELECT COUNT(*) FROM habits h WHERE h.user_id = u.user_id) AS habits_count,
-                          (SELECT COUNT(*) FROM shaolen_history sh WHERE sh.user_id = u.user_id) AS shaolen_requests
+                          (SELECT COUNT(*) FROM shaolen_history sh WHERE sh.user_id = u.user_id) AS shaolen_requests,
+                          (SELECT COUNT(*) FROM reminder_sent_log rsl WHERE rsl.user_id = u.user_id) AS reminders_count
                    FROM users u ORDER BY u.user_id"""
             ) as c:
                 rows = await c.fetchall()
