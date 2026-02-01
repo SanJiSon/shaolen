@@ -2622,6 +2622,49 @@ async def api_admin_sync_telegram_names(request: Request):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+@app.post("/api/admin/broadcast")
+async def api_admin_broadcast(request: Request):
+    """Отправить сообщение всем пользователям через Telegram."""
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content=_admin_403_body())
+    if not BOT_TOKEN:
+        return JSONResponse(status_code=500, content={"detail": "BOT_TOKEN не задан"})
+    try:
+        body = await request.json()
+        text = (body.get("text") or "").strip()
+        if not text:
+            return JSONResponse(status_code=400, content={"detail": "Текст сообщения не может быть пустым"})
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Неверный JSON"})
+    try:
+        user_ids = await db.get_all_user_ids()
+        sent = 0
+        failed_ids = []
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        for uid in user_ids:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    r = await client.post(url, json={"chat_id": uid, "text": text})
+                if r.status_code == 200 and (r.json() or {}).get("ok"):
+                    sent += 1
+                else:
+                    failed_ids.append(uid)
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.warning("broadcast to %s: %s", uid, e)
+                failed_ids.append(uid)
+        return JSONResponse(content={
+            "ok": True,
+            "sent": sent,
+            "total": len(user_ids),
+            "failed": len(failed_ids),
+            "failed_ids": failed_ids[:50],
+        })
+    except Exception as e:
+        logger.exception("admin broadcast: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 @app.post("/api/admin/users/{user_id}/reset-data")
 async def api_admin_reset_user_data(request: Request, user_id: int):
     """Сброс миссий, целей, привычек и аналитики. Профиль не трогаем. Примеры восстанавливаются."""
