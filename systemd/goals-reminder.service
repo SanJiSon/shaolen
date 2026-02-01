@@ -1,0 +1,19 @@
+[Unit]
+Description=Goals Reminder Worker (умные напоминания)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/shaolen
+Environment=PATH=/usr/bin:/usr/local/bin
+Environment=TZ=Europe/Moscow
+EnvironmentFile=/root/shaolen/.env
+ExecStart=/root/shaolen/venv/bin/python3 /root/shaolen/reminder_worker.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
