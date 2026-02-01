@@ -1417,6 +1417,9 @@ async def api_achievements(user_id: int):
         saved = await db.get_user_achievements(user_id)
         out.extend(saved)
         return JSONResponse(content={"achievements": out})
+    except Exception as e:
+        logger.exception("achievements: %s", e)
+        return JSONResponse(content={"achievements": []})
 
 
 @app.get("/api/user/{user_id}/achievement-check", response_model=None)
@@ -1438,9 +1441,6 @@ async def api_achievement_check(user_id: int):
     except Exception as e:
         logger.warning("achievement-check: %s", e)
         return JSONResponse(content={"ok": False})
-    except Exception as e:
-        logger.exception("achievements: %s", e)
-        return JSONResponse(content={"achievements": []})
 
 
 @app.get("/api/user/{user_id}/habit-calendar", response_model=None)
