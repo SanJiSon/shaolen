@@ -659,18 +659,23 @@ def _send_achievement_telegram(user_id: int, habit_title: str) -> None:
 
 @app.post("/api/habits/{habit_id}/increment")
 async def api_increment_habit(habit_id: int):
-    """Увеличить счетчик привычки на 1"""
+    """Увеличить счетчик привычки на 1. Возвращает achievement_unlocked, habit_title при достижении 21."""
     try:
         count = await db.increment_habit_count(habit_id)
-        habit = await db.get_habit(habit_id)
-        if habit:
-            total = await db.get_habit_total_completions(habit_id)
-            notified = habit.get("achievement_21_notified") or 0
-            if total >= 21 and not notified:
-                await db.set_habit_achievement_notified(habit_id)
-                title = (habit.get("title") or "").strip() or "Привычка"
-                await _send_achievement_telegram(habit.get("user_id"), title)
-        return {"count": count}
+        result = {"count": count}
+        try:
+            habit = await db.get_habit(habit_id)
+            if habit:
+                total = await db.get_habit_total_completions(habit_id)
+                notified = habit.get("achievement_21_notified") or 0
+                if total >= 21 and not notified:
+                    await db.set_habit_achievement_notified(habit_id)
+                    title = (habit.get("title") or "").strip() or "Привычка"
+                    result["achievement_unlocked"] = True
+                    result["habit_title"] = title
+        except Exception as ae:
+            logger.warning("achievement-check при increment: %s", ae)
+        return result
     except Exception as e:
         logger.error(f"Ошибка увеличения счетчика привычки {habit_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1424,7 +1429,7 @@ async def api_achievements(user_id: int):
 
 @app.get("/api/user/{user_id}/achievement-check", response_model=None)
 async def api_achievement_check(user_id: int):
-    """Проверка: если есть привычки с 21+ повторениями без уведомления — отправить и пометить."""
+    """Проверка: если есть привычки с 21+ повторениями без уведомления — пометить и вернуть для показа в приложении."""
     try:
         habits = await db.get_habits(user_id, active_only=False)
         for h in (habits or []):
@@ -1436,7 +1441,7 @@ async def api_achievement_check(user_id: int):
             if total >= 21 and not notified:
                 await db.set_habit_achievement_notified(hid)
                 title = (h.get("title") or "").strip() or "Привычка"
-                await _send_achievement_telegram(h.get("user_id"), title)
+                return JSONResponse(content={"ok": True, "achievement_unlocked": True, "habit_title": title})
         return JSONResponse(content={"ok": True})
     except Exception as e:
         logger.warning("achievement-check: %s", e)
@@ -2295,6 +2300,19 @@ async def api_admin_user_data(request: Request, user_id: int):
         })
     except Exception as e:
         logger.exception("admin user data: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/admin/users/{user_id}/reset-data")
+async def api_admin_reset_user_data(request: Request, user_id: int):
+    """Сброс миссий, целей, привычек и аналитики. Профиль не трогаем. Примеры восстанавливаются."""
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content=_admin_403_body())
+    try:
+        await db.reset_user_data(user_id)
+        return JSONResponse(content={"ok": True, "message": "Данные сброшены, примеры восстановлены"})
+    except Exception as e:
+        logger.exception("admin reset user data: %s", e)
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 

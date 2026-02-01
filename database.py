@@ -1416,6 +1416,32 @@ class Database:
         await self.add_goal(user_id, "Пройти 5 км без остановки", "Постепенно увеличивать дистанцию", d1, 2, is_example=1)
         await self.add_goal(user_id, "Прочитать одну книгу", "Выбрать книгу и читать по 15 минут в день", d2, 1, is_example=1)
 
+    async def reset_user_data(self, user_id: int) -> None:
+        """Сброс миссий, целей, привычек и аналитики. Профиль (рост, вес и т.д.) не трогаем.
+        После сброса добавляются предустановленные примеры (с плашкой «Пример»)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM subgoals WHERE mission_id IN (SELECT id FROM missions WHERE user_id = ?)",
+                (user_id,),
+            )
+            await db.execute("DELETE FROM missions WHERE user_id = ?", (user_id,))
+            await db.execute("DELETE FROM goals WHERE user_id = ?", (user_id,))
+            await db.execute(
+                "DELETE FROM habit_records WHERE habit_id IN (SELECT id FROM habits WHERE user_id = ?)",
+                (user_id,),
+            )
+            await db.execute(
+                "DELETE FROM habit_reminder_settings WHERE habit_id IN (SELECT id FROM habits WHERE user_id = ?)",
+                (user_id,),
+            )
+            await db.execute("DELETE FROM habits WHERE user_id = ?", (user_id,))
+            await db.execute("DELETE FROM analytics WHERE user_id = ?", (user_id,))
+            await db.execute("DELETE FROM user_examples_seeded WHERE user_id = ?", (user_id,))
+            await db.commit()
+        await self.add_user(user_id)
+        await self.seed_user_examples(user_id)
+        await self._mark_examples_seeded(user_id)
+
     # === Мастер Шаолень (лимит запросов в день) ===
     async def get_shaolen_requests_today(self, user_id: int) -> int:
         """Количество запросов к Шаолень за сегодня."""
