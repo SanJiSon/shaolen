@@ -5,6 +5,7 @@ import re
 import json
 import hmac
 import hashlib
+from urllib.parse import quote, urlencode
 import subprocess
 from contextlib import asynccontextmanager
 from urllib.parse import unquote
@@ -32,6 +33,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 LIMIT_SHAOLEN_PER_DAY = 50
+GOOGLE_FIT_CLIENT_ID = os.getenv("GOOGLE_FIT_CLIENT_ID", "")
+GOOGLE_FIT_CLIENT_SECRET = os.getenv("GOOGLE_FIT_CLIENT_SECRET", "")
+WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").rstrip("/")  # https://your-domain.com
 
 # Списки моделей по приоритету: при 429 (лимит Groq) пробуем следующую. Для пользователя без изменений.
 # Чтобы добавить новую модель — допишите строку в нужный список.
@@ -748,6 +752,196 @@ async def api_update_reminder_settings(user_id: int, payload: ReminderSettingsUp
     )
     settings = await db.get_user_reminder_settings(user_id)
     return JSONResponse(content=settings)
+
+
+# --- Google Fit (шаги) ---
+GOOGLE_FIT_SCOPE = "https://www.googleapis.com/auth/fitness.activity.read"
+
+
+def _google_fit_state_encode(user_id: int) -> str:
+    """Кодируем state для OAuth: user_id + подпись."""
+    sig = hmac.new(
+        (BOT_TOKEN or "fit").encode(),
+        str(user_id).encode(),
+        hashlib.sha256,
+    ).hexdigest()[:16]
+    raw = f"{user_id}:{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _google_fit_state_decode(state: str) -> Optional[int]:
+    """Декодируем и проверяем state, возвращаем user_id или None."""
+    try:
+        padded = state + "=" * (4 - len(state) % 4)
+        raw = base64.urlsafe_b64decode(padded).decode()
+        uid_s, sig = raw.split(":", 1)
+        uid = int(uid_s)
+        expected = hmac.new(
+            (BOT_TOKEN or "fit").encode(),
+            str(uid).encode(),
+            hashlib.sha256,
+        ).hexdigest()[:16]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        return uid
+    except Exception:
+        return None
+
+
+@app.get("/api/user/{user_id}/google-fit/auth-url", response_model=None)
+async def api_google_fit_auth_url(user_id: int):
+    """URL для авторизации Google Fit (открыть в браузере)."""
+    if not GOOGLE_FIT_CLIENT_ID or not WEBAPP_BASE_URL:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Google Fit не настроен на сервере."},
+        )
+    redirect_uri = f"{WEBAPP_BASE_URL}/api/google-fit/callback"
+    state = _google_fit_state_encode(user_id)
+    params = {
+        "client_id": GOOGLE_FIT_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": GOOGLE_FIT_SCOPE,
+        "state": state,
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+    return JSONResponse(content={"auth_url": url})
+
+
+@app.get("/api/google-fit/callback")
+async def api_google_fit_callback(request: Request, code: str = "", state: str = ""):
+    """OAuth callback от Google. Сохраняет токены и редирект на страницу успеха."""
+    if not code or not state:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Отсутствуют code или state."},
+        )
+    user_id = _google_fit_state_decode(state)
+    if user_id is None:
+        return JSONResponse(status_code=400, content={"detail": "Неверный state."})
+    if not GOOGLE_FIT_CLIENT_ID or not GOOGLE_FIT_CLIENT_SECRET or not WEBAPP_BASE_URL:
+        return JSONResponse(status_code=503, content={"detail": "Google Fit не настроен."})
+    redirect_uri = f"{WEBAPP_BASE_URL}/api/google-fit/callback"
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_FIT_CLIENT_ID,
+                "client_secret": GOOGLE_FIT_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if r.status_code != 200:
+        logger.warning("Google token exchange failed: %s %s", r.status_code, r.text)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            content="<html><body><h1>Ошибка авторизации</h1><p>Не удалось получить доступ к Google Fit. Попробуйте снова.</p></body></html>",
+            status_code=400,
+        )
+    data = r.json()
+    access = data.get("access_token")
+    refresh = data.get("refresh_token")
+    expires_in = data.get("expires_in", 3600)
+    if not access:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            content="<html><body><h1>Ошибка</h1><p>Нет access_token в ответе Google.</p></body></html>",
+            status_code=500,
+        )
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    await db.save_google_fit_tokens(user_id, access, refresh, expires_at)
+    logger.info("Google Fit tokens saved for user %s", user_id)
+    from fastapi.responses import RedirectResponse
+    success_url = f"{WEBAPP_BASE_URL}/google-fit-success.html"
+    return RedirectResponse(url=success_url, status_code=302)
+
+
+@app.get("/api/user/{user_id}/google-fit/status", response_model=None)
+async def api_google_fit_status(user_id: int):
+    """Подключён ли Google Fit."""
+    tokens = await db.get_google_fit_tokens(user_id)
+    return JSONResponse(content={"connected": tokens is not None})
+
+
+@app.get("/api/user/{user_id}/google-fit/steps", response_model=None)
+async def api_google_fit_steps(user_id: int):
+    """Количество шагов за сегодня (по Google Fit)."""
+    tokens = await db.get_google_fit_tokens(user_id)
+    if not tokens:
+        return JSONResponse(content={"steps": None, "error": "not_connected"})
+    access = tokens.get("access_token")
+    refresh = tokens.get("refresh_token")
+    expires_at = tokens.get("expires_at")
+    now = datetime.now(timezone.utc)
+    if expires_at and isinstance(expires_at, str):
+        try:
+            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except Exception:
+            expires_at = None
+    if expires_at and (now - timedelta(minutes=5)) >= expires_at and refresh:
+        async with httpx.AsyncClient() as client:
+            rr = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": GOOGLE_FIT_CLIENT_ID,
+                    "client_secret": GOOGLE_FIT_CLIENT_SECRET,
+                    "refresh_token": refresh,
+                    "grant_type": "refresh_token",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        if rr.status_code == 200:
+            rdata = rr.json()
+            access = rdata.get("access_token")
+            exp = rdata.get("expires_in", 3600)
+            new_expires = now + timedelta(seconds=exp)
+            await db.save_google_fit_tokens(user_id, access, refresh, new_expires)
+    if not access:
+        return JSONResponse(content={"steps": None, "error": "token_expired"})
+    tz = timezone.utc
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_ms = int(today_start.timestamp() * 1000)
+    end_ms = int(now.timestamp() * 1000)
+    body = {
+        "aggregateBy": [{"dataTypeName": "com.google.step_count.delta"}],
+        "bucketByTime": {"durationMillis": 86400000},
+        "startTimeMillis": str(start_ms),
+        "endTimeMillis": str(end_ms),
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            fr = await client.post(
+                "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate",
+                json=body,
+                headers={"Authorization": f"Bearer {access}"},
+            )
+    except Exception as e:
+        logger.exception("Google Fitness API error: %s", e)
+        return JSONResponse(content={"steps": None, "error": "api_error"})
+    if fr.status_code != 200:
+        logger.warning("Fitness API %s: %s", fr.status_code, fr.text)
+        return JSONResponse(content={"steps": None, "error": "api_error"})
+    data = fr.json()
+    total = 0
+    for bucket in data.get("bucket", []):
+        for ds in bucket.get("dataset", []):
+            for pt in ds.get("point", []):
+                for v in pt.get("value", []):
+                    total += int(v.get("intVal", 0))
+    return JSONResponse(content={"steps": total})
+
+
+@app.delete("/api/user/{user_id}/google-fit")
+async def api_google_fit_disconnect(user_id: int):
+    """Отключить Google Fit."""
+    await db.delete_google_fit_tokens(user_id)
+    return JSONResponse(content={"ok": True})
 
 
 @app.get("/api/user/{user_id}/profile", response_model=None)

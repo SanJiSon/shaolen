@@ -203,6 +203,18 @@ class Database:
                 )
             """)
 
+            # Google Fit OAuth токены для чтения шагов
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS google_fit_tokens (
+                    user_id INTEGER PRIMARY KEY,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    expires_at TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
             # Таблица аналитики
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS analytics (
@@ -1503,3 +1515,37 @@ class Database:
             )
             await db.commit()
         return True
+
+    # --- Google Fit ---
+    async def save_google_fit_tokens(
+        self, user_id: int, access_token: str, refresh_token: Optional[str], expires_at: Optional[datetime]
+    ) -> None:
+        """Сохранить OAuth токены Google Fit."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO google_fit_tokens (user_id, access_token, refresh_token, expires_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+                   access_token = excluded.access_token,
+                   refresh_token = COALESCE(excluded.refresh_token, refresh_token),
+                   expires_at = excluded.expires_at,
+                   updated_at = excluded.updated_at""",
+                (user_id, access_token, refresh_token, expires_at, datetime.now()),
+            )
+            await db.commit()
+
+    async def get_google_fit_tokens(self, user_id: int) -> Optional[Dict]:
+        """Получить токены Google Fit пользователя."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT access_token, refresh_token, expires_at FROM google_fit_tokens WHERE user_id = ?",
+                (user_id,),
+            ) as c:
+                row = await c.fetchone()
+        return dict(row) if row else None
+
+    async def delete_google_fit_tokens(self, user_id: int) -> None:
+        """Удалить токены Google Fit (отключить)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM google_fit_tokens WHERE user_id = ?", (user_id,))
+            await db.commit()
