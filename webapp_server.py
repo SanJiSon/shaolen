@@ -588,8 +588,11 @@ async def api_get_habits(user_id: int):
                     clean_habit[key] = value
                 else:
                     clean_habit[key] = str(value)
+            hid = habit.get("id")
+            streak = await db.get_habit_streak_for_habit(hid, days=365) if hid else 0
+            clean_habit["streak"] = streak
             result.append(clean_habit)
-        
+
         return JSONResponse(content=result)
     except Exception as e:
         logger.error(f"Ошибка получения привычек для пользователя {user_id}: {e}", exc_info=True)
@@ -1363,6 +1366,46 @@ async def api_get_analytics(user_id: int, period: str = "month"):
             "habit_chart": {"labels": [], "values": []}
         }
         return JSONResponse(content=error_result)
+
+
+@app.get("/api/user/{user_id}/achievements", response_model=None)
+async def api_achievements(user_id: int):
+    """Достижения: привычки с отметкой 21+ дней подряд."""
+    try:
+        habits = await db.get_habits(user_id, active_only=False)
+        out = []
+        for h in (habits or []):
+            hid = h.get("id")
+            streak = await db.get_habit_streak_for_habit(hid, days=365) if hid else 0
+            title = (h.get("title") or "").strip() or "Привычка"
+            out.append({
+                "habit_id": hid,
+                "title": title,
+                "streak": streak,
+                "achieved": streak >= 21,
+            })
+        return JSONResponse(content={"achievements": out})
+    except Exception as e:
+        logger.exception("achievements: %s", e)
+        return JSONResponse(content={"achievements": []})
+
+
+@app.get("/api/user/{user_id}/habit-calendar", response_model=None)
+async def api_habit_calendar(user_id: int, year: int, month: int):
+    """Данные календаря привычек за месяц (для страницы «Календарь привычек»)."""
+    from datetime import date
+    today = date.today()
+    if year < 2020 or year > 2100 or month < 1 or month > 12:
+        year, month = today.year, today.month
+    try:
+        data = await db.get_habit_calendar_month(user_id, year, month)
+        return JSONResponse(content=data)
+    except Exception as e:
+        logger.exception("habit-calendar: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={"days": {}, "total_habits": 0, "error": str(e)},
+        )
 
 
 @app.get("/api/user/{user_id}/shaolen/usage", response_model=None)

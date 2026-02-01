@@ -1090,6 +1090,46 @@ class Database:
                 rows = await cursor.fetchall()
                 return [str(row[0] or "").strip() for row in rows if row[0]]
 
+    async def get_habit_calendar_month(self, user_id: int, year: int, month: int) -> Dict:
+        """
+        Данные календаря привычек за месяц: для каждого дня — выполнено/пропущено и интенсивность.
+        Returns: { "days": { "YYYY-MM-DD": { "completed": int, "total": int, "completions": int } }, "total_habits": int }
+        """
+        from datetime import date
+        import calendar
+        first = date(year, month, 1)
+        _, last_day = calendar.monthrange(year, month)
+        last = date(year, month, last_day)
+        total_habits = len(await self.get_habits(user_id, active_only=True))
+        result = {}
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT hr.date,
+                       COUNT(DISTINCT hr.habit_id) as completed_habits,
+                       SUM(COALESCE(hr.count, 0)) as total_completions
+                FROM habit_records hr
+                JOIN habits h ON h.id = hr.habit_id AND h.user_id = ?
+                WHERE hr.date >= ? AND hr.date <= ?
+                  AND (hr.completed = 1 OR COALESCE(hr.count, 0) > 0)
+                GROUP BY hr.date
+                """,
+                (user_id, first.isoformat(), last.isoformat()),
+            ) as c:
+                rows = await c.fetchall()
+        by_date = {row[0]: {"completed": int(row[1] or 0), "completions": int(row[2] or 0)} for row in rows}
+        for d in range(1, last_day + 1):
+            dt = date(year, month, d)
+            key = dt.isoformat()
+            info = by_date.get(key, {"completed": 0, "completions": 0})
+            result[key] = {
+                "completed": info["completed"],
+                "total": total_habits,
+                "completions": info["completions"],
+            }
+        return {"days": result, "total_habits": total_habits}
+
     async def get_habit_completions_by_date(self, user_id: int, days: int = 30) -> List[Dict]:
         """По дням: дата и суммарное количество выполнений привычек за день (для графика)."""
         async with aiosqlite.connect(self.db_path) as db:
