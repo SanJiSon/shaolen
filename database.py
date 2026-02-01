@@ -218,7 +218,18 @@ class Database:
                 )
             """)
 
-            # Google Fit OAuth токены для чтения шагов
+            # Настройки синхронизации с Google Календарь
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS calendar_sync_settings (
+                    user_id INTEGER PRIMARY KEY,
+                    sync_subgoals INTEGER DEFAULT 1,
+                    sync_habits INTEGER DEFAULT 1,
+                    sync_goals INTEGER DEFAULT 1,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
+            # Google Fit OAuth токены для чтения шагов и календаря
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS google_fit_tokens (
                     user_id INTEGER PRIMARY KEY,
@@ -1715,4 +1726,33 @@ class Database:
         """Удалить токены Google Fit (отключить)."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM google_fit_tokens WHERE user_id = ?", (user_id,))
+            await db.commit()
+
+    # --- Синхронизация с Google Календарь ---
+    async def get_calendar_sync_settings(self, user_id: int) -> Dict:
+        """Настройки выгрузки в календарь: sync_subgoals, sync_habits, sync_goals."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT sync_subgoals, sync_habits, sync_goals FROM calendar_sync_settings WHERE user_id = ?",
+                (user_id,),
+            ) as c:
+                row = await c.fetchone()
+        if row:
+            return {"sync_subgoals": bool(row[0]), "sync_habits": bool(row[1]), "sync_goals": bool(row[2])}
+        return {"sync_subgoals": True, "sync_habits": True, "sync_goals": True}
+
+    async def set_calendar_sync_settings(
+        self, user_id: int, sync_subgoals: bool = True, sync_habits: bool = True, sync_goals: bool = True
+    ) -> None:
+        """Сохранить настройки выгрузки в календарь."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO calendar_sync_settings (user_id, sync_subgoals, sync_habits, sync_goals)
+                   VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+                   sync_subgoals = excluded.sync_subgoals,
+                   sync_habits = excluded.sync_habits,
+                   sync_goals = excluded.sync_goals""",
+                (user_id, 1 if sync_subgoals else 0, 1 if sync_habits else 0, 1 if sync_goals else 0),
+            )
             await db.commit()

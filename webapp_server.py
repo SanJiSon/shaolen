@@ -795,8 +795,11 @@ async def api_update_reminder_settings(user_id: int, payload: ReminderSettingsUp
     return JSONResponse(content=settings)
 
 
-# --- Google Fit (шаги) ---
-GOOGLE_FIT_SCOPE = "https://www.googleapis.com/auth/fitness.activity.read"
+# --- Google Fit (шаги) и Calendar (выгрузка событий) ---
+GOOGLE_SCOPES = (
+    "https://www.googleapis.com/auth/fitness.activity.read "
+    "https://www.googleapis.com/auth/calendar.events"
+)
 
 
 def _google_fit_state_encode(user_id: int) -> str:
@@ -843,7 +846,7 @@ async def api_google_fit_auth_url(user_id: int):
         "client_id": GOOGLE_FIT_CLIENT_ID,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": GOOGLE_FIT_SCOPE,
+        "scope": GOOGLE_SCOPES,
         "state": state,
         "access_type": "offline",
         "prompt": "consent",
@@ -983,6 +986,207 @@ async def api_google_fit_disconnect(user_id: int):
     """Отключить Google Fit."""
     await db.delete_google_fit_tokens(user_id)
     return JSONResponse(content={"ok": True})
+
+
+# --- Синхронизация с Google Календарь ---
+def _habit_suggested_time(title: str, index: int, total: int) -> tuple:
+    """
+    Определяет рекомендуемое время для привычки по названию.
+    Возвращает (hour, minute). Распределяет равномерно в течение дня (6–22 ч).
+    """
+    t = (title or "").lower()
+    # Вода: равномерно в течение дня — 8, 11, 14, 17, 20
+    if any(x in t for x in ["вод", "воды", "пить", "воду"]):
+        slots = [(8, 0), (11, 0), (14, 0), (17, 0), (20, 0)]
+        h, m = slots[index % len(slots)]
+        return h, m
+    # Утренние: зарядка, спорт, витамины — 6:30–8:30
+    if any(x in t for x in ["зарядк", "спорт", "упражнен", "витамин", "утр", "таблет", "разминк"]):
+        return 7 + (index % 2), 0 if index % 2 == 0 else 30
+    # Вечерние: чтение, медитация, дневник, сон — 20–22
+    if any(x in t for x in ["чита", "книг", "медитац", "дневник", "сон", "спат", "отдых", "расслаб"]):
+        return 20 + (index % 3), 0
+    # Дневные: прогулка, ходьба, растяжка — 12, 18
+    if any(x in t for x in ["прогулк", "ходьб", "растяжк"]):
+        return 12 if index % 2 == 0 else 18, 0
+    # По умолчанию: равномерно 8–20
+    if total <= 0:
+        total = 1
+    step = max(1, (20 - 8) // total)
+    h = 8 + (index * step) % 12
+    return min(h, 20), 0
+
+
+@app.get("/api/user/{user_id}/calendar-sync-settings", response_model=None)
+async def api_calendar_sync_settings(user_id: int):
+    """Настройки выгрузки в Google Календарь."""
+    settings = await db.get_calendar_sync_settings(user_id)
+    return JSONResponse(content=settings)
+
+
+class CalendarSyncSettingsBody(BaseModel):
+    sync_subgoals: Optional[bool] = None
+    sync_habits: Optional[bool] = None
+    sync_goals: Optional[bool] = None
+
+
+@app.put("/api/user/{user_id}/calendar-sync-settings", response_model=None)
+async def api_update_calendar_sync_settings(user_id: int, payload: CalendarSyncSettingsBody):
+    """Сохранить настройки выгрузки в календарь."""
+    cur = await db.get_calendar_sync_settings(user_id)
+    sync_subgoals = payload.sync_subgoals if payload.sync_subgoals is not None else cur["sync_subgoals"]
+    sync_habits = payload.sync_habits if payload.sync_habits is not None else cur["sync_habits"]
+    sync_goals = payload.sync_goals if payload.sync_goals is not None else cur["sync_goals"]
+    await db.set_calendar_sync_settings(user_id, sync_subgoals, sync_habits, sync_goals)
+    return JSONResponse(content={"ok": True})
+
+
+@app.post("/api/user/{user_id}/calendar-sync", response_model=None)
+async def api_calendar_sync(user_id: int):
+    """Выгрузить подцели, привычки и цели в Google Календарь."""
+    tokens = await db.get_google_fit_tokens(user_id)
+    if not tokens:
+        return JSONResponse(status_code=400, content={"detail": "Подключите Google в настройках (Авторизация Google Fit / Синхронизация с Google)."})
+    settings = await db.get_calendar_sync_settings(user_id)
+    access = tokens.get("access_token")
+    refresh = tokens.get("refresh_token")
+    expires_at = tokens.get("expires_at")
+    now = datetime.now(timezone.utc)
+    if expires_at and isinstance(expires_at, str):
+        try:
+            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except Exception:
+            expires_at = None
+    if expires_at and (now - timedelta(minutes=5)) >= expires_at and refresh:
+        async with httpx.AsyncClient() as client:
+            rr = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": GOOGLE_FIT_CLIENT_ID,
+                    "client_secret": GOOGLE_FIT_CLIENT_SECRET,
+                    "refresh_token": refresh,
+                    "grant_type": "refresh_token",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        if rr.status_code == 200:
+            rdata = rr.json()
+            access = rdata.get("access_token")
+            exp = rdata.get("expires_in", 3600)
+            new_expires = now + timedelta(seconds=exp)
+            await db.save_google_fit_tokens(user_id, access, refresh, new_expires)
+    if not access:
+        return JSONResponse(status_code=400, content={"detail": "Токен истёк. Отключите и подключите Google заново."})
+
+    headers = {"Authorization": f"Bearer {access}", "Content-Type": "application/json"}
+    created = 0
+    errors = []
+    today = now.strftime("%Y-%m-%d")
+    tz = "Europe/Moscow"
+
+    try:
+        if settings.get("sync_habits", True):
+            habits = await db.get_habits(user_id, active_only=True)
+            for i, h in enumerate(habits):
+                title = (h.get("title") or "").strip() or "Привычка"
+                hour, minute = _habit_suggested_time(title, i, len(habits))
+                start_dt = f"{today}T{hour:02d}:{minute:02d}:00"
+                end_h = hour + 1 if minute == 30 else hour
+                end_m = 30 if minute == 0 else 0
+                end_dt = f"{today}T{end_h:02d}:{end_m:02d}:00"
+                event = {
+                    "summary": f"Привычка: {title}",
+                    "description": "Из приложения «Твои цели»",
+                    "start": {"dateTime": start_dt, "timeZone": tz},
+                    "end": {"dateTime": end_dt, "timeZone": tz},
+                    "recurrence": ["RRULE:FREQ=DAILY"],
+                }
+                try:
+                    async with httpx.AsyncClient() as client:
+                        r = await client.post(
+                            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                            json=event,
+                            headers=headers,
+                        )
+                    if r.status_code in (200, 201):
+                        created += 1
+                    else:
+                        errors.append(f"habit {title}: {r.status_code}")
+                except Exception as e:
+                    errors.append(f"habit {title}: {str(e)}")
+
+        if settings.get("sync_goals", True):
+            goals = await db.get_goals(user_id, include_completed=False)
+            for g in goals:
+                title = (g.get("title") or "").strip() or "Цель"
+                dl = g.get("deadline")
+                if not dl:
+                    continue
+                try:
+                    dl_str = str(dl)[:10] if dl else today
+                except Exception:
+                    dl_str = today
+                start_dt = f"{dl_str}T09:00:00{tz_offset}"
+                end_dt = f"{dl_str}T10:00:00{tz_offset}"
+                event = {
+                    "summary": f"Цель: {title}",
+                    "description": (g.get("description") or "")[:500] or "Из приложения «Твои цели»",
+                    "start": {"dateTime": start_dt, "timeZone": "UTC"},
+                    "end": {"dateTime": end_dt, "timeZone": "UTC"},
+                }
+                try:
+                    async with httpx.AsyncClient() as client:
+                        r = await client.post(
+                            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                            json=event,
+                            headers=headers,
+                        )
+                    if r.status_code in (200, 201):
+                        created += 1
+                    else:
+                        errors.append(f"goal {title}: {r.status_code}")
+                except Exception as e:
+                    errors.append(f"goal {title}: {str(e)}")
+
+        if settings.get("sync_subgoals", True):
+            missions = await db.get_missions(user_id, include_completed=False)
+            for m in missions:
+                dl = m.get("deadline")
+                if not dl:
+                    continue
+                try:
+                    dl_str = str(dl)[:10] if dl else today
+                except Exception:
+                    dl_str = today
+                mtitle = (m.get("title") or "").strip() or "Миссия"
+                subgoals = await db.get_subgoals(m.get("id") or 0)
+                for j, sg in enumerate(subgoals):
+                    sgtitle = (sg.get("title") or "").strip() or "Подцель"
+                    hour = 9 + (j % 8)
+                    event = {
+                        "summary": f"{mtitle}: {sgtitle}",
+                        "description": "Из приложения «Твои цели»",
+                        "start": {"dateTime": f"{dl_str}T{hour:02d}:00:00", "timeZone": tz},
+                        "end": {"dateTime": f"{dl_str}T{hour:02d}:30:00", "timeZone": tz},
+                    }
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            r = await client.post(
+                                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                                json=event,
+                                headers=headers,
+                            )
+                        if r.status_code in (200, 201):
+                            created += 1
+                        else:
+                            errors.append(f"subgoal {sgtitle}: {r.status_code}")
+                    except Exception as e:
+                        errors.append(f"subgoal {sgtitle}: {str(e)}")
+
+        return JSONResponse(content={"ok": True, "created": created, "errors": errors[:10]})
+    except Exception as e:
+        logger.exception("calendar sync: %s", e)
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 @app.get("/api/user/{user_id}/profile", response_model=None)
@@ -2165,9 +2369,21 @@ async def api_admin_status(request: Request):
         webapp_active = r.returncode == 0 and (r.stdout or "").strip() == "active"
     except Exception:
         webapp_active = None
+    try:
+        r = subprocess.run(
+            ["systemctl", "is-active", "goals-reminder"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=base,
+        )
+        reminder_active = r.returncode == 0 and (r.stdout or "").strip() == "active"
+    except Exception:
+        reminder_active = None
     return JSONResponse(content={
         "bot": "active" if bot_active else ("inactive" if bot_active is False else "unknown"),
         "webapp": "active" if webapp_active else ("inactive" if webapp_active is False else "unknown"),
+        "reminder": "active" if reminder_active else ("inactive" if reminder_active is False else "unknown"),
     })
 
 
@@ -2215,12 +2431,34 @@ async def api_admin_webapp_stop(request: Request):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+@app.post("/api/admin/reminder/start")
+async def api_admin_reminder_start(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content=_admin_403_body())
+    try:
+        subprocess.run(["systemctl", "start", "goals-reminder"], capture_output=True, text=True, timeout=5)
+        return JSONResponse(content={"ok": True, "message": "Команда start отправлена"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@app.post("/api/admin/reminder/stop")
+async def api_admin_reminder_stop(request: Request):
+    if not _admin_token(request):
+        return JSONResponse(status_code=403, content=_admin_403_body())
+    try:
+        subprocess.run(["systemctl", "stop", "goals-reminder"], capture_output=True, text=True, timeout=5)
+        return JSONResponse(content={"ok": True, "message": "Команда stop отправлена"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 @app.get("/api/admin/logs")
 async def api_admin_logs(request: Request, source: str = "bot", n: int = 500):
     if not _admin_token(request):
         return JSONResponse(status_code=403, content=_admin_403_body())
     base = os.path.dirname(os.path.abspath(__file__))
-    name = "bot.log" if source == "bot" else "webapp.log"
+    name = "bot.log" if source == "bot" else ("reminder.log" if source == "reminder" else "webapp.log")
     path = os.path.join(base, "logs", name)
     if not os.path.isfile(path):
         return JSONResponse(content={"lines": [], "path": path})

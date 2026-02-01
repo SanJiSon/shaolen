@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Воркер умных напоминаний: анализирует историю привычек и отправляет контекстные
-напоминания в Telegram. Запуск: python reminder_worker.py (в цикле каждые 5 мин)
-или через systemd/cron.
+напоминания в Telegram. Работает по московскому времени.
+Запуск: python reminder_worker.py (в цикле каждые 5 мин) или через systemd:
+  systemctl start goals-reminder
 """
 import asyncio
 import os
@@ -10,6 +11,12 @@ import logging
 from datetime import datetime, date, time, timedelta
 
 import httpx
+
+try:
+    from zoneinfo import ZoneInfo
+    TZ_MOSCOW = ZoneInfo("Europe/Moscow")
+except ImportError:
+    TZ_MOSCOW = None
 from dotenv import load_dotenv
 
 from database import Database
@@ -21,7 +28,17 @@ DB_PATH = os.getenv("DB_PATH", "goals_bot.db")
 INTERVAL_SEC = int(os.getenv("REMINDER_INTERVAL_SEC", "300"))  # 5 мин
 DEFAULT_AVG_HOUR, DEFAULT_AVG_MIN = 10, 0  # если нет истории выполнения
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_log_dir, exist_ok=True)
+_log_file = os.path.join(_log_dir, "reminder.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(_log_file, encoding="utf-8"),
+    ],
+)
 logger = logging.getLogger(__name__)
 
 DISABLE_HINT = (
@@ -105,10 +122,17 @@ def _build_habit_third_message(title: str) -> str:
     return f"Напоминание: «{title}». Можешь перенести на вечер — открой приложение и отметь, когда сделаешь."
 
 
+def _now_moscow():
+    """Текущее время в Москве (для напоминаний по МСК)."""
+    if TZ_MOSCOW:
+        return datetime.now(TZ_MOSCOW)
+    return datetime.now()
+
+
 async def run_tick(db: Database) -> None:
-    now_dt = datetime.now()
+    now_dt = _now_moscow()
     now_time = now_dt.time()
-    today = date.today().isoformat()
+    today = now_dt.date().isoformat()
 
     user_ids = await db.get_users_with_reminders_enabled()
     if not user_ids:
@@ -204,7 +228,7 @@ async def run_tick(db: Database) -> None:
 
             # Напоминание за неделю до дедлайна миссии
             missions = await db.get_missions(user_id, include_completed=False)
-            week_later = (date.today() + timedelta(days=7)).isoformat()
+            week_later = (now_dt.date() + timedelta(days=7)).isoformat()
             for mission in missions:
                 deadline = mission.get("deadline")
                 if not deadline:
@@ -241,7 +265,7 @@ async def main() -> None:
         return
     db = Database(DB_PATH)
     await db.init_db()
-    logger.info("Reminder worker started (interval=%ss)", INTERVAL_SEC)
+    logger.info("Reminder worker started (interval=%ss, timezone=Europe/Moscow)", INTERVAL_SEC)
     while True:
         try:
             await run_tick(db)
