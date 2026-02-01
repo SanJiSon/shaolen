@@ -109,7 +109,7 @@
         <button type="button" id="sync-telegram-names-btn" class="btn-sm" style="background:#7c3aed; color:#fff;">Обновить имена из Telegram</button>
         <span id="sync-telegram-msg" class="control-hint"></span>
       </div>
-      <div style="overflow-x: auto;"><table id="users-table"><thead><tr><th>user_id</th><th>Имя</th><th>@username</th><th>Миссии</th><th>Цели</th><th>Привычки</th><th>Запросов Шаолень</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div style="overflow-x: auto;"><table id="users-table"><thead><tr><th>user_id</th><th>Имя</th><th>@username</th><th>Миссии</th><th>Цели</th><th>Привычки</th><th>Напоминаний</th><th>Запросов Шаолень</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
   </div>
 
@@ -305,7 +305,7 @@
       users.forEach(function(u) {
         var name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.display_name || '—';
         var un = u.username ? '@' + u.username : '—';
-        t.innerHTML += '<tr><td>' + u.user_id + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(un) + '</td><td>' + (u.missions_count||0) + '</td><td>' + (u.goals_count||0) + '</td><td>' + (u.habits_count||0) + '</td><td>' + (u.shaolen_requests||0) + '</td><td><button type="button" class="btn-sm btn-user-data" data-user-id="' + u.user_id + '" data-user-name="' + escapeHtml(name) + '">Смотреть</button></td></tr>';
+        t.innerHTML += '<tr><td>' + u.user_id + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(un) + '</td><td>' + (u.missions_count||0) + '</td><td>' + (u.goals_count||0) + '</td><td>' + (u.habits_count||0) + '</td><td>' + (u.reminders_count||0) + '</td><td>' + (u.shaolen_requests||0) + '</td><td><button type="button" class="btn-sm btn-user-data" data-user-id="' + u.user_id + '" data-user-name="' + escapeHtml(name) + '">Смотреть</button></td></tr>';
       });
       t.parentElement.querySelectorAll('.btn-user-data').forEach(function(btn) {
         btn.onclick = function() {
