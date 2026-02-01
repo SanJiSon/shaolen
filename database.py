@@ -1175,6 +1175,33 @@ class Database:
             }
         return {"days": result, "total_habits": total_habits}
 
+    async def get_habit_last_7_days(self, user_id: int) -> Dict:
+        """
+        Для каждой привычки — статус за последние 7 дней (включая сегодня).
+        dates: [старая, ..., сегодня], habits: [{ id, title, days: [0|1, ...] }]
+        """
+        from datetime import date, timedelta
+        today = date.today()
+        dates = [(today - timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
+        habits = await self.get_habits(user_id, active_only=True)
+        result = []
+        async with aiosqlite.connect(self.db_path) as db:
+            for h in habits:
+                hid = h.get("id")
+                title = (h.get("title") or "").strip() or "Привычка"
+                done_dates = set()
+                async with db.execute(
+                    """SELECT date FROM habit_records
+                       WHERE habit_id = ? AND date >= date('now', '-6 days')
+                         AND (completed = 1 OR COALESCE(count, 0) > 0)""",
+                    (hid,),
+                ) as c:
+                    for row in await c.fetchall():
+                        done_dates.add(row[0])
+                days = [1 if d in done_dates else 0 for d in dates]
+                result.append({"id": hid, "title": title, "days": days})
+        return {"dates": dates, "habits": result}
+
     async def get_habit_completions_by_date(self, user_id: int, days: int = 30) -> List[Dict]:
         """По дням: дата и суммарное количество выполнений привычек за день (для графика)."""
         async with aiosqlite.connect(self.db_path) as db:

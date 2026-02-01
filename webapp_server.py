@@ -1448,6 +1448,20 @@ async def api_achievement_check(user_id: int):
         return JSONResponse(content={"ok": False})
 
 
+@app.get("/api/user/{user_id}/habit-last-7-days", response_model=None)
+async def api_habit_last_7_days(user_id: int):
+    """Последние 7 дней (включая сегодня) для каждой привычки: + выполнено, - пропущено."""
+    try:
+        data = await db.get_habit_last_7_days(user_id)
+        return JSONResponse(content=data)
+    except Exception as e:
+        logger.exception("habit-last-7-days: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={"dates": [], "habits": [], "error": str(e)},
+        )
+
+
 @app.get("/api/user/{user_id}/habit-calendar", response_model=None)
 async def api_habit_calendar(user_id: int, year: int, month: int):
     """Данные календаря привычек за месяц (для страницы «Календарь привычек»)."""
