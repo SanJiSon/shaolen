@@ -105,6 +105,10 @@
     <section id="sec-users">
       <h2>Пользователи</h2>
       <div class="summary" id="users-summary"></div>
+      <div class="users-toolbar" style="margin-bottom:12px; display:flex; gap:10px; align-items:center;">
+        <button type="button" id="sync-telegram-names-btn" class="btn-sm" style="background:#7c3aed; color:#fff;">Обновить имена из Telegram</button>
+        <span id="sync-telegram-msg" class="control-hint"></span>
+      </div>
       <div style="overflow-x: auto;"><table id="users-table"><thead><tr><th>user_id</th><th>Имя</th><th>@username</th><th>Миссии</th><th>Цели</th><th>Привычки</th><th>Запросов Шаолень</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
   </div>
@@ -271,6 +275,25 @@
     if (s == null) return '';
     var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
   }
+
+  q('#sync-telegram-names-btn').onclick = function() {
+    if (!token) return;
+    if (!confirm('Обновить имена и username всех пользователей из Telegram API? Для пользователей, которые заблокировали бота, обновление не пройдёт.')) return;
+    var btn = q('#sync-telegram-names-btn');
+    var msg = q('#sync-telegram-msg');
+    btn.disabled = true;
+    msg.textContent = 'Синхронизация…';
+    api('/api/admin/users/sync-telegram-names', { method: 'POST' }).then(function(res) {
+      btn.disabled = false;
+      var ok = res.updated || 0;
+      var fail = res.failed || 0;
+      msg.textContent = 'Обновлено: ' + ok + ', не удалось: ' + fail;
+      loadUsers();
+    }).catch(function(e) {
+      btn.disabled = false;
+      msg.textContent = 'Ошибка: ' + (e.message || e);
+    });
+  };
 
   function loadUsers() {
     if (!token) return;
