@@ -974,10 +974,6 @@ function renderProfile() {
   var contentPerson = `
     <div class="profile-form-section">
       <h3 class="profile-section-title">Информация о пользователе</h3>
-      <div class="profile-edit-name">
-        <label class="profile-edit-label">Как к вам обращаться?</label>
-        <input type="text" id="profile-display-name-input" class="input" placeholder="${escapeHtml(name)}" value="${escapeHtml(displayName)}" maxlength="64" />
-      </div>
       <label class="profile-field-label">Пол</label>
       <div class="profile-gender-cards">
         <button type="button" class="profile-gender-card ${gender === "m" ? "selected" : ""}" data-gender="m" aria-label="Мужской"><span class="material-symbols-outlined profile-gender-icon profile-gender-icon-m">face</span><span>Мужской</span></button>
@@ -1123,7 +1119,17 @@ function renderProfile() {
           <div id="profile-identity" class="profile-identity">
             <div class="profile-identity-content">
               <div class="profile-avatar${avatarImg ? " has-avatar-img" : ""}">${avatarImg ? "<img src=\"" + avatarImg + "\" alt=\"\" class=\"profile-avatar-img\" data-jpg=\"images/" + avatarBase + ".jpg\" onerror=\"var i=this;if(i.dataset.jpg&&i.src.indexOf('.png')!==-1){i.src=i.dataset.jpg;i.onerror=function(){i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}}else{i.style.display='none';var s=i.nextElementSibling;if(s)s.style.display='flex';}\"><span class=\"profile-avatar-fallback\" style=\"display:none\">" + escapeHtml(initial) + "</span>" : "<span class=\"profile-avatar-fallback\">" + escapeHtml(initial) + "</span>"}</div>
-              <h2 class="profile-name">${escapeHtml(name)}</h2>
+              <div class="profile-name-row">
+                <h2 class="profile-name">${escapeHtml(name)}</h2>
+                <button type="button" class="profile-name-edit-btn" aria-label="Редактировать имя" title="Редактировать имя"><span class="material-symbols-outlined">edit</span></button>
+              </div>
+              <div class="profile-name-edit-wrap hidden">
+                <input type="text" class="profile-name-input input" value="${escapeHtml(name)}" maxlength="64" placeholder="Ваше имя" />
+                <div class="profile-name-edit-actions">
+                  <button type="button" class="profile-name-save-btn primary-btn">Сохранить</button>
+                  <button type="button" class="profile-name-cancel-btn secondary-btn">Отмена</button>
+                </div>
+              </div>
               <p class="profile-age">${escapeHtml(ageText)}</p>
             </div>
           </div>
@@ -1148,6 +1154,47 @@ function renderProfile() {
         if (tab) { state.profileSubTab = tab; renderProfile(); }
       });
     });
+    var nameRow = root.querySelector(".profile-name-row");
+    var nameEditWrap = root.querySelector(".profile-name-edit-wrap");
+    var nameEl = root.querySelector(".profile-name");
+    var editBtn = root.querySelector(".profile-name-edit-btn");
+    var nameInput = root.querySelector(".profile-name-input");
+    var nameSaveBtn = root.querySelector(".profile-name-save-btn");
+    var nameCancelBtn = root.querySelector(".profile-name-cancel-btn");
+    if (editBtn && nameEditWrap && nameRow) {
+      editBtn.addEventListener("click", function() {
+        nameRow.classList.add("hidden");
+        nameEditWrap.classList.remove("hidden");
+        if (nameInput && nameEl) {
+          nameInput.value = nameEl.textContent || "";
+          nameInput.focus();
+        }
+      });
+    }
+    if (nameCancelBtn && nameEditWrap && nameRow) {
+      nameCancelBtn.addEventListener("click", function() {
+        nameEditWrap.classList.add("hidden");
+        nameRow.classList.remove("hidden");
+      });
+    }
+    if (nameSaveBtn && nameInput && nameEditWrap && nameRow) {
+      nameSaveBtn.addEventListener("click", async function() {
+        var newName = (nameInput.value || "").trim() || (displayName || [firstName, lastName].filter(Boolean).join(" ").trim()) || "Пользователь";
+        try {
+          await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/profile", {
+            method: "PUT",
+            body: JSON.stringify({ display_name: newName || undefined })
+          });
+          state.cache.profile = Object.assign({}, state.cache.profile || {}, { display_name: newName || "" });
+          nameEl.textContent = newName;
+          nameEditWrap.classList.add("hidden");
+          nameRow.classList.remove("hidden");
+          if (tg) tg.showAlert("Имя сохранено");
+        } catch (err) {
+          if (tg) tg.showAlert("Не удалось сохранить");
+        }
+      });
+    }
   } else {
     var currentTitle = subPageTitles[state.profileSubTab] || "";
     var currentContent = subPageContent[state.profileSubTab] || "";
@@ -1219,10 +1266,9 @@ function renderProfile() {
     if (weightPlus) weightPlus.addEventListener("click", function() { updateWeight(parseFloat(weightInput.value || 0) + 0.5); });
   }
   var saveFieldsBtn = root.querySelector(".profile-save-fields-btn");
-  var inputNameEl2 = root.querySelector("#profile-display-name-input");
   if (saveFieldsBtn) {
     saveFieldsBtn.addEventListener("click", async function() {
-      var dn = (inputNameEl2 && inputNameEl2.value || "").trim();
+      var dn = (state.cache.profile && state.cache.profile.display_name || "").trim();
       var gEl = root.querySelector(".profile-gender-card.selected");
       var g = gEl ? gEl.dataset.gender || null : null;
       var h = parseFloat(root.querySelector("#profile-height") && root.querySelector("#profile-height").value);
