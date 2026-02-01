@@ -796,9 +796,10 @@ async def api_update_reminder_settings(user_id: int, payload: ReminderSettingsUp
 
 
 # --- Google Fit (шаги) и Calendar (выгрузка событий) ---
+# calendar — полный доступ к календарю (создание событий). calendar.events иногда даёт 403.
 GOOGLE_SCOPES = (
     "https://www.googleapis.com/auth/fitness.activity.read "
-    "https://www.googleapis.com/auth/calendar.events"
+    "https://www.googleapis.com/auth/calendar"
 )
 
 
@@ -1111,6 +1112,8 @@ async def api_calendar_sync(user_id: int):
                     if r.status_code in (200, 201):
                         created += 1
                     else:
+                        err_body = (r.text or "")[:200]
+                        logger.warning("Calendar API 403 habit %s: %s %s", title, r.status_code, err_body)
                         errors.append(f"habit {title}: {r.status_code}")
                 except Exception as e:
                     errors.append(f"habit {title}: {str(e)}")
@@ -1126,13 +1129,13 @@ async def api_calendar_sync(user_id: int):
                     dl_str = str(dl)[:10] if dl else today
                 except Exception:
                     dl_str = today
-                start_dt = f"{dl_str}T09:00:00{tz_offset}"
-                end_dt = f"{dl_str}T10:00:00{tz_offset}"
+                start_dt = f"{dl_str}T09:00:00"
+                end_dt = f"{dl_str}T10:00:00"
                 event = {
                     "summary": f"Цель: {title}",
                     "description": (g.get("description") or "")[:500] or "Из приложения «Твои цели»",
-                    "start": {"dateTime": start_dt, "timeZone": "UTC"},
-                    "end": {"dateTime": end_dt, "timeZone": "UTC"},
+                    "start": {"dateTime": start_dt, "timeZone": tz},
+                    "end": {"dateTime": end_dt, "timeZone": tz},
                 }
                 try:
                     async with httpx.AsyncClient() as client:
@@ -1144,6 +1147,8 @@ async def api_calendar_sync(user_id: int):
                     if r.status_code in (200, 201):
                         created += 1
                     else:
+                        err_body = (r.text or "")[:200]
+                        logger.warning("Calendar API 403 goal %s: %s %s", title, r.status_code, err_body)
                         errors.append(f"goal {title}: {r.status_code}")
                 except Exception as e:
                     errors.append(f"goal {title}: {str(e)}")
@@ -1179,11 +1184,20 @@ async def api_calendar_sync(user_id: int):
                         if r.status_code in (200, 201):
                             created += 1
                         else:
+                            err_body = (r.text or "")[:200]
+                            logger.warning("Calendar API 403 subgoal %s: %s %s", sgtitle, r.status_code, err_body)
                             errors.append(f"subgoal {sgtitle}: {r.status_code}")
                     except Exception as e:
                         errors.append(f"subgoal {sgtitle}: {str(e)}")
 
-        return JSONResponse(content={"ok": True, "created": created, "errors": errors[:10]})
+        resp = {"ok": True, "created": created, "errors": errors[:10]}
+        # Если все запросы завершились ошибкой — подсказка по 403
+        if created == 0 and errors and any("403" in e for e in errors):
+            resp["hint"] = (
+                "403 Forbidden: Включите Google Calendar API в Google Cloud Console и "
+                "отключите/подключите Google в настройках (чтобы получить доступ к календарю)."
+            )
+        return JSONResponse(content=resp)
     except Exception as e:
         logger.exception("calendar sync: %s", e)
         return JSONResponse(status_code=500, content={"detail": str(e)})
