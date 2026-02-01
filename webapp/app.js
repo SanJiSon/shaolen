@@ -587,22 +587,20 @@ function renderHabits(habits) {
   habits.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
-    var daysTotal = parseInt(h.days_total || 0);
-    var streak = parseInt(h.streak || 0);
-    if (daysTotal === 0 && streak > 0) daysTotal = streak;
+    var totalCompletions = parseInt(h.total_completions || 0);
     const remindersOn = h.reminders_enabled !== 0;
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
     var exampleBadge = (h.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var waterCalcBadge = (h.is_water_calculated ? "<span class=\"water-calc-badge\">Рассчитана автоматически</span><button type=\"button\" class=\"habit-water-help icon-btn\" aria-label=\"Как рассчитано\" title=\"Как рассчитано\" data-desc=\"" + escapeHtml((h.description || "").replace(/"/g, "&quot;")) + "\">?</button>" : "");
-    var pct = HABIT_TARGET_DAYS > 0 ? Math.round((daysTotal / HABIT_TARGET_DAYS) * 100) : 0;
+    var pct = HABIT_TARGET_DAYS > 0 ? Math.round((totalCompletions / HABIT_TARGET_DAYS) * 100) : 0;
     var barPct = Math.min(100, pct);
     var barSegments = 10;
     var filledSegments = pct >= 100 ? 10 : Math.round((barPct / 100) * barSegments);
     var barHtml = "";
     for (var i = 0; i < barSegments; i++) barHtml += "<span class=\"habit-progress-seg " + (i < filledSegments ? "filled" : "") + "\"></span>";
-    var progressHtml = "<div class=\"habit-progress\"><div class=\"habit-progress-bar\">" + barHtml + "</div><span class=\"habit-progress-text\">" + pct + "% (" + daysTotal + "/" + HABIT_TARGET_DAYS + ")</span></div>";
+    var progressHtml = "<div class=\"habit-progress\"><div class=\"habit-progress-bar\">" + barHtml + "</div><span class=\"habit-progress-text\">" + pct + "% (" + totalCompletions + "/" + HABIT_TARGET_DAYS + ")</span></div>";
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
@@ -638,21 +636,32 @@ function renderHabits(habits) {
       e.stopPropagation();
       const habitId = parseInt(btn.dataset.habitId);
       const action = btn.dataset.action;
+      var h = (state.cache.habits || []).find(function(x) { return String(x.id) === String(habitId); });
+      var prevToday = 0, prevTotal = 0;
+      if (h) {
+        prevToday = h.today_count || 0;
+        prevTotal = h.total_completions || 0;
+        if (action === 'increment') {
+          h.today_count = prevToday + 1;
+          h.total_completions = prevTotal + 1;
+        } else {
+          h.today_count = Math.max(0, prevToday - 1);
+          h.total_completions = Math.max(0, prevTotal - 1);
+        }
+        renderHabits(state.cache.habits);
+      }
       try {
         const endpoint = action === 'increment' 
           ? `${state.baseUrl}/api/habits/${habitId}/increment`
           : `${state.baseUrl}/api/habits/${habitId}/decrement`;
-        const result = await fetchJSON(endpoint, { method: 'POST' });
-        const row = btn.closest('.habit-card');
-        const numEl = row && row.querySelector('.habit-count-number');
-        const wrapEl = row && row.querySelector('.habit-count-wrap');
-        const newCount = result.count || 0;
-        if (numEl) numEl.textContent = newCount;
-        if (wrapEl) {
-          wrapEl.classList.toggle('hide', !newCount);
-        }
-        await loadAll();
+        await fetchJSON(endpoint, { method: 'POST' });
+        loadAll();
       } catch (err) {
+        if (h) {
+          h.today_count = prevToday;
+          h.total_completions = prevTotal;
+          renderHabits(state.cache.habits);
+        }
         console.error('Ошибка счётчика:', err);
         if (tg) tg.showAlert('Ошибка при обновлении');
       }
@@ -1855,7 +1864,8 @@ async function loadAll() {
       username: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username) || "",
       display_name: ""
     };
-    const [missions, goals, habits, analytics, profile, weightHistoryRes, achievementsRes] = await Promise.all([
+    const [achievementCheckRes, missions, goals, habits, analytics, profile, weightHistoryRes, achievementsRes] = await Promise.all([
+      fetchJSON(base + "/api/user/" + uid + "/achievement-check").catch(function() { return {}; }),
       fetchJSON(base + "/api/user/" + uid + "/missions").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Миссии:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/goals").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Цели:", e.message); return []; }),
       fetchJSON(base + "/api/user/" + uid + "/habits").catch(e => { if (e && e.status === 401) throw e; console.error("❌ Привычки:", e.message); return []; }),
@@ -2674,34 +2684,76 @@ function bindEvents() {
     var cb = e.target;
     if (cb.classList && cb.classList.contains("mission-done-cb") && cb.checked) {
       e.preventDefault();
+      var mid = cb.dataset.id;
+      var m = (state.cache.missions || []).find(function(x) { return String(x.id) === String(mid); });
+      if (m) {
+        m.is_completed = 1;
+        renderMissions(state.cache.missions);
+      }
       try {
-        await fetchJSON(state.baseUrl + "/api/missions/" + cb.dataset.id + "/complete", { method: "POST" });
-        await loadAll();
-      } catch (err) { if (tg) tg.showAlert("Ошибка"); }
+        await fetchJSON(state.baseUrl + "/api/missions/" + mid + "/complete", { method: "POST" });
+        loadAll();
+      } catch (err) {
+        if (m) { m.is_completed = 0; renderMissions(state.cache.missions); }
+        if (tg) tg.showAlert("Ошибка");
+      }
       return;
     }
     if (cb.classList && cb.classList.contains("goal-done-cb")) {
       e.preventDefault();
-      try {
-        if (cb.checked) {
-          await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/complete", { method: "POST" });
-        } else {
-          await fetchJSON(state.baseUrl + "/api/goals/" + cb.dataset.id + "/uncomplete", { method: "POST" });
+      var gid = cb.dataset.id;
+      var g = (state.cache.goals || []).find(function(x) { return String(x.id) === String(gid); });
+      if (g) {
+        var prev = g.is_completed;
+        g.is_completed = cb.checked ? 1 : 0;
+        renderGoals(state.cache.goals);
+        try {
+          if (cb.checked) {
+            await fetchJSON(state.baseUrl + "/api/goals/" + gid + "/complete", { method: "POST" });
+          } else {
+            await fetchJSON(state.baseUrl + "/api/goals/" + gid + "/uncomplete", { method: "POST" });
+          }
+          loadAll();
+        } catch (err) {
+          g.is_completed = prev;
+          renderGoals(state.cache.goals);
+          if (tg) tg.showAlert("Ошибка");
         }
-        await loadAll();
-      } catch (err) { if (tg) tg.showAlert("Ошибка"); }
+      }
       return;
     }
     if (cb.classList && cb.classList.contains("subgoal-done-cb")) {
       e.preventDefault();
-      try {
-        if (cb.checked) {
-          await fetchJSON(state.baseUrl + "/api/subgoals/" + cb.dataset.id + "/complete", { method: "POST" });
-        } else {
-          await fetchJSON(state.baseUrl + "/api/subgoals/" + cb.dataset.id + "/uncomplete", { method: "POST" });
+      var sid = cb.dataset.id;
+      var subgoalsByMission = state.cache.subgoalsByMission || {};
+      var found = null, prevVal;
+      for (var mid in subgoalsByMission) {
+        var list = subgoalsByMission[mid] || [];
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i].id) === String(sid)) {
+            found = list[i];
+            prevVal = found.is_completed;
+            found.is_completed = cb.checked ? 1 : 0;
+            break;
+          }
         }
-        await loadAll();
-      } catch (err) { if (tg) tg.showAlert("Ошибка"); }
+        if (found) break;
+      }
+      if (found) {
+        renderMissions(state.cache.missions);
+        try {
+          if (cb.checked) {
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/complete", { method: "POST" });
+          } else {
+            await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/uncomplete", { method: "POST" });
+          }
+          loadAll();
+        } catch (err) {
+          found.is_completed = prevVal;
+          renderMissions(state.cache.missions);
+          if (tg) tg.showAlert("Ошибка");
+        }
+      }
       return;
     }
   });
