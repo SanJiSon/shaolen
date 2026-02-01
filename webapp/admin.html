@@ -28,6 +28,7 @@
     .proc button { padding: 6px 12px; font-size: 12px; background: #334155; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     .proc button:hover { background: #475569; }
     .proc button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .proc-hint { font-size: 11px; color: #94a3b8; margin-left: 4px; }
     .token-row.token-ok { margin-bottom: 8px; }
     .token-row.token-ok .token-compact { color: #22c55e; }
     .logs-toolbar { margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
@@ -87,13 +88,15 @@
       <div class="status-box">
         <div class="proc" id="proc-bot"><span class="dot unknown" id="dot-bot"></span><span>bot.py</span><span id="status-bot">—</span><button id="btn-bot-start">Запустить</button><button id="btn-bot-stop">Остановить</button></div>
         <div class="proc" id="proc-webapp"><span class="dot unknown" id="dot-webapp"></span><span>webapp_server.py</span><span id="status-webapp">—</span><button id="btn-webapp-start">Запустить</button><button id="btn-webapp-stop">Остановить</button></div>
+        <div class="proc" id="proc-reminder"><span class="dot unknown" id="dot-reminder"></span><span>reminder_worker.py</span><span id="status-reminder">—</span><span class="proc-hint">(МСК)</span><button id="btn-reminder-start">Запустить</button><button id="btn-reminder-stop">Остановить</button></div>
       </div>
+      <p class="control-hint">Воркер напоминаний работает по московскому времени. Установка: <code>sudo cp systemd/goals-reminder.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable goals-reminder && sudo systemctl start goals-reminder</code></p>
       <p class="control-hint">Если веб-приложение остановлено, кнопка «Запустить» для webapp может вернуть 502 — запрос идёт через него. Запустите на сервере: <code>systemctl start goals-webapp</code></p>
     </section>
     <section id="sec-logs">
       <h2>Логи (режим реального времени)</h2>
       <div class="logs-toolbar">
-        <select id="logs-source"><option value="bot">bot.log</option><option value="webapp">webapp.log</option></select>
+        <select id="logs-source"><option value="bot">bot.log</option><option value="webapp">webapp.log</option><option value="reminder">reminder.log</option></select>
         <button type="button" id="logs-refresh">Обновить</button>
         <label><input type="checkbox" id="logs-auto" /> обновлять каждые 3 сек</label>
       </div>
@@ -222,16 +225,21 @@
   function loadStatus() {
     if (!token) return;
     api('/api/admin/status').then(function(d) {
-      var b = d.bot || 'unknown', w = d.webapp || 'unknown';
+      var b = d.bot || 'unknown', w = d.webapp || 'unknown', r = d.reminder || 'unknown';
       q('#status-bot').textContent = b === 'active' ? 'запущен' : (b === 'inactive' ? 'остановлен' : '?');
       q('#status-webapp').textContent = w === 'active' ? 'запущен' : (w === 'inactive' ? 'остановлен' : '?');
+      var remEl = q('#status-reminder'); if (remEl) remEl.textContent = r === 'active' ? 'запущен' : (r === 'inactive' ? 'остановлен' : '?');
       q('#dot-bot').className = 'dot ' + b;
       q('#dot-webapp').className = 'dot ' + w;
+      var dotRem = q('#dot-reminder'); if (dotRem) dotRem.className = 'dot ' + r;
       q('#btn-bot-start').disabled = b === 'active';
       q('#btn-bot-stop').disabled = b === 'inactive';
       q('#btn-webapp-start').disabled = w === 'active';
       q('#btn-webapp-stop').disabled = w === 'inactive';
-    }).catch(function(e) { q('#status-bot').textContent = 'ошибка'; q('#status-webapp').textContent = 'ошибка'; q('#dot-bot').className = 'dot unknown'; q('#dot-webapp').className = 'dot unknown'; });
+      var btnRemStart = q('#btn-reminder-start'); var btnRemStop = q('#btn-reminder-stop');
+      if (btnRemStart) btnRemStart.disabled = r === 'active';
+      if (btnRemStop) btnRemStop.disabled = r === 'inactive';
+    }).catch(function(e) { q('#status-bot').textContent = 'ошибка'; q('#status-webapp').textContent = 'ошибка'; var rem = q('#status-reminder'); if (rem) rem.textContent = 'ошибка'; q('#dot-bot').className = 'dot unknown'; q('#dot-webapp').className = 'dot unknown'; var dr = q('#dot-reminder'); if (dr) dr.className = 'dot unknown'; });
   }
   function postControl(what, action) {
     if (!token) return;
@@ -254,10 +262,19 @@
         alert(msg);
       });
   }
+  function postControlReminder(action) {
+    if (!token) return;
+    var path = '/api/admin/reminder/' + action;
+    fetch(BASE + path + '?token=' + encodeURIComponent(token), { headers: headers(), method: 'POST' })
+      .then(function(r) { if (r.ok) { loadStatus(); return; } return r.text().then(function(t) { alert(r.status + ' ' + r.statusText); }); })
+      .catch(function(e) { alert(e.message || 'Ошибка. Установите goals-reminder.service: sudo cp systemd/goals-reminder.service /etc/systemd/system/ && sudo systemctl daemon-reload'); });
+  }
   q('#btn-bot-start').onclick = function() { postControl('bot', 'start'); };
   q('#btn-bot-stop').onclick = function() { postControl('bot', 'stop'); };
   q('#btn-webapp-start').onclick = function() { postControl('webapp', 'start'); };
   q('#btn-webapp-stop').onclick = function() { postControl('webapp', 'stop'); };
+  var btnRemStart = q('#btn-reminder-start'); if (btnRemStart) btnRemStart.onclick = function() { postControlReminder('start'); };
+  var btnRemStop = q('#btn-reminder-stop'); if (btnRemStop) btnRemStop.onclick = function() { postControlReminder('stop'); };
 
   function loadLogs() {
     if (!token) return;

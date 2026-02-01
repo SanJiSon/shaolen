@@ -43,6 +43,7 @@ const state = {
   reminderSettings: null,
   googleFitConnected: false,
   googleFitSteps: null,
+  calendarSyncSettings: { sync_subgoals: true, sync_habits: true, sync_goals: true },
   habitCalendarYear: new Date().getFullYear(),
   habitCalendarMonth: new Date().getMonth() + 1
 };
@@ -2499,6 +2500,10 @@ function renderSettings() {
   var s = state.reminderSettings || { notifications_enabled: true };
   var on = !!s.notifications_enabled;
   var gfConnected = !!state.googleFitConnected;
+  var cal = state.calendarSyncSettings || { sync_subgoals: true, sync_habits: true, sync_goals: true };
+  var calSub = !!cal.sync_subgoals;
+  var calHabits = !!cal.sync_habits;
+  var calGoals = !!cal.sync_goals;
   container.innerHTML =
     "<div class=\"settings-row\">" +
       "<div><div class=\"settings-row-label\">Уведомления</div>" +
@@ -2507,9 +2512,28 @@ function renderSettings() {
     "</div>" +
     "<div class=\"settings-row\">" +
       "<div><div class=\"settings-row-label\">Авторизация Google Fit</div>" +
-      "<div class=\"settings-row-hint\">Подключите аккаунт Google, чтобы видеть шаги в профиле.</div></div>" +
+      "<div class=\"settings-row-hint\">Подключите аккаунт Google, чтобы видеть шаги в профиле и выгружать события в календарь.</div></div>" +
       "<button type=\"button\" class=\"btn-sm " + (gfConnected ? "" : "primary-btn") + "\" id=\"settings-google-fit-btn\">" + (gfConnected ? "Отключить" : "Подключить") + "</button>" +
-    "</div>";
+    "</div>" +
+    "<div class=\"settings-section-title\">Синхронизация с Google Календарь</div>" +
+    "<div class=\"settings-row-hint\" style=\"margin-bottom:10px;\">Выгрузка в календарь телефона. Сначала подключите Google выше.</div>" +
+    "<div class=\"settings-row settings-row-toggle\">" +
+      "<div><div class=\"settings-row-label\">Подцели</div><div class=\"settings-row-hint\">Подцели миссий (с дедлайном)</div></div>" +
+      "<button type=\"button\" class=\"settings-toggle " + (calSub ? "on" : "") + "\" id=\"settings-cal-subgoals\" aria-label=\"Подцели " + (calSub ? "вкл" : "выкл") + "\"></button>" +
+    "</div>" +
+    "<div class=\"settings-row settings-row-toggle\">" +
+      "<div><div class=\"settings-row-label\">Привычки</div><div class=\"settings-row-hint\">Ежедневные события в подходящее время (вода, зарядка и т.д.)</div></div>" +
+      "<button type=\"button\" class=\"settings-toggle " + (calHabits ? "on" : "") + "\" id=\"settings-cal-habits\" aria-label=\"Привычки " + (calHabits ? "вкл" : "выкл") + "\"></button>" +
+    "</div>" +
+    "<div class=\"settings-row settings-row-toggle\">" +
+      "<div><div class=\"settings-row-label\">Цели</div><div class=\"settings-row-hint\">Цели с дедлайнами</div></div>" +
+      "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
+    "</div>" +
+    "<div class=\"settings-row settings-cal-sync-row\" style=\"margin-top:12px;\">" +
+      "<div class=\"settings-cal-sync-actions\">" +
+      "<button type=\"button\" class=\"primary-btn\" id=\"settings-cal-sync-btn\"><span class=\"material-symbols-outlined\" style=\"font-size:18px;vertical-align:middle;margin-right:6px;\">sync</span>Выгрузить в календарь</button>" +
+      "<span id=\"settings-cal-sync-msg\" class=\"settings-cal-msg\"></span>" +
+      "</div></div>";
   var toggle = $("#settings-notifications-toggle");
   if (toggle) {
     toggle.addEventListener("click", async function() {
@@ -2527,6 +2551,70 @@ function renderSettings() {
       }
     });
   }
+  var calSubBtn = $("#settings-cal-subgoals");
+  var calHabitsBtn = $("#settings-cal-habits");
+  var calGoalsBtn = $("#settings-cal-goals");
+  if (calSubBtn) calSubBtn.addEventListener("click", async function() {
+    var v = !calSubBtn.classList.contains("on");
+    calSubBtn.classList.toggle("on", v);
+    try {
+      await _saveCalendarSyncSettings({ sync_subgoals: v });
+    } catch (e) {
+      calSubBtn.classList.toggle("on", !v);
+      if (tg) tg.showAlert("Не удалось сохранить.");
+    }
+  });
+  if (calHabitsBtn) calHabitsBtn.addEventListener("click", async function() {
+    var v = !calHabitsBtn.classList.contains("on");
+    calHabitsBtn.classList.toggle("on", v);
+    try {
+      await _saveCalendarSyncSettings({ sync_habits: v });
+    } catch (e) {
+      calHabitsBtn.classList.toggle("on", !v);
+      if (tg) tg.showAlert("Не удалось сохранить.");
+    }
+  });
+  if (calGoalsBtn) calGoalsBtn.addEventListener("click", async function() {
+    var v = !calGoalsBtn.classList.contains("on");
+    calGoalsBtn.classList.toggle("on", v);
+    try {
+      await _saveCalendarSyncSettings({ sync_goals: v });
+    } catch (e) {
+      calGoalsBtn.classList.toggle("on", !v);
+      if (tg) tg.showAlert("Не удалось сохранить.");
+    }
+  });
+  var calSyncBtn = $("#settings-cal-sync-btn");
+  var calSyncMsg = $("#settings-cal-sync-msg");
+  if (calSyncBtn) calSyncBtn.addEventListener("click", async function() {
+    if (!state.googleFitConnected) {
+      if (tg) tg.showAlert("Сначала подключите Google (кнопка «Подключить» выше).");
+      return;
+    }
+    calSyncBtn.disabled = true;
+    if (calSyncMsg) calSyncMsg.textContent = "Выгрузка…";
+    try {
+      var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/calendar-sync", { method: "POST" });
+      var n = r && r.created != null ? r.created : 0;
+      var errs = r && r.errors && r.errors.length ? r.errors.join("; ") : "";
+      if (calSyncMsg) calSyncMsg.textContent = errs ? "Создано: " + n + ". Ошибки: " + errs : "Создано событий: " + n;
+      if (n > 0 && tg) tg.showAlert("В календарь добавлено " + n + " событий.");
+    } catch (e) {
+      if (calSyncMsg) calSyncMsg.textContent = "Ошибка";
+      if (tg) tg.showAlert("Не удалось выгрузить. Проверьте подключение Google.");
+    }
+    calSyncBtn.disabled = false;
+  });
+
+  async function _saveCalendarSyncSettings(obj) {
+    await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/calendar-sync-settings", {
+      method: "PUT",
+      body: JSON.stringify(obj)
+    });
+    state.calendarSyncSettings = state.calendarSyncSettings || {};
+    Object.assign(state.calendarSyncSettings, obj);
+  }
+
   var gfBtn = $("#settings-google-fit-btn");
   if (gfBtn) {
     gfBtn.addEventListener("click", async function() {
@@ -2555,14 +2643,29 @@ function renderSettings() {
   }
 }
 
+async function loadCalendarSyncSettings() {
+  if (!state.userId) return;
+  try {
+    var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/calendar-sync-settings");
+    if (r && (r.sync_subgoals !== undefined || r.sync_habits !== undefined || r.sync_goals !== undefined)) {
+      state.calendarSyncSettings = { sync_subgoals: !!r.sync_subgoals, sync_habits: !!r.sync_habits, sync_goals: !!r.sync_goals };
+    }
+  } catch (e) { state.calendarSyncSettings = { sync_subgoals: true, sync_habits: true, sync_goals: true }; }
+}
+
 function openSettingsOverlay() {
   var ov = $("#settings-overlay");
   if (!ov) return;
   loadReminderSettings().then(function() {
-    loadGoogleFitStatus().then(function() {
-      renderSettings();
-      ov.classList.remove("hidden");
-    }).catch(function() { renderSettings(); ov.classList.remove("hidden"); });
+    return loadGoogleFitStatus();
+  }).then(function() {
+    return loadCalendarSyncSettings();
+  }).then(function() {
+    renderSettings();
+    ov.classList.remove("hidden");
+  }).catch(function() {
+    renderSettings();
+    ov.classList.remove("hidden");
   });
 }
 

@@ -521,6 +521,11 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .settings-toggle.on::after { transform: translateX(24px); }
+.settings-section-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 18px 0 8px 0; }
+.settings-cal-sync-row { align-items: center; }
+.settings-cal-sync-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.settings-cal-sync-row .primary-btn { flex-shrink: 0; }
+.settings-cal-msg { font-size: 12px; color: var(--muted); }
 
 /* Вкладки — равные промежутки между названиями */
 .tabs {
