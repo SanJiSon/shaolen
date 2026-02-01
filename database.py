@@ -203,6 +203,17 @@ class Database:
                 )
             """)
 
+            # Сохранённые достижения (21 день) — остаются после удаления привычки
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_achievements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    habit_title TEXT NOT NULL,
+                    achieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
             # Google Fit OAuth токены для чтения шагов
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS google_fit_tokens (
@@ -856,12 +867,36 @@ class Database:
             return new_count
 
     async def delete_habit(self, habit_id: int):
-        """Удаление привычки"""
+        """Удаление привычки. Если streak >= 21, сохраняем достижение в user_achievements."""
+        habit = await self.get_habit(habit_id)
+        user_id = habit.get("user_id") if habit else None
+        title = ((habit.get("title") or "").strip() or "Привычка") if habit else "Привычка"
+        streak = await self.get_habit_streak_for_habit(habit_id, days=365) if habit else 0
+
         async with aiosqlite.connect(self.db_path) as db:
+            if user_id and streak >= 21:
+                await db.execute(
+                    "INSERT INTO user_achievements (user_id, habit_title) VALUES (?, ?)",
+                    (user_id, title),
+                )
             await db.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
             await db.execute("DELETE FROM habit_records WHERE habit_id = ?", (habit_id,))
             await db.execute("DELETE FROM habit_reminder_settings WHERE habit_id = ?", (habit_id,))
             await db.commit()
+
+    async def get_user_achievements(self, user_id: int) -> List[Dict]:
+        """Сохранённые достижения (привычки с 21 днём, удалённые пользователем)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT habit_title, achieved_at FROM user_achievements WHERE user_id = ? ORDER BY achieved_at DESC",
+                (user_id,),
+            ) as c:
+                rows = await c.fetchall()
+                return [
+                    {"title": row[0], "achieved": True, "streak": 21, "habit_id": None}
+                    for row in rows
+                ]
 
     # === НАСТРОЙКИ И АНАЛИТИКА УМНЫХ НАПОМИНАНИЙ ===
 
@@ -1166,6 +1201,18 @@ class Database:
             else:
                 break
         return streak
+
+    async def get_habit_days_total(self, habit_id: int, days: int = 365) -> int:
+        """Всего дней (не обязательно подряд) с выполнением привычки за последние days дней."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                """SELECT COUNT(DISTINCT date) FROM habit_records
+                   WHERE habit_id = ? AND date >= date('now', '-' || ? || ' days')
+                     AND (completed = 1 OR COALESCE(count, 0) > 0)""",
+                (habit_id, days),
+            ) as c:
+                row = await c.fetchone()
+                return int(row[0] or 0)
 
     async def get_habit_streak_for_habit(self, habit_id: int, days: int = 365) -> int:
         """Серия дней подряд выполнения данной привычки (считая сегодня)."""

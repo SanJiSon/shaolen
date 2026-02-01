@@ -590,7 +590,9 @@ async def api_get_habits(user_id: int):
                     clean_habit[key] = str(value)
             hid = habit.get("id")
             streak = await db.get_habit_streak_for_habit(hid, days=365) if hid else 0
+            days_total = await db.get_habit_days_total(hid, days=365) if hid else 0
             clean_habit["streak"] = streak
+            clean_habit["days_total"] = days_total
             result.append(clean_habit)
 
         return JSONResponse(content=result)
@@ -1370,10 +1372,10 @@ async def api_get_analytics(user_id: int, period: str = "month"):
 
 @app.get("/api/user/{user_id}/achievements", response_model=None)
 async def api_achievements(user_id: int):
-    """Достижения: привычки с отметкой 21+ дней подряд."""
+    """Достижения: текущие привычки + сохранённые (привычки с 21 днём, удалённые)."""
     try:
-        habits = await db.get_habits(user_id, active_only=False)
         out = []
+        habits = await db.get_habits(user_id, active_only=False)
         for h in (habits or []):
             hid = h.get("id")
             streak = await db.get_habit_streak_for_habit(hid, days=365) if hid else 0
@@ -1384,6 +1386,8 @@ async def api_achievements(user_id: int):
                 "streak": streak,
                 "achieved": streak >= 21,
             })
+        saved = await db.get_user_achievements(user_id)
+        out.extend(saved)
         return JSONResponse(content={"achievements": out})
     except Exception as e:
         logger.exception("achievements: %s", e)
