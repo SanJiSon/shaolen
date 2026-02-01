@@ -2587,6 +2587,7 @@ function renderSettings() {
   var calSyncBtn = $("#settings-cal-sync-btn");
   var calSyncMsg = $("#settings-cal-sync-msg");
   if (calSyncBtn) calSyncBtn.addEventListener("click", async function() {
+    await loadGoogleFitStatus();
     if (!state.googleFitConnected) {
       if (tg) tg.showAlert("Сначала подключите Google (кнопка «Подключить» выше).");
       return;
@@ -2665,6 +2666,17 @@ function openSettingsOverlay() {
   }).then(function() {
     renderSettings();
     ov.classList.remove("hidden");
+    var _prevOnVisible = ov._settingsOnVisible;
+    if (_prevOnVisible) document.removeEventListener("visibilitychange", _prevOnVisible);
+    var onVisible = function() {
+      if (document.visibilityState === "visible" && ov && !ov.classList.contains("hidden")) {
+        document.removeEventListener("visibilitychange", onVisible);
+        ov._settingsOnVisible = null;
+        loadGoogleFitStatus().then(loadCalendarSyncSettings).then(renderSettings);
+      }
+    };
+    ov._settingsOnVisible = onVisible;
+    document.addEventListener("visibilitychange", onVisible);
   }).catch(function() {
     renderSettings();
     ov.classList.remove("hidden");
@@ -2673,7 +2685,11 @@ function openSettingsOverlay() {
 
 function closeSettingsOverlay() {
   var ov = $("#settings-overlay");
-  if (ov) ov.classList.add("hidden");
+  if (ov) {
+    var h = ov._settingsOnVisible;
+    if (h) { document.removeEventListener("visibilitychange", h); ov._settingsOnVisible = null; }
+    ov.classList.add("hidden");
+  }
 }
 
 var MONTH_NAMES_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
