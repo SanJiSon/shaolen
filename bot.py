@@ -247,6 +247,14 @@ async def main() -> None:
     await app.start()
     await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Бот запущен")
+    if TELEGRAM_API_ID.strip() and TELEGRAM_API_HASH.strip():
+        try:
+            import telethon  # noqa: F401
+        except ImportError:
+            logger.warning(
+                "Команда /todo недоступна: Telethon не установлен. "
+                "Выполните в том же venv: pip install -r requirements.txt"
+            )
 
     # Держим бота запущенным
     try:

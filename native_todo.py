@@ -90,7 +90,11 @@ async def send_native_todo(
         )
     except ImportError as e:
         logger.warning("Telethon not available: %s", e)
-        return False, "Модуль Telethon не установлен. Добавьте в requirements: telethon"
+        return (
+            False,
+            "Модуль Telethon не найден в окружении бота. Установите: pip install telethon. "
+            "Убедитесь, что бот запущен в том же venv, где выполняли pip install -r requirements.txt.",
+        )
 
     client = TelegramClient(
         MemorySession(),
