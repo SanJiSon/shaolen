@@ -35,10 +35,14 @@ async def main():
         print("Установите: pip install telethon")
         return
 
+    print("Код для входа придёт в приложение Telegram (часто — от «Telegram» в чатах), не по SMS.")
+    print("Если код не пришёл: откройте Telegram на телефоне, подождите 1–2 мин или запросите код повторно.")
+    print("При проблемах запустите скрипт на своём компьютере и скопируйте .session файл на сервер.\n")
+
     client = TelegramClient(SESSION_NAME, int(API_ID), API_HASH)
     await client.start(
-        phone=lambda: input("Номер телефона (с +): "),
-        password=lambda: input("Пароль 2FA (если включён, иначе Enter): ") or None,
+        phone=lambda: input("Номер телефона (с +, например +79001234567): ").strip(),
+        password=lambda: input("Пароль 2FA (если включён, иначе Enter): ").strip() or None,
     )
     me = await client.get_me()
     print(f"Вход выполнен: @{me.username or me.id}. Сессия сохранена в {SESSION_NAME}.session")
