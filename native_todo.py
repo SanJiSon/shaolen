@@ -98,15 +98,11 @@ async def send_native_todo(
 
     client = TelegramClient(
         MemorySession(),
-        api_id=int(api_id),
-        api_hash=api_hash,
-        bot_token=bot_token,
+        int(api_id),
+        api_hash,
     )
     try:
-        await asyncio.wait_for(client.connect(), timeout=5.0)
-        if not await client.is_user_authorized():
-            # Для бота authorized после connect с bot_token
-            pass
+        await asyncio.wait_for(client.start(bot_token=bot_token), timeout=10.0)
         peer = await client.get_input_entity(chat_id)
         title_twe = TextWithEntities(text=list_title, entities=[])
         todo_items = [
