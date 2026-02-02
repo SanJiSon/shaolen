@@ -1039,6 +1039,7 @@ class CalendarSyncSettingsBody(BaseModel):
     sync_habits: Optional[bool] = None
     sync_goals: Optional[bool] = None
     event_color_id: Optional[str] = None
+    use_dedicated_calendar_for_color: Optional[bool] = None
 
 
 @app.put("/api/user/{user_id}/calendar-sync-settings", response_model=None)
@@ -1049,8 +1050,73 @@ async def api_update_calendar_sync_settings(user_id: int, payload: CalendarSyncS
     sync_habits = payload.sync_habits if payload.sync_habits is not None else cur["sync_habits"]
     sync_goals = payload.sync_goals if payload.sync_goals is not None else cur["sync_goals"]
     event_color_id = payload.event_color_id if payload.event_color_id is not None else cur.get("event_color_id")
-    await db.set_calendar_sync_settings(user_id, sync_subgoals, sync_habits, sync_goals, event_color_id)
+    use_dedicated = payload.use_dedicated_calendar_for_color if payload.use_dedicated_calendar_for_color is not None else cur.get("use_dedicated_calendar_for_color", False)
+    await db.set_calendar_sync_settings(user_id, sync_subgoals, sync_habits, sync_goals, event_color_id, use_dedicated)
     return JSONResponse(content={"ok": True})
+
+
+def _calendar_base_url(calendar_id: str) -> str:
+    """URL-путь календаря: primary без кодирования, иначе id кодируем (например @ -> %40)."""
+    if calendar_id == "primary":
+        return "https://www.googleapis.com/calendar/v3/calendars/primary"
+    return "https://www.googleapis.com/calendar/v3/calendars/" + quote(calendar_id, safe="")
+
+
+async def _ensure_shaolen_calendar(
+    client: httpx.AsyncClient,
+    headers: Dict[str, str],
+    user_id: int,
+    event_color_id: Optional[str],
+    settings: Dict[str, Any],
+) -> str:
+    """
+    Если выбран цвет — вернуть id календаря «Шаолень Привычки» (создать при необходимости)
+    и задать цвет на уровне календаря (CalendarList), чтобы на iOS отображался правильный цвет.
+    Иначе — primary.
+    """
+    if not event_color_id:
+        return "primary"
+    existing_id = (settings.get("shaolen_calendar_id") or "").strip() or None
+    if existing_id:
+        r = await client.get(
+            f"https://www.googleapis.com/calendar/v3/calendars/{quote(existing_id, safe='')}",
+            headers=headers,
+        )
+        if r.status_code == 200:
+            # Обновить цвет календаря в списке (на случай смены цвета в настройках)
+            await client.patch(
+                f"https://www.googleapis.com/calendar/v3/users/me/calendarList/{quote(existing_id, safe='')}",
+                json={"colorId": event_color_id},
+                headers=headers,
+            )
+            return existing_id
+        # Календарь удалён — создаём заново
+        await db.set_shaolen_calendar_id(user_id, None)
+    # Создать вторичный календарь
+    cr = await client.post(
+        "https://www.googleapis.com/calendar/v3/calendars",
+        json={
+            "summary": "Шаолень Привычки",
+            "description": "Привычки, цели и подцели из @shaolen_bot",
+        },
+        headers=headers,
+    )
+    if cr.status_code != 200 or not cr.content:
+        logger.warning("calendar-sync: не удалось создать календарь: %s", cr.status_code)
+        return "primary"
+    cdata = cr.json()
+    new_id = (cdata.get("id") or "").strip()
+    if not new_id:
+        return "primary"
+    # Задать цвет календаря в списке (для iOS важнее цвет календаря, чем событий)
+    await client.patch(
+        f"https://www.googleapis.com/calendar/v3/users/me/calendarList/{quote(new_id, safe='')}",
+        json={"colorId": event_color_id},
+        headers=headers,
+    )
+    await db.set_shaolen_calendar_id(user_id, new_id)
+    logger.info("calendar-sync: календарь «Шаолень Привычки» создан/используется, colorId=%s", event_color_id)
+    return new_id
 
 
 @app.post("/api/user/{user_id}/calendar-sync", response_model=None)
@@ -1096,14 +1162,22 @@ async def api_calendar_sync(user_id: int):
     today = now.strftime("%Y-%m-%d")
     tz = "Europe/Moscow"
     tz_offset = "+03:00"
-    # Google Calendar API: colorId — строка "1"—"11" из палитры событий. На мобильном клиенте цвет иногда не подхватывается (ограничение Google).
+    # Google Calendar API: colorId "1"—"11". Для Android — основной календарь + цвет на событиях. Для iOS — отдельный календарь «Шаолень Привычки» с цветом на уровне календаря (настройка use_dedicated_calendar_for_color).
     event_color_id = (settings.get("event_color_id") or "").strip() or None
     if event_color_id and event_color_id not in (str(i) for i in range(1, 12)):
         event_color_id = None
+    use_dedicated = bool(settings.get("use_dedicated_calendar_for_color"))
     if event_color_id:
-        logger.info("calendar-sync: используем цвет событий colorId=%s", event_color_id)
+        logger.info("calendar-sync: цвет colorId=%s; отдельный календарь (iOS)=%s", event_color_id, use_dedicated)
 
     try:
+        async with httpx.AsyncClient() as client:
+            if use_dedicated and event_color_id:
+                calendar_id = await _ensure_shaolen_calendar(client, headers, user_id, event_color_id, settings)
+            else:
+                calendar_id = "primary"
+            calendar_base = _calendar_base_url(calendar_id)
+
         if settings.get("sync_habits", True):
             habits = await db.get_habits(user_id, active_only=True)
             for i, h in enumerate(habits):
@@ -1138,7 +1212,7 @@ async def api_calendar_sync(user_id: int):
                 try:
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
-                            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                            f"{calendar_base}/events",
                             json=event,
                             headers=headers,
                         )
@@ -1148,11 +1222,12 @@ async def api_calendar_sync(user_id: int):
                         eid = resp_data.get("id")
                         if event_color_id and eid:
                             try:
-                                patch_r = await client.patch(
-                                    f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{eid}",
-                                    json={"colorId": str(event_color_id)},
-                                    headers=headers,
-                                )
+                                async with httpx.AsyncClient() as patch_client:
+                                    patch_r = await patch_client.patch(
+                                        f"{calendar_base}/events/{eid}",
+                                        json={"colorId": str(event_color_id)},
+                                        headers=headers,
+                                    )
                                 if patch_r.status_code not in (200, 201):
                                     logger.warning("Calendar API PATCH color habit %s: %s", title, patch_r.status_code)
                             except Exception:

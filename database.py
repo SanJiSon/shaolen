@@ -236,6 +236,14 @@ class Database:
                 await db.execute("ALTER TABLE calendar_sync_settings ADD COLUMN event_color_id TEXT")
             except Exception:
                 pass
+            try:
+                await db.execute("ALTER TABLE calendar_sync_settings ADD COLUMN shaolen_calendar_id TEXT")
+            except Exception:
+                pass
+            try:
+                await db.execute("ALTER TABLE calendar_sync_settings ADD COLUMN use_dedicated_calendar_for_color INTEGER DEFAULT 0")
+            except Exception:
+                pass
 
             # Google Fit OAuth токены для чтения шагов и календаря
             await db.execute("""
@@ -1754,11 +1762,11 @@ class Database:
 
     # --- Синхронизация с Google Календарь ---
     async def get_calendar_sync_settings(self, user_id: int) -> Dict:
-        """Настройки выгрузки в календарь: sync_subgoals, sync_habits, sync_goals, event_color_id."""
+        """Настройки выгрузки в календарь: sync_subgoals, sync_habits, sync_goals, event_color_id, shaolen_calendar_id, use_dedicated_calendar_for_color."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT sync_subgoals, sync_habits, sync_goals, event_color_id FROM calendar_sync_settings WHERE user_id = ?",
+                "SELECT sync_subgoals, sync_habits, sync_goals, event_color_id, shaolen_calendar_id, use_dedicated_calendar_for_color FROM calendar_sync_settings WHERE user_id = ?",
                 (user_id,),
             ) as c:
                 row = await c.fetchone()
@@ -1768,8 +1776,10 @@ class Database:
                 "sync_habits": bool(row[1]),
                 "sync_goals": bool(row[2]),
                 "event_color_id": (row[3] or "").strip() or None,
+                "shaolen_calendar_id": (row[4] or "").strip() or None if len(row) > 4 else None,
+                "use_dedicated_calendar_for_color": bool(row[5]) if len(row) > 5 else False,
             }
-        return {"sync_subgoals": True, "sync_habits": True, "sync_goals": True, "event_color_id": None}
+        return {"sync_subgoals": True, "sync_habits": True, "sync_goals": True, "event_color_id": None, "shaolen_calendar_id": None, "use_dedicated_calendar_for_color": False}
 
     async def set_calendar_sync_settings(
         self,
@@ -1778,22 +1788,36 @@ class Database:
         sync_habits: bool = True,
         sync_goals: bool = True,
         event_color_id: Optional[str] = None,
+        use_dedicated_calendar_for_color: bool = False,
     ) -> None:
         """Сохранить настройки выгрузки в календарь."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                """INSERT INTO calendar_sync_settings (user_id, sync_subgoals, sync_habits, sync_goals, event_color_id)
-                   VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+                """INSERT INTO calendar_sync_settings (user_id, sync_subgoals, sync_habits, sync_goals, event_color_id, use_dedicated_calendar_for_color)
+                   VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
                    sync_subgoals = excluded.sync_subgoals,
                    sync_habits = excluded.sync_habits,
                    sync_goals = excluded.sync_goals,
-                   event_color_id = excluded.event_color_id""",
+                   event_color_id = excluded.event_color_id,
+                   use_dedicated_calendar_for_color = excluded.use_dedicated_calendar_for_color""",
                 (
                     user_id,
                     1 if sync_subgoals else 0,
                     1 if sync_habits else 0,
                     1 if sync_goals else 0,
                     (event_color_id or "").strip() or None,
+                    1 if use_dedicated_calendar_for_color else 0,
                 ),
+            )
+            await db.commit()
+
+    async def set_shaolen_calendar_id(self, user_id: int, calendar_id: Optional[str]) -> None:
+        """Сохранить id календаря «Шаолень Привычки» для выгрузки с цветом (iOS)."""
+        cid = (calendar_id or "").strip() or None
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO calendar_sync_settings (user_id, sync_subgoals, sync_habits, sync_goals, event_color_id, shaolen_calendar_id)
+                   VALUES (?, 1, 1, 1, NULL, ?) ON CONFLICT(user_id) DO UPDATE SET shaolen_calendar_id = excluded.shaolen_calendar_id""",
+                (user_id, cid),
             )
             await db.commit()
