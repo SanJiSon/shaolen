@@ -4,17 +4,20 @@ import asyncio
 import logging
 import os
 
-from dotenv import load_dotenv
-from telegram import Update, InlineQueryResultArticle, InputTextMessageContent
-from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes
+from dotenv import load_dotenv  # type: ignore[import-untyped]
+from telegram import Update, InlineQueryResultArticle, InputTextMessageContent  # type: ignore[import-untyped]
+from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes  # type: ignore[import-untyped]
 
 from database import Database
+from native_todo import send_native_todo
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_BASE_URL", "") or os.getenv("WEBAPP_URL", "").rstrip("/")
 DB_PATH = os.getenv("DB_PATH", "goals_bot.db")
+TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -34,12 +37,10 @@ def _escape_html(s: str) -> str:
 def _build_task_list(
     missions: list, goals: list, habits: list, is_premium: bool
 ) -> str:
-    """Текст в формате чеклиста (как sendChecklist): заголовок + строки ☐/☑ с зачеркиванием выполненных."""
+    """Текст в формате чеклиста: заголовок «Миссии» / «Цели» / «Привычки» + строки ☐/☑."""
     lines = []
 
-    # Миссии
     if missions:
-        lines.append("<b>🎯 Миссии</b>")
         for m in missions or []:
             title = _escape_html((m.get("title") or "").strip() or "Миссия")
             done = m.get("is_completed")
@@ -48,28 +49,32 @@ def _build_task_list(
                 sg_title = _escape_html((sg.get("title") or "").strip() or "Подцель")
                 sg_done = sg.get("is_completed")
                 lines.append("  " + ("☑ " if sg_done else "☐ ") + ("<s>" + sg_title + "</s>" if sg_done else sg_title))
-        lines.append("")
 
-    # Цели
     if goals:
-        lines.append("<b>✅ Цели</b>")
         for g in goals or []:
             title = _escape_html((g.get("title") or "").strip() or "Цель")
             done = g.get("is_completed")
             lines.append(("☑ " if done else "☐ ") + ("<s>" + title + "</s>" if done else title))
-        lines.append("")
 
-    # Привычки
     if habits:
-        lines.append("<b>🔄 Привычки</b>")
         for h in habits or []:
             title = _escape_html((h.get("title") or "").strip() or "Привычка")
             lines.append("☐ " + title)
 
     if not lines:
-        return "📋 Мои задачи (пусто)\n\nДобавьте миссии, цели и привычки в @shaolen_bot"
+        return "Задачи (пусто)\n\nДобавьте в @shaolen_bot"
 
-    text = "<b>📋 Мои задачи</b>\n\n" + "\n".join(lines)
+    # Один заголовок: Миссии / Цели / Привычки
+    if missions and not goals and not habits:
+        head = "Миссии"
+    elif goals and not missions and not habits:
+        head = "Цели"
+    elif habits and not missions and not goals:
+        head = "Привычки"
+    else:
+        head = "Задачи"
+
+    text = "<b>" + head + "</b>\n\n" + "\n".join(lines)
     return text[: MAX_MESSAGE_LENGTH - 20] + "\n\n…" if len(text) > MAX_MESSAGE_LENGTH else text
 
 
@@ -151,7 +156,7 @@ async def inline_query_handler(
         results.append(
             InlineQueryResultArticle(
                 id="missions",
-                title=f"🎯 Миссии ({len(missions)})",
+                title=f"Миссии ({len(missions)})",
                 description="Долгосрочные цели с подцелями",
                 input_message_content=InputTextMessageContent(missions_text, parse_mode="HTML"),
             )
@@ -163,7 +168,7 @@ async def inline_query_handler(
         results.append(
             InlineQueryResultArticle(
                 id="goals",
-                title=f"✅ Цели ({len(goals)})",
+                title=f"Цели ({len(goals)})",
                 description="Задачи с дедлайнами",
                 input_message_content=InputTextMessageContent(goals_text, parse_mode="HTML"),
             )
@@ -175,7 +180,7 @@ async def inline_query_handler(
         results.append(
             InlineQueryResultArticle(
                 id="habits",
-                title=f"🔄 Привычки ({len(habits)})",
+                title=f"Привычки ({len(habits)})",
                 description="Ежедневные активности",
                 input_message_content=InputTextMessageContent(habits_text, parse_mode="HTML"),
             )
@@ -186,15 +191,42 @@ async def inline_query_handler(
         results.append(
             InlineQueryResultArticle(
                 id="empty",
-                title="📋 Задачи не найдены",
+                title="Задачи не найдены",
                 description="Добавьте миссии, цели или привычки в приложении",
                 input_message_content=InputTextMessageContent(
-                    "📋 Мои задачи (пусто)\n\nДобавьте миссии, цели и привычки в @shaolen_bot"
+                    "Задачи (пусто)\n\nДобавьте в @shaolen_bot"
                 ),
             )
         )
     
     await query.answer(results, cache_time=60)
+
+
+async def todo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда /todo — отправить нативный Telegram Todo в этот чат (подключение только на время отправки)."""
+    user = update.effective_user
+    chat = update.effective_chat
+    if not user or not chat:
+        return
+    await db.add_user(user.id, user.username, user.first_name, user.last_name)
+    try:
+        missions, goals, habits = await _fetch_user_tasks(user.id)
+    except Exception as e:
+        logger.exception("todo_handler fetch: %s", e)
+        await update.message.reply_text("Не удалось загрузить задачи. Попробуйте позже.")
+        return
+    api_id = TELEGRAM_API_ID.strip()
+    api_hash = (TELEGRAM_API_HASH or "").strip()
+    ok, msg = await send_native_todo(
+        chat.id,
+        missions,
+        goals,
+        habits,
+        api_id=int(api_id) if api_id.isdigit() else 0,
+        api_hash=api_hash,
+        bot_token=BOT_TOKEN,
+    )
+    await update.message.reply_text(msg)
 
 
 async def main() -> None:
@@ -209,6 +241,7 @@ async def main() -> None:
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_handler))
+    app.add_handler(CommandHandler("todo", todo_handler))  # type: ignore[name-defined]
     app.add_handler(InlineQueryHandler(inline_query_handler))
     await app.initialize()
     await app.start()

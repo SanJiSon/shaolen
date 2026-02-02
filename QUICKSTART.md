@@ -28,6 +28,15 @@ cp .env.example .env
 BOT_TOKEN=ваш_токен_здесь
 ```
 
+**Опционально — нативный Todo (/todo):** чтобы команда `/todo` отправляла нативный список задач в чат, добавьте в `.env` ключи с [my.telegram.org](https://my.telegram.org) (раздел «API development tools»):
+
+```
+TELEGRAM_API_ID=ваш_api_id
+TELEGRAM_API_HASH=ваш_api_hash
+```
+
+Без них `/todo` сообщит, что нативный Todo не настроен; inline и остальные команды работают как раньше.
+
 ## Шаг 4: Запуск
 
 ```bash
