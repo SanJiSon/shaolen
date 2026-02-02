@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
+"""Публикация релиза в канал @shaolenai при появлении новой версии.
+Версия берётся только из файла VERSION; из Telegram-канала не читается.
+Использует Premium-сессию MTProto. Запуск: python scripts/publish_release_to_telegram.py
 """
-Публикация релиза в канал @shaolenai при появлении новой версии.
-Версия берётся только из файла VERSION в репозитории; из Telegram-канала версия не читается.
-Использует Premium-сессию MTProto (тот же аккаунт должен быть админом канала).
-Запуск: вручную после деплоя или по cron/systemd timer:
-  python scripts/publish_release_to_telegram.py
-"""
+from __future__ import annotations
+
 import asyncio
 import os
 import re
