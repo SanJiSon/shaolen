@@ -1095,7 +1095,8 @@ async def api_calendar_sync(user_id: int):
     errors = []
     today = now.strftime("%Y-%m-%d")
     tz = "Europe/Moscow"
-    # Google Calendar API: colorId — строка из палитры событий (events), значения "1"—"11". Документация: https://developers.google.com/calendar/api/v3/reference/events
+    tz_offset = "+03:00"
+    # Google Calendar API: colorId — строка "1"—"11" из палитры событий. На мобильном клиенте цвет иногда не подхватывается (ограничение Google).
     event_color_id = (settings.get("event_color_id") or "").strip() or None
     if event_color_id and event_color_id not in (str(i) for i in range(1, 12)):
         event_color_id = None
@@ -1118,10 +1119,13 @@ async def api_calendar_sync(user_id: int):
                         hour, minute = _habit_suggested_time(title, i, len(habits))
                 else:
                     hour, minute = _habit_suggested_time(title, i, len(habits))
-                start_dt = f"{today}T{hour:02d}:{minute:02d}:00"
-                end_h = hour + 1 if minute == 30 else hour
-                end_m = 30 if minute == 0 else 0
-                end_dt = f"{today}T{end_h:02d}:{end_m:02d}:00"
+                start_dt = f"{today}T{hour:02d}:{minute:02d}:00{tz_offset}"
+                total_min = hour * 60 + minute + 30
+                if total_min >= 24 * 60:
+                    end_h, end_m = 23, 59
+                else:
+                    end_h, end_m = total_min // 60, total_min % 60
+                end_dt = f"{today}T{end_h:02d}:{end_m:02d}:00{tz_offset}"
                 event = {
                     "summary": f"Привычка: {title}",
                     "description": "Из приложения @shaolen_bot",
@@ -1140,6 +1144,19 @@ async def api_calendar_sync(user_id: int):
                         )
                     if r.status_code in (200, 201):
                         created += 1
+                        resp_data = r.json() if r.content else {}
+                        eid = resp_data.get("id")
+                        if event_color_id and eid:
+                            try:
+                                patch_r = await client.patch(
+                                    f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{eid}",
+                                    json={"colorId": str(event_color_id)},
+                                    headers=headers,
+                                )
+                                if patch_r.status_code not in (200, 201):
+                                    logger.warning("Calendar API PATCH color habit %s: %s", title, patch_r.status_code)
+                            except Exception:
+                                pass
                     else:
                         err_body = (r.text or "")[:200]
                         logger.warning("Calendar API 403 habit %s: %s %s", title, r.status_code, err_body)
@@ -1158,8 +1175,8 @@ async def api_calendar_sync(user_id: int):
                     dl_str = str(dl)[:10] if dl else today
                 except Exception:
                     dl_str = today
-                start_dt = f"{dl_str}T09:00:00"
-                end_dt = f"{dl_str}T10:00:00"
+                start_dt = f"{dl_str}T09:00:00{tz_offset}"
+                end_dt = f"{dl_str}T10:00:00{tz_offset}"
                 event = {
                     "summary": f"Цель: {title}",
                     "description": (g.get("description") or "")[:500] or "Из приложения @shaolen_bot",
@@ -1177,6 +1194,18 @@ async def api_calendar_sync(user_id: int):
                         )
                     if r.status_code in (200, 201):
                         created += 1
+                        if event_color_id and r.content:
+                            try:
+                                resp_data = r.json()
+                                eid = resp_data.get("id")
+                                if eid:
+                                    await client.patch(
+                                        f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{eid}",
+                                        json={"colorId": str(event_color_id)},
+                                        headers=headers,
+                                    )
+                            except Exception:
+                                pass
                     else:
                         err_body = (r.text or "")[:200]
                         logger.warning("Calendar API 403 goal %s: %s %s", title, r.status_code, err_body)
@@ -1202,8 +1231,8 @@ async def api_calendar_sync(user_id: int):
                     event = {
                         "summary": f"{mtitle}: {sgtitle}",
                         "description": "Из приложения @shaolen_bot",
-                        "start": {"dateTime": f"{dl_str}T{hour:02d}:00:00", "timeZone": tz},
-                        "end": {"dateTime": f"{dl_str}T{hour:02d}:30:00", "timeZone": tz},
+                        "start": {"dateTime": f"{dl_str}T{hour:02d}:00:00{tz_offset}", "timeZone": tz},
+                        "end": {"dateTime": f"{dl_str}T{hour:02d}:30:00{tz_offset}", "timeZone": tz},
                     }
                     if event_color_id:
                         event["colorId"] = str(event_color_id)
@@ -1216,6 +1245,18 @@ async def api_calendar_sync(user_id: int):
                             )
                         if r.status_code in (200, 201):
                             created += 1
+                            if event_color_id and r.content:
+                                try:
+                                    resp_data = r.json()
+                                    eid = resp_data.get("id")
+                                    if eid:
+                                        await client.patch(
+                                            f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{eid}",
+                                            json={"colorId": str(event_color_id)},
+                                            headers=headers,
+                                        )
+                                except Exception:
+                                    pass
                         else:
                             err_body = (r.text or "")[:200]
                             logger.warning("Calendar API 403 subgoal %s: %s %s", sgtitle, r.status_code, err_body)
