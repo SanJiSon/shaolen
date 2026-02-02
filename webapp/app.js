@@ -43,7 +43,7 @@ const state = {
   reminderSettings: null,
   googleFitConnected: false,
   googleFitSteps: null,
-  calendarSyncSettings: { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "" },
+  calendarSyncSettings: { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "", use_dedicated_calendar_for_color: false },
   habitCalendarYear: new Date().getFullYear(),
   habitCalendarMonth: new Date().getMonth() + 1
 };
@@ -2510,11 +2510,12 @@ function renderSettings() {
   var s = state.reminderSettings || { notifications_enabled: true };
   var on = !!s.notifications_enabled;
   var gfConnected = !!state.googleFitConnected;
-  var cal = state.calendarSyncSettings || { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "" };
+  var cal = state.calendarSyncSettings || { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "", use_dedicated_calendar_for_color: false };
   var calSub = !!cal.sync_subgoals;
   var calHabits = !!cal.sync_habits;
   var calGoals = !!cal.sync_goals;
   var calColor = cal.event_color_id || "";
+  var calDedicated = !!cal.use_dedicated_calendar_for_color;
   var colorOptions = [
     { v: "", l: "По умолчанию" },
     { v: "1", l: "Лавандовый" },
@@ -2558,8 +2559,12 @@ function renderSettings() {
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row\">" +
-      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для привычек, целей и подцелей при выгрузке в Google Calendar. Если на телефоне цвет не меняется — откройте calendar.google.com в браузере или задайте цвет у события вручную в приложении.</div></div>" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для привычек, целей и подцелей при выгрузке в Google Calendar. На Android цвет ставится на события. На iPhone включите опцию ниже — тогда создаётся отдельный календарь с этим цветом.</div></div>" +
       colorSelectHtml +
+    "</div>" +
+    "<div class=\"settings-row settings-row-toggle\">" +
+      "<div><div class=\"settings-row-label\">Отдельный календарь для цвета (для iPhone)</div><div class=\"settings-row-hint\">Включите, если смотрите календарь в приложении «Календарь» на iPhone — там цвет лучше отображается через отдельный календарь «Шаолень Привычки». На Android оставьте выключенным.</div></div>" +
+      "<button type=\"button\" class=\"settings-toggle " + (calDedicated ? "on" : "") + "\" id=\"settings-cal-dedicated\" aria-label=\"Отдельный календарь " + (calDedicated ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row settings-cal-sync-row\" style=\"margin-top:12px;\">" +
       "<div class=\"settings-cal-sync-actions\">" +
@@ -2623,6 +2628,17 @@ function renderSettings() {
       await _saveCalendarSyncSettings({ event_color_id: v });
     } catch (e) {
       if (tg) tg.showAlert("Не удалось сохранить цвет.");
+    }
+  });
+  var calDedicatedBtn = $("#settings-cal-dedicated");
+  if (calDedicatedBtn) calDedicatedBtn.addEventListener("click", async function() {
+    var v = !calDedicatedBtn.classList.contains("on");
+    calDedicatedBtn.classList.toggle("on", v);
+    try {
+      await _saveCalendarSyncSettings({ use_dedicated_calendar_for_color: v });
+    } catch (e) {
+      calDedicatedBtn.classList.toggle("on", !v);
+      if (tg) tg.showAlert("Не удалось сохранить.");
     }
   });
   var calSyncBtn = $("#settings-cal-sync-btn");
@@ -2692,9 +2708,9 @@ async function loadCalendarSyncSettings() {
   try {
     var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/calendar-sync-settings");
     if (r && (r.sync_subgoals !== undefined || r.sync_habits !== undefined || r.sync_goals !== undefined)) {
-      state.calendarSyncSettings = { sync_subgoals: !!r.sync_subgoals, sync_habits: !!r.sync_habits, sync_goals: !!r.sync_goals, event_color_id: r.event_color_id || "" };
+      state.calendarSyncSettings = { sync_subgoals: !!r.sync_subgoals, sync_habits: !!r.sync_habits, sync_goals: !!r.sync_goals, event_color_id: r.event_color_id || "", use_dedicated_calendar_for_color: !!r.use_dedicated_calendar_for_color };
     }
-  } catch (e) { state.calendarSyncSettings = { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "" }; }
+  } catch (e) { state.calendarSyncSettings = { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "", use_dedicated_calendar_for_color: false }; }
 }
 
 function openSettingsOverlay() {
