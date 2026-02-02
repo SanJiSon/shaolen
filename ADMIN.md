@@ -14,7 +14,7 @@
    - `User=root` или ваш пользователь на сервере
    - `WorkingDirectory=/root/shaolen` — полный путь к папке проекта (где лежит `webapp_server.py` и `.env`)
    - `EnvironmentFile=/root/shaolen/.env` — тот же каталог + `/.env`
-   - `ExecStart=` — полный путь к Python и к скрипту. Если используете venv: `/root/shaolen/venv/bin/python3 /root/shaolen/webapp_server.py` (для bot: `.../bot.py`). Без venv: `/usr/bin/python3 /root/shaolen/webapp_server.py`
+   - `ExecStart=` — полный путь к Python и к скрипту. **Для бота обязательно используйте venv**, иначе команда `/todo` (Telethon) не найдёт модули: `/root/shaolen/venv/bin/python /root/shaolen/bot.py`. Для webapp: `/root/shaolen/venv/bin/python /root/shaolen/webapp_server.py`. Без venv (не рекомендуется для бота): `/usr/bin/python3 ...`
    - Ошибки «Failed to load environment files: No such file or directory» и «Failed to run 'start' task» означают, что в юните всё ещё заглушки — проверьте, что все три пути (WorkingDirectory, EnvironmentFile, ExecStart) ведут в существующие файлы/каталоги.
 
 3. Включите и запустите:

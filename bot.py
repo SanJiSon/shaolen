@@ -9,7 +9,7 @@ from telegram import Update, InlineQueryResultArticle, InputTextMessageContent  
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes  # type: ignore[import-untyped]
 
 from database import Database
-from native_todo import send_native_todo
+from native_todo import send_native_todo, send_native_todo_as_user
 
 load_dotenv()
 
@@ -18,6 +18,7 @@ WEBAPP_URL = os.getenv("WEBAPP_BASE_URL", "") or os.getenv("WEBAPP_URL", "").rst
 DB_PATH = os.getenv("DB_PATH", "goals_bot.db")
 TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+PREMIUM_SESSION_PATH = (os.getenv("PREMIUM_SESSION_PATH", "") or "").strip().strip("'\"")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -218,18 +219,37 @@ async def todo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.exception("todo_handler fetch: %s", e)
         await update.message.reply_text("Не удалось загрузить задачи. Попробуйте позже.")
         return
-    api_id = TELEGRAM_API_ID.strip()
-    api_hash = (TELEGRAM_API_HASH or "").strip()
-    ok, msg = await send_native_todo(
-        chat.id,
-        missions,
-        goals,
-        habits,
-        api_id=int(api_id) if api_id.isdigit() else 0,
-        api_hash=api_hash,
-        bot_token=BOT_TOKEN,
-    )
+    api_id_raw = (TELEGRAM_API_ID or "").strip().strip("'\"")
+    api_hash_raw = (TELEGRAM_API_HASH or "").strip().strip("'\"")
+    api_id = int(api_id_raw) if api_id_raw.isdigit() else 0
+    session_path = PREMIUM_SESSION_PATH
+    session_file = session_path if session_path.endswith(".session") else (session_path + ".session")
+    use_premium_session = bool(session_path and api_id and api_hash_raw and os.path.isfile(session_file))
+
+    if use_premium_session:
+        ok, msg = await send_native_todo_as_user(
+            user.id,
+            missions,
+            goals,
+            habits,
+            session_path=session_path,
+            api_id=api_id,
+            api_hash=api_hash_raw,
+        )
+    else:
+        ok, msg = await send_native_todo(
+            chat.id,
+            missions,
+            goals,
+            habits,
+            api_id=api_id,
+            api_hash=api_hash_raw,
+            bot_token=BOT_TOKEN,
+        )
     await update.message.reply_text(msg)
+    if not ok and "PREMIUM_REQUIRED" in msg:
+        text_list = _build_task_list(missions, goals, habits, is_premium=getattr(user, "is_premium", False))
+        await update.message.reply_text(text_list, parse_mode="HTML")
 
 
 async def main() -> None:
