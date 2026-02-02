@@ -758,10 +758,10 @@ function renderHabits(habits) {
         prevTotal = h.total_completions || 0;
         if (action === 'increment') {
           h.today_count = prevToday + 1;
-          h.total_completions = prevTotal + 1;
+          h.total_completions = prevToday === 0 ? prevTotal + 1 : prevTotal;
         } else {
           h.today_count = Math.max(0, prevToday - 1);
-          h.total_completions = Math.max(0, prevTotal - 1);
+          h.total_completions = prevToday === 1 ? Math.max(0, prevTotal - 1) : prevTotal;
         }
         renderHabits(state.cache.habits);
       }
