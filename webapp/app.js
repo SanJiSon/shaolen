@@ -2558,7 +2558,7 @@ function renderSettings() {
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row\">" +
-      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для привычек, целей и подцелей при выгрузке в Google Calendar</div></div>" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для привычек, целей и подцелей при выгрузке в Google Calendar. Если на телефоне цвет не меняется — откройте calendar.google.com в браузере или задайте цвет у события вручную в приложении.</div></div>" +
       colorSelectHtml +
     "</div>" +
     "<div class=\"settings-row settings-cal-sync-row\" style=\"margin-top:12px;\">" +
