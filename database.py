@@ -1,6 +1,6 @@
 import aiosqlite
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import json
 
 
@@ -140,6 +140,40 @@ class Database:
                     pass
             try:
                 await db.execute("ALTER TABLE habits ADD COLUMN reminder_time TEXT")
+            except Exception:
+                pass
+
+            # Категории привычек (фиксированный список: Спорт, Здоровье, …; цвет для календаря)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS habit_categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    color_id TEXT,
+                    sort_order INTEGER DEFAULT 0
+                )
+            """)
+            # Заполняем категории при первом запуске
+            async with db.execute("SELECT COUNT(*) FROM habit_categories") as c:
+                if (await c.fetchone())[0] == 0:
+                    defaults = [
+                        ("Спорт", None, 0),
+                        ("Здоровье", None, 1),
+                        ("Питание", None, 2),
+                        ("Учеба", None, 3),
+                        ("Повседневные", None, 4),
+                        ("Гигиена", None, 5),
+                        ("Работа", None, 6),
+                        ("Отдых", None, 7),
+                        ("Финансы", None, 8),
+                        ("Творчество", None, 9),
+                    ]
+                    for name, color_id, so in defaults:
+                        await db.execute(
+                            "INSERT OR IGNORE INTO habit_categories (name, color_id, sort_order) VALUES (?, ?, ?)",
+                            (name, color_id, so),
+                        )
+            try:
+                await db.execute("ALTER TABLE habits ADD COLUMN category_id INTEGER REFERENCES habit_categories(id)")
             except Exception:
                 pass
 
@@ -735,8 +769,9 @@ class Database:
         is_example: int = 0,
         is_water_calculated: int = 0,
         reminder_time: Optional[str] = None,
+        category_id: Optional[int] = None,
     ) -> int:
-        """Добавление привычки. reminder_time — HH:MM (время напоминания и выгрузки в календарь)."""
+        """Добавление привычки. reminder_time — HH:MM. category_id — категория для цвета в календаре."""
         rt = (reminder_time or "").strip() or None
         if rt and len(rt) > 5:
             rt = rt[:5]
@@ -748,23 +783,23 @@ class Database:
                 row = await c.fetchone()
                 sort_order = row[0] if row and row[0] is not None else 0
             cursor = await db.execute(
-                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated, sort_order, reminder_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0, sort_order, rt),
+                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated, sort_order, reminder_time, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0, sort_order, rt, category_id),
             )
             await db.commit()
             return cursor.lastrowid
 
     async def update_habit(
-        self, habit_id: int, title: str, description: str = "", reminder_time: Optional[str] = None
+        self, habit_id: int, title: str, description: str = "", reminder_time: Optional[str] = None, category_id: Optional[int] = None
     ) -> bool:
-        """Обновление привычки. reminder_time — HH:MM или пусто."""
+        """Обновление привычки. category_id — категория для цвета в календаре."""
         async with aiosqlite.connect(self.db_path) as db:
             rt = (reminder_time or "").strip() or None
             if rt and len(rt) > 5:
                 rt = rt[:5]
             await db.execute(
-                "UPDATE habits SET title = ?, description = ?, is_example = 0, is_water_calculated = 0, reminder_time = ? WHERE id = ?",
-                (title, description or "", rt, habit_id),
+                "UPDATE habits SET title = ?, description = ?, is_example = 0, is_water_calculated = 0, reminder_time = ?, category_id = ? WHERE id = ?",
+                (title, description or "", rt, category_id, habit_id),
             )
             await db.commit()
             return True
@@ -777,28 +812,55 @@ class Database:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
-    async def get_habits(self, user_id: int, active_only: bool = True) -> List[Dict]:
-        """Получение всех привычек пользователя с текущим счетчиком на сегодня"""
+    async def get_habits(self, user_id: int, active_only: bool = True, category_id: Optional[int] = None) -> List[Dict]:
+        """Получение привычек пользователя. category_id — фильтр по категории (None = все)."""
         from datetime import date
         today = date.today().isoformat()
-        
+
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             query = """
                 SELECT h.*,
                        COALESCE(hr.count, 0) as today_count,
-                       COALESCE(hrs.reminders_enabled, 1) as reminders_enabled
+                       COALESCE(hrs.reminders_enabled, 1) as reminders_enabled,
+                       c.name as category_name,
+                       c.color_id as category_color_id
                 FROM habits h
                 LEFT JOIN habit_records hr ON h.id = hr.habit_id AND hr.date = ?
                 LEFT JOIN habit_reminder_settings hrs ON h.id = hrs.habit_id
+                LEFT JOIN habit_categories c ON h.category_id = c.id
                 WHERE h.user_id = ?
             """
+            params: List[Any] = [today, user_id]
             if active_only:
                 query += " AND h.is_active = 1"
+            if category_id is not None:
+                query += " AND h.category_id = ?"
+                params.append(category_id)
             query += " ORDER BY COALESCE(h.sort_order, 999999), h.created_at DESC"
-            async with db.execute(query, (today, user_id)) as cursor:
+            async with db.execute(query, tuple(params)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def get_habit_categories(self) -> List[Dict]:
+        """Список категорий привычек (id, name, color_id, sort_order)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, name, color_id, sort_order FROM habit_categories ORDER BY sort_order, id"
+            ) as c:
+                rows = await c.fetchall()
+                return [{"id": row[0], "name": row[1], "color_id": (row[2] or "").strip() or None, "sort_order": row[3] or 0} for row in rows]
+
+    async def set_habit_category_color(self, category_id: int, color_id: Optional[str]) -> bool:
+        """Установить цвет категории для календаря (color_id "1"—"11" или None)."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE habit_categories SET color_id = ? WHERE id = ?",
+                ((color_id or "").strip() or None, category_id),
+            )
+            await db.commit()
+            return True
 
     async def set_habits_order(self, user_id: int, habit_ids: List[int]) -> None:
         """Установить порядок привычек (список id в нужном порядке)."""

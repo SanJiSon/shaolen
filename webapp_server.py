@@ -150,6 +150,7 @@ class HabitCreate(BaseModel):
     title: str
     description: Optional[str] = ""
     reminder_time: Optional[str] = None
+    category_id: Optional[int] = None
 
 
 class MissionUpdate(BaseModel):
@@ -169,6 +170,7 @@ class HabitUpdate(BaseModel):
     title: str
     description: Optional[str] = ""
     reminder_time: Optional[str] = None
+    category_id: Optional[int] = None
 
 
 class TimeCapsuleCreate(BaseModel):
@@ -574,11 +576,11 @@ async def api_set_habits_order(user_id: int, payload: HabitsOrderBody):
 
 
 @app.get("/api/user/{user_id}/habits", response_model=None)
-async def api_get_habits(user_id: int):
-    """Получение привычек пользователя (user_id проверен через initData в middleware)."""
+async def api_get_habits(user_id: int, category_id: Optional[int] = None):
+    """Получение привычек пользователя. category_id — фильтр по категории (опционально)."""
     try:
         logger.info(f"Запрос привычек для пользователя {user_id}")
-        habits = await db.get_habits(user_id, active_only=False)
+        habits = await db.get_habits(user_id, active_only=False, category_id=category_id)
         logger.info(f"Найдено привычек: {len(habits) if habits else 0}")
         
         # Преобразуем данные для JSON
@@ -608,6 +610,33 @@ async def api_get_habits(user_id: int):
         return JSONResponse(content=[])
 
 
+@app.get("/api/user/{user_id}/habit-categories", response_model=None)
+async def api_get_habit_categories(user_id: int):
+    """Список категорий привычек (для фильтра и выбора цвета в календаре)."""
+    categories = await db.get_habit_categories()
+    return JSONResponse(content=categories)
+
+
+class HabitCategoryColorBody(BaseModel):
+    category_id: int
+    color_id: Optional[str] = None
+
+
+class HabitCategoriesColorsBody(BaseModel):
+    categories: List[dict]  # [{ category_id, color_id }, ...]
+
+
+@app.put("/api/user/{user_id}/habit-categories/colors", response_model=None)
+async def api_set_habit_categories_colors(user_id: int, payload: HabitCategoriesColorsBody):
+    """Обновить цвета категорий для календаря (color_id "1"—"11" или null)."""
+    for item in (payload.categories or []):
+        cid = item.get("category_id")
+        color_id = item.get("color_id")
+        if cid is not None:
+            await db.set_habit_category_color(int(cid), (color_id or "").strip() or None)
+    return JSONResponse(content={"ok": True})
+
+
 @app.post("/api/habits")
 async def api_add_habit(payload: HabitCreate):
     """Добавление привычки"""
@@ -617,6 +646,7 @@ async def api_add_habit(payload: HabitCreate):
         payload.title,
         payload.description or "",
         reminder_time=payload.reminder_time,
+        category_id=payload.category_id,
     )
     habits = await db.get_habits(payload.user_id, active_only=False)
     for h in habits:
@@ -628,7 +658,7 @@ async def api_add_habit(payload: HabitCreate):
 @app.put("/api/habits/{habit_id}")
 async def api_update_habit(habit_id: int, payload: HabitUpdate):
     """Редактирование привычки"""
-    await db.update_habit(habit_id, payload.title, payload.description or "", reminder_time=payload.reminder_time)
+    await db.update_habit(habit_id, payload.title, payload.description or "", reminder_time=payload.reminder_time, category_id=payload.category_id)
     habit = await db.get_habit(habit_id)
     if not habit:
         raise HTTPException(status_code=404, detail="Habit not found")
@@ -1188,6 +1218,10 @@ async def api_calendar_sync(user_id: int):
             habits = await db.get_habits(user_id, active_only=True)
             for i, h in enumerate(habits):
                 title = (h.get("title") or "").strip() or "Привычка"
+                # Цвет события: сначала цвет категории привычки, иначе общий цвет из настроек
+                habit_color = (h.get("category_color_id") or "").strip()
+                if habit_color not in (str(x) for x in range(1, 12)):
+                    habit_color = event_color_id
                 rt = (h.get("reminder_time") or "").strip()
                 if rt and ":" in rt:
                     try:
@@ -1213,8 +1247,8 @@ async def api_calendar_sync(user_id: int):
                     "end": {"dateTime": end_dt, "timeZone": tz},
                     "recurrence": ["RRULE:FREQ=DAILY"],
                 }
-                if event_color_id:
-                    event["colorId"] = str(event_color_id)
+                if habit_color:
+                    event["colorId"] = str(habit_color)
                 try:
                     async with httpx.AsyncClient(timeout=calendar_timeout) as client:
                         r = await client.post(
@@ -1226,12 +1260,12 @@ async def api_calendar_sync(user_id: int):
                         created += 1
                         resp_data = r.json() if r.content else {}
                         eid = resp_data.get("id")
-                        if event_color_id and eid:
+                        if habit_color and eid:
                             try:
                                 async with httpx.AsyncClient(timeout=calendar_timeout) as patch_client:
                                     patch_r = await patch_client.patch(
                                         f"{calendar_base}/events/{eid}",
-                                        json={"colorId": str(event_color_id)},
+                                        json={"colorId": str(habit_color)},
                                         headers=headers,
                                     )
                                 if patch_r.status_code not in (200, 201):
