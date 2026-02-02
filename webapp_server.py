@@ -1097,7 +1097,7 @@ async def api_calendar_sync(user_id: int):
                 end_dt = f"{today}T{end_h:02d}:{end_m:02d}:00"
                 event = {
                     "summary": f"Привычка: {title}",
-                    "description": "Из приложения «Твои цели»",
+                    "description": "Из приложения @shaolen_bot",
                     "start": {"dateTime": start_dt, "timeZone": tz},
                     "end": {"dateTime": end_dt, "timeZone": tz},
                     "recurrence": ["RRULE:FREQ=DAILY"],
@@ -1133,7 +1133,7 @@ async def api_calendar_sync(user_id: int):
                 end_dt = f"{dl_str}T10:00:00"
                 event = {
                     "summary": f"Цель: {title}",
-                    "description": (g.get("description") or "")[:500] or "Из приложения «Твои цели»",
+                    "description": (g.get("description") or "")[:500] or "Из приложения @shaolen_bot",
                     "start": {"dateTime": start_dt, "timeZone": tz},
                     "end": {"dateTime": end_dt, "timeZone": tz},
                 }
@@ -1170,7 +1170,7 @@ async def api_calendar_sync(user_id: int):
                     hour = 9 + (j % 8)
                     event = {
                         "summary": f"{mtitle}: {sgtitle}",
-                        "description": "Из приложения «Твои цели»",
+                        "description": "Из приложения @shaolen_bot",
                         "start": {"dateTime": f"{dl_str}T{hour:02d}:00:00", "timeZone": tz},
                         "end": {"dateTime": f"{dl_str}T{hour:02d}:30:00", "timeZone": tz},
                     }
