@@ -317,6 +317,174 @@ body {
 .settings-view { padding-top: 8px; }
 
 /* Календарь привычек — последние 7 дней по каждой привычке */
+/* Фильтр по категории привычек — панель выбора */
+.habit-filter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8990;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.habit-filter-overlay.hidden {
+  display: none;
+}
+.habit-filter-overlay:not(.hidden) {
+  pointer-events: auto;
+}
+.habit-filter-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.habit-filter-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border-radius: 16px 16px 0 0;
+  padding: 0;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.3);
+}
+.habit-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+.habit-filter-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.habit-filter-list {
+  padding: 8px 0 20px;
+}
+.habit-filter-option {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-size: 15px;
+  color: var(--text);
+  background: transparent;
+}
+.habit-filter-option:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+.habit-filter-option.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Окно цветов категорий для календаря */
+.category-colors-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9010;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.category-colors-overlay.hidden {
+  display: none;
+}
+.category-colors-overlay:not(.hidden) {
+  pointer-events: auto;
+}
+.category-colors-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+.category-colors-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border-radius: 20px 20px 0 0;
+  padding: 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+}
+.category-colors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+.category-colors-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.category-colors-hint {
+  margin: 0;
+  padding: 10px 16px 4px;
+  font-size: 13px;
+  color: var(--text-muted, #666);
+}
+.category-colors-list {
+  padding: 8px 16px 24px;
+}
+.category-colors-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+.category-colors-row:last-child {
+  border-bottom: none;
+}
+.category-colors-row-label {
+  font-size: 15px;
+  color: var(--text);
+}
+.category-color-swatch-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.category-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.category-color-swatch:hover {
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+.category-color-swatch.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.category-color-swatch.default {
+  background: var(--bg-elevated);
+  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
 .habit-calendar-overlay {
   position: fixed;
   inset: 0;

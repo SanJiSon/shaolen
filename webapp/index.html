@@ -82,12 +82,12 @@
           <div class="panel-header">
             <h2>Привычки</h2>
             <div class="panel-header-actions">
+              <button type="button" id="habit-filter-btn" class="icon-btn" aria-label="Фильтр по категории" title="Фильтр по категории"><span class="material-symbols-outlined habit-filter-btn-icon">filter_list_off</span></button>
               <button type="button" id="habit-calendar-btn" class="icon-btn" aria-label="Календарь привычек" title="Календарь привычек"><span class="material-symbols-outlined">calendar_month</span></button>
               <button type="button" class="panel-edit-btn icon-btn" data-panel="habits" aria-label="Режим перетаскивания" title="Режим перетаскивания"><span class="material-symbols-outlined panel-edit-btn-icon">edit</span></button>
               <button type="button" id="add-habit-btn" class="primary-btn add-btn icon-btn" aria-label="Добавить привычку"><span class="material-symbols-outlined">add</span></button>
             </div>
           </div>
-          <div id="habits-filter-row" class="habits-filter-row"></div>
           <div id="habits-list" class="cards"></div>
         </section>
         <section id="panel-analytics" class="tab-panel analytics-panel" role="tabpanel">
@@ -119,6 +119,29 @@
           <button type="button" id="capsule-overlay-close" class="capsule-overlay-close" aria-label="Закрыть">×</button>
         </div>
         <div id="capsule-view" class="capsule-view"></div>
+      </div>
+    </div>
+
+    <div id="habit-filter-overlay" class="habit-filter-overlay hidden">
+      <div class="habit-filter-backdrop"></div>
+      <div class="habit-filter-panel">
+        <div class="habit-filter-header">
+          <h3>Категория</h3>
+          <button type="button" id="habit-filter-close" class="icon-btn" aria-label="Закрыть"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div id="habit-filter-list" class="habit-filter-list"></div>
+      </div>
+    </div>
+
+    <div id="category-colors-overlay" class="category-colors-overlay hidden">
+      <div class="category-colors-backdrop"></div>
+      <div class="category-colors-panel">
+        <div class="category-colors-header">
+          <h3>Цвета категорий для календаря</h3>
+          <button type="button" id="category-colors-close" class="icon-btn" aria-label="Закрыть"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="category-colors-hint">При выгрузке в календарь привычки получают цвет своей категории.</p>
+        <div id="category-colors-list" class="category-colors-list"></div>
       </div>
     </div>
 

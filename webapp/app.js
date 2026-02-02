@@ -49,6 +49,20 @@ const state = {
   habitCalendarMonth: new Date().getMonth() + 1
 };
 
+var CALENDAR_COLOR_HEX = {
+  "1": "#7986cb",
+  "2": "#33b679",
+  "3": "#8e24aa",
+  "4": "#e67c73",
+  "5": "#f6bf26",
+  "6": "#f4511e",
+  "7": "#039be5",
+  "8": "#616161",
+  "9": "#4285f4",
+  "10": "#0b8043",
+  "11": "#d50000"
+};
+
 function initUser() {
   console.log('=== Инициализация пользователя ===');
   console.log('Telegram WebApp доступен:', !!tg);
@@ -588,24 +602,9 @@ function renderHabits(habits) {
     list = allHabits.filter(function(h) { return (parseInt(h.category_id, 10) || 0) === fid; });
   }
 
-  var filterRow = $("#habits-filter-row");
-  if (filterRow && state.cache.habitCategories && state.cache.habitCategories.length > 0) {
-    var catOptions = "<option value=\"\"" + (!state.habitCategoryFilter ? " selected" : "") + "\">Все категории</option>" + state.cache.habitCategories.map(function(c) {
-      return "<option value=\"" + (c.id != null ? c.id : "") + "\"" + (state.habitCategoryFilter == c.id || state.habitCategoryFilter === String(c.id) ? " selected" : "") + ">" + escapeHtml(c.name || "") + "</option>";
-    }).join("");
-    filterRow.innerHTML = "<label class=\"habits-filter-label\">Категория:</label><select id=\"habits-category-filter\" class=\"input habits-filter-select\">" + catOptions + "</select>";
-    filterRow.style.display = "";
-    var filterSelect = document.getElementById("habits-category-filter");
-    if (filterSelect && !filterSelect._bound) {
-      filterSelect._bound = true;
-      filterSelect.addEventListener("change", function() {
-        state.habitCategoryFilter = this.value ? this.value : null;
-        renderHabits(state.cache.habits);
-      });
-    }
-  } else if (filterRow) {
-    filterRow.innerHTML = "";
-    filterRow.style.display = "none";
+  var filterBtnIcon = document.querySelector("#habit-filter-btn .habit-filter-btn-icon");
+  if (filterBtnIcon) {
+    filterBtnIcon.textContent = (state.habitCategoryFilter != null && state.habitCategoryFilter !== "") ? "filter_list" : "filter_list_off";
   }
 
   const root = $("#habits-list");
@@ -2591,20 +2590,13 @@ function renderSettings() {
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row\">" +
-      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для целей и подцелей; для привычек используется цвет категории (ниже), если задан.</div></div>" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для целей и подцелей; для привычек используется цвет категории, если задан.</div></div>" +
       colorSelectHtml +
     "</div>" +
-    (function() {
-      var cats = state.cache.habitCategories || [];
-      if (cats.length === 0) return "";
-      var colorOpts = "<option value=\"\">По умолчанию</option>" + colorOptions.map(function(o) { return "<option value=\"" + o.v + "\">" + o.l + "</option>"; }).join("");
-      var rows = cats.map(function(c) {
-        var sel = (c.color_id || "") === "" ? " selected" : "";
-        var opts = colorOptions.map(function(o) { return "<option value=\"" + o.v + "\"" + (c.color_id === o.v ? " selected" : "") + ">" + o.l + "</option>"; }).join("");
-        return "<div class=\"settings-row habit-cat-color-row\"><div class=\"settings-row-label\">" + escapeHtml(c.name || "") + "</div><select class=\"settings-select habit-cat-color\" data-category-id=\"" + (c.id || "") + "\">" + "<option value=\"\">По умолчанию</option>" + opts + "</select></div>";
-      }).join("");
-      return "<div class=\"settings-section-title\" style=\"margin-top:14px;\">Цвета категорий привычек в календаре</div><div class=\"settings-row-hint\" style=\"margin-bottom:8px;\">При выгрузке в календарь привычки получают цвет своей категории.</div>" + rows;
-    })() +
+    "<div class=\"settings-row\">" +
+      "<div><div class=\"settings-row-label\">Цвета категорий для календаря</div><div class=\"settings-row-hint\">Задайте цвет для каждой категории привычек — при выгрузке в календарь события получат этот цвет.</div></div>" +
+      "<button type=\"button\" id=\"settings-category-colors-btn\" class=\"btn-sm primary-btn\"><span class=\"material-symbols-outlined\" style=\"font-size:18px;vertical-align:middle;margin-right:4px;\">palette</span>Настроить цвета</button>" +
+    "</div>" +
     "<div class=\"settings-row settings-row-toggle\">" +
       "<div><div class=\"settings-row-label\">Отдельный календарь для цвета (для iPhone)</div><div class=\"settings-row-hint\">Включите, если смотрите календарь в приложении «Календарь» на iPhone — там цвет лучше отображается через отдельный календарь «Шаолень Привычки». На Android оставьте выключенным.</div></div>" +
       "<button type=\"button\" class=\"settings-toggle " + (calDedicated ? "on" : "") + "\" id=\"settings-cal-dedicated\" aria-label=\"Отдельный календарь " + (calDedicated ? "вкл" : "выкл") + "\"></button>" +
@@ -2684,28 +2676,8 @@ function renderSettings() {
       if (tg) tg.showAlert("Не удалось сохранить.");
     }
   });
-  $all(".habit-cat-color").forEach(function(sel) {
-    sel.addEventListener("change", async function() {
-      var cats = state.cache.habitCategories || [];
-      var payload = cats.map(function(c) {
-        var el = document.querySelector(".habit-cat-color[data-category-id=\"" + c.id + "\"]");
-        var colorId = (el && el.value) ? el.value : null;
-        return { category_id: c.id, color_id: colorId || null };
-      });
-      try {
-        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-categories/colors", {
-          method: "PUT",
-          body: JSON.stringify({ categories: payload })
-        });
-        cats.forEach(function(c, i) {
-          var el = document.querySelector(".habit-cat-color[data-category-id=\"" + c.id + "\"]");
-          if (el) c.color_id = el.value || null;
-        });
-      } catch (e) {
-        if (tg) tg.showAlert("Не удалось сохранить цвет категории.");
-      }
-    });
-  });
+  var categoryColorsBtn = $("#settings-category-colors-btn");
+  if (categoryColorsBtn) categoryColorsBtn.addEventListener("click", function() { openCategoryColorsOverlay(); });
   var calSyncBtn = $("#settings-cal-sync-btn");
   var calSyncMsg = $("#settings-cal-sync-msg");
   if (calSyncBtn) calSyncBtn.addEventListener("click", async function() {
@@ -2829,6 +2801,90 @@ function closeHabitCalendar() {
   if (ov) ov.classList.add("hidden");
 }
 
+function openHabitFilterOverlay() {
+  var ov = $("#habit-filter-overlay");
+  var listEl = $("#habit-filter-list");
+  if (!ov || !listEl) return;
+  var cats = state.cache.habitCategories || [];
+  var current = state.habitCategoryFilter != null && state.habitCategoryFilter !== "" ? String(state.habitCategoryFilter) : "";
+  var options = "<button type=\"button\" class=\"habit-filter-option" + (!current ? " active" : "") + "\" data-category-id=\"\">Все категории</button>";
+  cats.forEach(function(c) {
+    var id = c.id != null ? String(c.id) : "";
+    options += "<button type=\"button\" class=\"habit-filter-option" + (current === id ? " active" : "") + "\" data-category-id=\"" + escapeHtml(id) + "\">" + escapeHtml(c.name || "") + "</button>";
+  });
+  listEl.innerHTML = options;
+  listEl.querySelectorAll(".habit-filter-option").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var val = btn.dataset.categoryId;
+      state.habitCategoryFilter = val ? val : null;
+      closeHabitFilterOverlay();
+      renderHabits(state.cache.habits);
+    });
+  });
+  ov.classList.remove("hidden");
+}
+
+function closeHabitFilterOverlay() {
+  var ov = $("#habit-filter-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
+function openCategoryColorsOverlay() {
+  var ov = $("#category-colors-overlay");
+  var listEl = $("#category-colors-list");
+  if (!ov || !listEl) return;
+  var cats = state.cache.habitCategories || [];
+  var html = "";
+  var colorIds = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
+  cats.forEach(function(c) {
+    var currentColor = (c.color_id || "").toString();
+    var swatches = colorIds.map(function(v) {
+      var isDefault = v === "";
+      var isSelected = currentColor === v;
+      var style = isDefault ? "" : " background-color:" + (CALENDAR_COLOR_HEX[v] || "#999") + ";";
+      var cls = "category-color-swatch" + (isDefault ? " default" : "") + (isSelected ? " selected" : "");
+      return "<span class=\"" + cls + "\" data-color-id=\"" + escapeHtml(v) + "\" title=\"" + (isDefault ? "По умолчанию" : v) + "\" style=\"" + (style || "") + "\"></span>";
+    }).join("");
+    html += "<div class=\"category-colors-row\" data-category-id=\"" + (c.id != null ? c.id : "") + "\">" +
+      "<span class=\"category-colors-row-label\">" + escapeHtml(c.name || "") + "</span>" +
+      "<div class=\"category-color-swatch-select\">" + swatches + "</div></div>";
+  });
+  listEl.innerHTML = html || "<p class=\"category-colors-empty\">Нет категорий.</p>";
+  listEl.querySelectorAll(".category-colors-row").forEach(function(row) {
+    var categoryId = row.dataset.categoryId ? parseInt(row.dataset.categoryId, 10) : null;
+    if (categoryId == null) return;
+    row.querySelectorAll(".category-color-swatch").forEach(function(sw) {
+      sw.addEventListener("click", async function() {
+        var colorId = (sw.dataset.colorId || "").trim() || null;
+        row.querySelectorAll(".category-color-swatch").forEach(function(s) { s.classList.remove("selected"); });
+        sw.classList.add("selected");
+        var cats2 = state.cache.habitCategories || [];
+        var payload = cats2.map(function(c) {
+          var el = document.querySelector(".category-colors-row[data-category-id=\"" + c.id + "\"] .category-color-swatch.selected");
+          var cid = (el && el.dataset.colorId) ? (el.dataset.colorId.trim() || null) : null;
+          return { category_id: c.id, color_id: cid };
+        });
+        try {
+          await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-categories/colors", {
+            method: "PUT",
+            body: JSON.stringify({ categories: payload })
+          });
+          var cat = cats2.find(function(x) { return x.id === categoryId; });
+          if (cat) cat.color_id = colorId;
+        } catch (e) {
+          if (tg) tg.showAlert("Не удалось сохранить цвет.");
+        }
+      });
+    });
+  });
+  ov.classList.remove("hidden");
+}
+
+function closeCategoryColorsOverlay() {
+  var ov = $("#category-colors-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
 function formatCalDate(iso) {
   if (!iso) return "";
   var d = new Date(iso);
@@ -2878,12 +2934,22 @@ function bindEvents() {
   if (settingsOverlayClose) settingsOverlayClose.addEventListener("click", closeSettingsOverlay);
   var settingsBackdrop = $(".settings-overlay-backdrop");
   if (settingsBackdrop) settingsBackdrop.addEventListener("click", closeSettingsOverlay);
+  var habitFilterBtn = document.getElementById("habit-filter-btn");
+  if (habitFilterBtn) habitFilterBtn.addEventListener("click", openHabitFilterOverlay);
+  var habitFilterClose = document.getElementById("habit-filter-close");
+  if (habitFilterClose) habitFilterClose.addEventListener("click", closeHabitFilterOverlay);
+  var habitFilterBackdrop = $(".habit-filter-backdrop");
+  if (habitFilterBackdrop) habitFilterBackdrop.addEventListener("click", closeHabitFilterOverlay);
   var habitCalendarBtn = document.getElementById("habit-calendar-btn");
   if (habitCalendarBtn) habitCalendarBtn.addEventListener("click", openHabitCalendar);
   var habitCalendarClose = document.getElementById("habit-calendar-close");
   if (habitCalendarClose) habitCalendarClose.addEventListener("click", closeHabitCalendar);
   var habitCalendarBackdrop = $(".habit-calendar-backdrop");
   if (habitCalendarBackdrop) habitCalendarBackdrop.addEventListener("click", closeHabitCalendar);
+  var categoryColorsClose = document.getElementById("category-colors-close");
+  if (categoryColorsClose) categoryColorsClose.addEventListener("click", closeCategoryColorsOverlay);
+  var categoryColorsBackdrop = $(".category-colors-backdrop");
+  if (categoryColorsBackdrop) categoryColorsBackdrop.addEventListener("click", closeCategoryColorsOverlay);
   var capsuleMenuBtn = document.getElementById("capsule-menu-btn");
   if (capsuleMenuBtn) capsuleMenuBtn.addEventListener("click", openCapsuleOverlay);
   var capsuleOverlayClose = document.getElementById("capsule-overlay-close");
