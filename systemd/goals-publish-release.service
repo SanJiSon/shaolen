@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish release to Telegram channel @shaolenai
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/shaolen
+EnvironmentFile=/root/shaolen/.env
+ExecStart=/root/shaolen/venv/bin/python /root/shaolen/scripts/publish_release_to_telegram.py
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,9 @@
+[Unit]
+Description=Run publish release to @shaolenai every hour
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
