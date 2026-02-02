@@ -72,19 +72,28 @@ def mark_version_published(path: str) -> None:
         f.write("\n".join(lines) + "\n")
 
 
-async def main():
-    current, is_published = read_version_line(VERSION_PATH)
-    if not current:
-        print("VERSION: файл не найден или пуст")
-        return
+async def main(version_override: str | None = None):
+    """Если передан version_override (например "1.1.0"), постит только эту версию и не меняет VERSION."""
+    if version_override:
+        current = version_override.strip().lstrip("v").strip()
+        if not current:
+            print("Укажите версию, например: python publish_release_to_telegram.py 1.1.0")
+            return
+        is_manual = True
+    else:
+        current, is_published = read_version_line(VERSION_PATH)
+        if not current:
+            print("VERSION: файл не найден или пуст")
+            return
+        if is_published:
+            print("Версия v" + current, "уже опубликована (есть признак + в VERSION)")
+            return
+        is_manual = False
+
     version = f"v{current}" if not current.startswith("v") else current
     post_text = parse_changelog_for_version(CHANGELOG_PATH, current)
     if not post_text:
         print("CHANGELOG.md: TELEGRAM_POST не найден для версии", version)
-        return
-
-    if is_published:
-        print("Версия", version, "уже опубликована (есть признак + в VERSION)")
         return
 
     api_id = (os.getenv("TELEGRAM_API_ID") or "").strip().strip("'\"")
@@ -117,7 +126,8 @@ async def main():
             print("Сессия не авторизована. Пересоздайте сессию.")
             return
         await client.send_message(CHANNEL_USERNAME, post_text)
-        mark_version_published(VERSION_PATH)
+        if not is_manual:
+            mark_version_published(VERSION_PATH)
         print("Опубликовано в @shaolenai:", version)
     except Exception as e:
         print("Ошибка публикации:", e)
@@ -127,5 +137,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    manual_version = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1] else None
+    asyncio.run(main(version_override=manual_version))
     sys.exit(0)
