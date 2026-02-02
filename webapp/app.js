@@ -3044,8 +3044,8 @@ function bindEvents() {
     }
 
     var subgoalRow = e.target.closest(".subgoal-row");
-    /* Открывать редактирование при клике по подцели, кроме чекбокса и ручки перетаскивания */
-    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest("input.subgoal-done-cb")) {
+    /* Открывать редактирование при клике по подцели, кроме чекбокса, label (галочка/отмена) и ручки перетаскивания */
+    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest("input.subgoal-done-cb") && !e.target.closest(".subgoal-cb-wrap")) {
       e.preventDefault();
       e.stopPropagation();
       var subgoalId = subgoalRow.dataset.id;
