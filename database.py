@@ -1641,7 +1641,7 @@ class Database:
                           (SELECT COUNT(*) FROM habits h WHERE h.user_id = u.user_id) AS habits_count,
                           (SELECT COUNT(*) FROM shaolen_history sh WHERE sh.user_id = u.user_id) AS shaolen_requests,
                           (SELECT COUNT(*) FROM reminder_sent_log rsl WHERE rsl.user_id = u.user_id) AS reminders_count
-                   FROM users u ORDER BY u.user_id"""
+                   FROM users u ORDER BY COALESCE(u.created_at, '1970-01-01') DESC, u.user_id"""
             ) as c:
                 rows = await c.fetchall()
                 return [dict(r) for r in rows]
