@@ -440,30 +440,39 @@ body {
   color: var(--text-muted, #666);
 }
 .goal-archive-list {
-  padding: 8px 16px 24px;
+  padding: 8px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.goal-archive-list .swipe-row {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid rgba(148, 163, 184, 0.1);
 }
 .goal-archive-list .swipe-row-drag-handle {
   display: none;
 }
 .goal-archive-list .swipe-row-content {
-  padding-left: 0;
+  padding: 12px 14px;
+  min-height: 0;
 }
 .goal-archive-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-}
-.goal-archive-item:last-child {
-  border-bottom: none;
+  gap: 12px;
+  min-width: 0;
 }
 .goal-archive-item-title {
   font-size: 15px;
   color: var(--text);
   flex: 1;
   min-width: 0;
-  margin-right: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .goal-archive-unarchive-btn {
   display: inline-flex;
@@ -1097,43 +1106,21 @@ body {
   color: var(--muted);
 }
 
-/* Плашка приоритета на карточке цели */
+/* Плашка приоритета на карточке цели — один цвет, как в меню редактирования */
 .goal-priority-bar-wrap {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
 }
 .goal-priority-bar {
-  display: flex;
-  width: 72px;
-  height: 20px;
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--bg);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  width: 56px;
+  height: 18px;
+  border-radius: 9px;
+  transition: background 0.2s ease;
 }
-.goal-priority-seg {
-  flex: 1;
-  transition: opacity 0.2s ease;
-}
-.goal-priority-seg.goal-priority-low {
-  background: #22c55e;
-}
-.goal-priority-seg.goal-priority-medium {
-  background: #f59e0b;
-}
-.goal-priority-seg.goal-priority-high {
-  background: #ef4444;
-}
-.goal-priority-bar-wrap[data-priority="1"] .goal-priority-low { opacity: 1; }
-.goal-priority-bar-wrap[data-priority="1"] .goal-priority-medium,
-.goal-priority-bar-wrap[data-priority="1"] .goal-priority-high { opacity: 0.35; }
-.goal-priority-bar-wrap[data-priority="2"] .goal-priority-medium { opacity: 1; }
-.goal-priority-bar-wrap[data-priority="2"] .goal-priority-low,
-.goal-priority-bar-wrap[data-priority="2"] .goal-priority-high { opacity: 0.35; }
-.goal-priority-bar-wrap[data-priority="3"] .goal-priority-high { opacity: 1; }
-.goal-priority-bar-wrap[data-priority="3"] .goal-priority-low,
-.goal-priority-bar-wrap[data-priority="3"] .goal-priority-medium { opacity: 0.35; }
+.goal-priority-bar-wrap[data-priority="1"] .goal-priority-bar { background: #22c55e; }
+.goal-priority-bar-wrap[data-priority="2"] .goal-priority-bar { background: #f59e0b; }
+.goal-priority-bar-wrap[data-priority="3"] .goal-priority-bar { background: #ef4444; }
 
 .goal-pinned-badge {
   display: inline-flex;
@@ -1408,15 +1395,15 @@ body.reorder-mode .swipe-row-drag-handle {
 }
 
 .swipe-row[data-swipe-actions="archive,delete"] .swipe-action-btn:first-child {
-  flex: 1;
-  background: var(--accent, #7c3aed);
+  width: 72px;
+  min-width: 72px;
+  background: var(--danger);
   border-radius: 0;
 }
 
 .swipe-row[data-swipe-actions="archive,delete"] .swipe-action-btn:last-child {
-  width: 72px;
-  min-width: 72px;
-  background: var(--danger);
+  flex: 1;
+  background: var(--accent, #7c3aed);
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 

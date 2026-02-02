@@ -374,8 +374,8 @@ function wrapSwipeDelete(node, type, id, opts) {
   var actionHtml;
   if (opts && opts.swipeActions && opts.swipeActions.indexOf("archive") !== -1 && opts.swipeActions.indexOf("delete") !== -1) {
     wrap.dataset.swipeActions = "archive,delete";
-    actionHtml = "<button type=\"button\" class=\"swipe-action-btn\" data-action=\"archive\"><span class=\"material-symbols-outlined\">archive</span> В архив</button>" +
-      "<button type=\"button\" class=\"swipe-action-btn swipe-delete-btn\" data-action=\"delete\">Удалить</button>";
+    actionHtml = "<button type=\"button\" class=\"swipe-action-btn swipe-delete-btn\" data-action=\"delete\">Удалить</button>" +
+      "<button type=\"button\" class=\"swipe-action-btn\" data-action=\"archive\"><span class=\"material-symbols-outlined\">archive</span> В архив</button>";
   } else if (opts && opts.swipeAction === "archive") {
     wrap.dataset.swipeAction = "archive";
     actionHtml = "<button type=\"button\" class=\"swipe-delete-btn swipe-archive-btn\" data-action=\"archive\"><span class=\"material-symbols-outlined\">archive</span> В архив</button>";
@@ -619,11 +619,7 @@ function renderGoals(goals) {
   activeGoals.forEach(function(g) {
     var done = "В процессе";
     var pr = g.priority === 3 ? 3 : g.priority === 2 ? 2 : 1;
-    var priorityBar = "<div class=\"goal-priority-bar\" role=\"img\" aria-label=\"Приоритет " + (pr === 3 ? "высокий" : pr === 2 ? "средний" : "низкий") + "\">" +
-      "<span class=\"goal-priority-seg goal-priority-low\" data-priority=\"1\"></span>" +
-      "<span class=\"goal-priority-seg goal-priority-medium\" data-priority=\"2\"></span>" +
-      "<span class=\"goal-priority-seg goal-priority-high\" data-priority=\"3\"></span>" +
-      "</div>";
+    var priorityBar = "<div class=\"goal-priority-bar\" role=\"img\" aria-label=\"Приоритет " + (pr === 3 ? "высокий" : pr === 2 ? "средний" : "низкий") + "\"></div>";
     var pinBadge = (g.is_pinned ? "<span class=\"goal-pinned-badge\" aria-label=\"Закреплено\"><span class=\"material-symbols-outlined\">keep</span></span>" : "");
     var card = document.createElement("div");
     card.className = "card card-goal";
