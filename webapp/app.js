@@ -19,7 +19,8 @@ if (tg) {
 const state = {
   userId: null,
   baseUrl: "",
-  cache: { missions: [], goals: [], habits: [], analytics: null, profile: null, subgoalsByMission: {} },
+  cache: { missions: [], goals: [], habits: [], habitCategories: [], analytics: null, profile: null, subgoalsByMission: {} },
+  habitCategoryFilter: null,
   analyticsPeriod: "month",
   shaolenMessages: [],
   shaolenUsage: { used: 0, limit: 50 },
@@ -580,6 +581,33 @@ function setupSortableHabits(container) {
 }
 
 function renderHabits(habits) {
+  var allHabits = state.cache.habits || [];
+  var list = allHabits;
+  if (state.habitCategoryFilter != null && state.habitCategoryFilter !== "") {
+    var fid = parseInt(state.habitCategoryFilter, 10);
+    list = allHabits.filter(function(h) { return (parseInt(h.category_id, 10) || 0) === fid; });
+  }
+
+  var filterRow = $("#habits-filter-row");
+  if (filterRow && state.cache.habitCategories && state.cache.habitCategories.length > 0) {
+    var catOptions = "<option value=\"\"" + (!state.habitCategoryFilter ? " selected" : "") + "\">Все категории</option>" + state.cache.habitCategories.map(function(c) {
+      return "<option value=\"" + (c.id != null ? c.id : "") + "\"" + (state.habitCategoryFilter == c.id || state.habitCategoryFilter === String(c.id) ? " selected" : "") + ">" + escapeHtml(c.name || "") + "</option>";
+    }).join("");
+    filterRow.innerHTML = "<label class=\"habits-filter-label\">Категория:</label><select id=\"habits-category-filter\" class=\"input habits-filter-select\">" + catOptions + "</select>";
+    filterRow.style.display = "";
+    var filterSelect = document.getElementById("habits-category-filter");
+    if (filterSelect && !filterSelect._bound) {
+      filterSelect._bound = true;
+      filterSelect.addEventListener("change", function() {
+        state.habitCategoryFilter = this.value ? this.value : null;
+        renderHabits(state.cache.habits);
+      });
+    }
+  } else if (filterRow) {
+    filterRow.innerHTML = "";
+    filterRow.style.display = "none";
+  }
+
   const root = $("#habits-list");
   if (state.sortableHabits) {
     state.sortableHabits.destroy();
@@ -587,13 +615,13 @@ function renderHabits(habits) {
   }
   root.innerHTML = "";
 
-  if (!habits || habits.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет привычек.<br>Нажмите <strong>«+ Добавить»</strong></div>';
+  if (!list || list.length === 0) {
+    root.innerHTML = '<div class="empty-state">' + (list && list.length === 0 && allHabits.length > 0 ? 'В этой категории нет привычек.' : 'У вас пока нет привычек.<br>Нажмите <strong>«+ Добавить»</strong>') + '</div>';
     return;
   }
 
   var HABIT_TARGET_DAYS = 21;
-  habits.forEach((h) => {
+  list.forEach((h) => {
     const count = h.today_count || 0;
     const habitId = parseInt(h.id) || 0;
     var totalCompletions = parseInt(h.total_completions || 0);
@@ -601,6 +629,7 @@ function renderHabits(habits) {
     const card = document.createElement("div");
     card.className = "card habit-card habitica-row";
     const title = escapeHtml(h.title || '');
+    var categoryBadge = (h.category_name ? "<span class=\"habit-category-badge\">" + escapeHtml(h.category_name) + "</span>" : "");
     var exampleBadge = (h.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var waterCalcBadge = (h.is_water_calculated ? "<span class=\"water-calc-badge\">Рассчитана автоматически</span><button type=\"button\" class=\"habit-water-help icon-btn\" aria-label=\"Как рассчитано\" title=\"Как рассчитано\" data-desc=\"" + escapeHtml((h.description || "").replace(/"/g, "&quot;")) + "\">?</button>" : "");
     var pct = HABIT_TARGET_DAYS > 0 ? Math.round((totalCompletions / HABIT_TARGET_DAYS) * 100) : 0;
@@ -615,7 +644,7 @@ function renderHabits(habits) {
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
-        <div class="habit-name-wrap"><div class="habit-name">${title}${exampleBadge}${waterCalcBadge}</div>${reminderTimeHtml}</div>
+        <div class="habit-name-wrap"><div class="habit-name">${title}${categoryBadge}${exampleBadge}${waterCalcBadge}</div>${reminderTimeHtml}</div>
         <button type="button" class="habit-reminder-toggle icon-btn" data-habit-id="${habitId}" data-enabled="${remindersOn ? "1" : "0"}" aria-label="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}" title="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}"><span class="material-symbols-outlined">${remindersOn ? "notifications" : "notifications_off"}</span></button>
         <div class="habit-count-wrap ${count ? '' : 'hide'}">
           <span class="habit-count-number">${count}</span>
@@ -2054,6 +2083,9 @@ async function loadAll() {
     state.capsule = (capsuleRes && capsuleRes.capsule) || null;
     state.capsuleCanEdit = !!(capsuleRes && capsuleRes.can_edit);
 
+    var habitCategories = await fetchJSON(base + "/api/user/" + uid + "/habit-categories").catch(function() { return []; });
+    state.cache.habitCategories = Array.isArray(habitCategories) ? habitCategories : [];
+
     renderMissions(missionsList);
     renderGoals(goalsList);
     renderHabits(habitsList);
@@ -2559,9 +2591,20 @@ function renderSettings() {
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row\">" +
-      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для привычек, целей и подцелей при выгрузке в Google Calendar. На Android цвет ставится на события. На iPhone включите опцию ниже — тогда создаётся отдельный календарь с этим цветом.</div></div>" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для целей и подцелей; для привычек используется цвет категории (ниже), если задан.</div></div>" +
       colorSelectHtml +
     "</div>" +
+    (function() {
+      var cats = state.cache.habitCategories || [];
+      if (cats.length === 0) return "";
+      var colorOpts = "<option value=\"\">По умолчанию</option>" + colorOptions.map(function(o) { return "<option value=\"" + o.v + "\">" + o.l + "</option>"; }).join("");
+      var rows = cats.map(function(c) {
+        var sel = (c.color_id || "") === "" ? " selected" : "";
+        var opts = colorOptions.map(function(o) { return "<option value=\"" + o.v + "\"" + (c.color_id === o.v ? " selected" : "") + ">" + o.l + "</option>"; }).join("");
+        return "<div class=\"settings-row habit-cat-color-row\"><div class=\"settings-row-label\">" + escapeHtml(c.name || "") + "</div><select class=\"settings-select habit-cat-color\" data-category-id=\"" + (c.id || "") + "\">" + "<option value=\"\">По умолчанию</option>" + opts + "</select></div>";
+      }).join("");
+      return "<div class=\"settings-section-title\" style=\"margin-top:14px;\">Цвета категорий привычек в календаре</div><div class=\"settings-row-hint\" style=\"margin-bottom:8px;\">При выгрузке в календарь привычки получают цвет своей категории.</div>" + rows;
+    })() +
     "<div class=\"settings-row settings-row-toggle\">" +
       "<div><div class=\"settings-row-label\">Отдельный календарь для цвета (для iPhone)</div><div class=\"settings-row-hint\">Включите, если смотрите календарь в приложении «Календарь» на iPhone — там цвет лучше отображается через отдельный календарь «Шаолень Привычки». На Android оставьте выключенным.</div></div>" +
       "<button type=\"button\" class=\"settings-toggle " + (calDedicated ? "on" : "") + "\" id=\"settings-cal-dedicated\" aria-label=\"Отдельный календарь " + (calDedicated ? "вкл" : "выкл") + "\"></button>" +
@@ -2640,6 +2683,28 @@ function renderSettings() {
       calDedicatedBtn.classList.toggle("on", !v);
       if (tg) tg.showAlert("Не удалось сохранить.");
     }
+  });
+  $all(".habit-cat-color").forEach(function(sel) {
+    sel.addEventListener("change", async function() {
+      var cats = state.cache.habitCategories || [];
+      var payload = cats.map(function(c) {
+        var el = document.querySelector(".habit-cat-color[data-category-id=\"" + c.id + "\"]");
+        var colorId = (el && el.value) ? el.value : null;
+        return { category_id: c.id, color_id: colorId || null };
+      });
+      try {
+        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-categories/colors", {
+          method: "PUT",
+          body: JSON.stringify({ categories: payload })
+        });
+        cats.forEach(function(c, i) {
+          var el = document.querySelector(".habit-cat-color[data-category-id=\"" + c.id + "\"]");
+          if (el) c.color_id = el.value || null;
+        });
+      } catch (e) {
+        if (tg) tg.showAlert("Не удалось сохранить цвет категории.");
+      }
+    });
   });
   var calSyncBtn = $("#settings-cal-sync-btn");
   var calSyncMsg = $("#settings-cal-sync-msg");
@@ -3170,15 +3235,22 @@ function bindEvents() {
                 }
               });
             } else if (type === "habit") {
-              var habitTimeExtra = "<label>Время (напоминания и календарь)</label><input id=\"reminder-time-input\" class=\"input\" type=\"time\" />";
+              var cats = state.cache.habitCategories || [];
+              var catOpts = "<option value=\"\">Без категории</option>" + cats.map(function(c) {
+                var sel = (item.category_id != null && item.category_id === c.id) ? " selected" : "";
+                return "<option value=\"" + (c.id || "") + "\"" + sel + ">" + escapeHtml(c.name || "") + "</option>";
+              }).join("");
+              var habitTimeExtra = "<label>Категория</label><select id=\"habit-category-input\" class=\"input\">" + catOpts + "</select><label>Время (напоминания и календарь)</label><input id=\"reminder-time-input\" class=\"input\" type=\"time\" />";
               openDialog({
                 title: "Редактировать привычку",
                 extraHtml: habitTimeExtra,
                 initialValues: { title: item.title || "", description: item.description || "", reminder_time: item.reminder_time || "" },
                 onSave: async function(p) {
                   var timeEl = document.getElementById("reminder-time-input");
+                  var catEl = document.getElementById("habit-category-input");
                   var rt = (timeEl && timeEl.value) ? timeEl.value : "";
-                  await fetchJSON(state.baseUrl + "/api/habits/" + id, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description, reminder_time: rt || null }) });
+                  var cid = (catEl && catEl.value) ? parseInt(catEl.value, 10) : null;
+                  await fetchJSON(state.baseUrl + "/api/habits/" + id, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description, reminder_time: rt || null, category_id: cid }) });
                   await loadAll();
                 }
               });
@@ -3271,17 +3343,23 @@ function bindEvents() {
     if (tg && tg.MainButton) tg.MainButton.hide();
     if (!state.userId) await ensureUserId();
     if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
-    var habitTimeExtra = "<label>Время напоминания (и в календаре)</label><input id=\"reminder-time-input\" class=\"input\" type=\"time\" />";
+    var cats = state.cache.habitCategories || [];
+    var catOpts = "<option value=\"\">Без категории</option>" + cats.map(function(c) {
+      return "<option value=\"" + (c.id || "") + "\">" + escapeHtml(c.name || "") + "</option>";
+    }).join("");
+    var habitTimeExtra = "<label>Категория</label><select id=\"habit-category-input\" class=\"input\">" + catOpts + "</select><label>Время напоминания (и в календаре)</label><input id=\"reminder-time-input\" class=\"input\" type=\"time\" />";
     openDialog({
       title: "Новая привычка",
       extraHtml: habitTimeExtra,
       onSave: async function(data) {
         var rtEl = document.getElementById("reminder-time-input");
+        var catEl = document.getElementById("habit-category-input");
         var rt = (rtEl && rtEl.value) ? rtEl.value : null;
+        var cid = (catEl && catEl.value) ? parseInt(catEl.value, 10) : null;
         await fetchJSON(state.baseUrl + "/api/habits", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: state.userId, title: data.title, description: data.description || "", reminder_time: rt || null }),
+          body: JSON.stringify({ user_id: state.userId, title: data.title, description: data.description || "", reminder_time: rt || null, category_id: cid }),
         });
         await loadAll();
       },
