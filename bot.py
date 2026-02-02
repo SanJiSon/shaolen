@@ -29,28 +29,68 @@ MAX_MESSAGE_LENGTH = 4096
 def _build_task_list(
     missions: list, goals: list, habits: list, is_premium: bool
 ) -> str:
-    """Собирает текст списка задач. Premium — checklist (☐), иначе — список (•)."""
+    """Собирает текст списка задач в HTML. Premium — checklist (☐/☑), иначе — список (•). Зачеркивает выполненные."""
     lines = []
-    prefix = "☐ " if is_premium else "• "
+    
+    # Миссии
+    if missions:
+        lines.append("<b>🎯 Миссии</b>\n")
+        for m in missions or []:
+            title = (m.get("title") or "").strip() or "Миссия"
+            is_completed = m.get("is_completed")
+            if is_premium:
+                prefix = "☑ " if is_completed else "☐ "
+            else:
+                prefix = "• "
+            # Зачеркиваем выполненные через HTML
+            if is_completed:
+                title = f"<s>{title}</s>"
+            lines.append(f"{prefix}{title}")
+            
+            # Подцели
+            for sg in m.get("_subgoals") or []:
+                sg_title = (sg.get("title") or "").strip() or "Подцель"
+                sg_completed = sg.get("is_completed")
+                if is_premium:
+                    sub_pref = "  ☑ " if sg_completed else "  ☐ "
+                else:
+                    sub_pref = "  – "
+                if sg_completed:
+                    sg_title = f"<s>{sg_title}</s>"
+                lines.append(f"{sub_pref}{sg_title}")
+        lines.append("")  # Пустая строка между разделами
 
-    for m in missions or []:
-        title = (m.get("title") or "").strip() or "Миссия"
-        lines.append(prefix + title)
-        for sg in m.get("_subgoals") or []:
-            sg_title = (sg.get("title") or "").strip() or "Подцель"
-            sub_pref = "  ☐ " if is_premium else "  – "
-            lines.append(sub_pref + sg_title)
+    # Цели
+    if goals:
+        lines.append("<b>✅ Цели</b>\n")
+        for g in goals or []:
+            title = (g.get("title") or "").strip() or "Цель"
+            is_completed = g.get("is_completed")
+            if is_premium:
+                prefix = "☑ " if is_completed else "☐ "
+            else:
+                prefix = "• "
+            if is_completed:
+                title = f"<s>{title}</s>"
+            lines.append(f"{prefix}{title}")
+        lines.append("")
 
-    for g in goals or []:
-        lines.append(prefix + ((g.get("title") or "").strip() or "Цель"))
-
-    for h in habits or []:
-        lines.append(prefix + ((h.get("title") or "").strip() or "Привычка"))
+    # Привычки
+    if habits:
+        lines.append("<b>🔄 Привычки</b>\n")
+        for h in habits or []:
+            title = (h.get("title") or "").strip() or "Привычка"
+            # У привычек нет is_completed, они активны/неактивны
+            if is_premium:
+                prefix = "☐ "
+            else:
+                prefix = "• "
+            lines.append(f"{prefix}{title}")
 
     if not lines:
         return "📋 Мои задачи (пусто)\n\nДобавьте миссии, цели и привычки в @shaolen_bot"
 
-    text = "📋 Мои задачи\n\n" + "\n".join(lines)
+    text = "<b>📋 Мои задачи</b>\n\n" + "\n".join(lines)
     return text[: MAX_MESSAGE_LENGTH - 20] + "\n\n…" if len(text) > MAX_MESSAGE_LENGTH else text
 
 
@@ -95,28 +135,87 @@ async def inline_query_handler(
     user = query.from_user
     user_id = user.id
     is_premium = getattr(user, "is_premium", False) or False
+    query_text = (query.query or "").strip().lower()
 
     missions, goals, habits = [], [], []
     try:
         await db.add_user(user_id, user.username, user.first_name, user.last_name)
         missions, goals, habits = await _fetch_user_tasks(user_id)
-        text = _build_task_list(missions, goals, habits, is_premium)
     except Exception as e:
         logger.exception("inline_query: %s", e)
-        text = "Ошибка загрузки задач. Попробуйте позже."
+        await query.answer(
+            [
+                InlineQueryResultArticle(
+                    id="error",
+                    title="⚠️ Ошибка",
+                    description="Не удалось загрузить задачи",
+                    input_message_content=InputTextMessageContent("Ошибка загрузки задач. Попробуйте позже."),
+                )
+            ],
+            cache_time=10,
+        )
+        return
 
-    has_tasks = bool(missions or goals or habits)
-    await query.answer(
-        [
+    results = []
+    
+    # Фильтруем по запросу: "миссии", "цели", "привычки" или показываем все
+    show_missions = not query_text or "мисс" in query_text or "mission" in query_text
+    show_goals = not query_text or "цел" in query_text or "goal" in query_text or "задач" in query_text
+    show_habits = not query_text or "привыч" in query_text or "habit" in query_text
+    
+    # 1. Миссии
+    if show_missions and missions:
+        missions_text = _build_task_list(missions, [], [], is_premium)
+        results.append(
             InlineQueryResultArticle(
-                id="tasks",
-                title="Мои задачи" if has_tasks else "Мои задачи (пусто)",
-                description="Отправить список миссий, целей и привычек в чат",
-                input_message_content=InputTextMessageContent(text),
+                id="missions",
+                title=f"🎯 Миссии ({len(missions)})",
+                description="Долгосрочные цели с подцелями",
+                input_message_content=InputTextMessageContent(missions_text, parse_mode="HTML"),
+                thumb_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/flag/default/48px.svg",
             )
-        ],
-        cache_time=60,
-    )
+        )
+    
+    # 2. Цели
+    if show_goals and goals:
+        goals_text = _build_task_list([], goals, [], is_premium)
+        results.append(
+            InlineQueryResultArticle(
+                id="goals",
+                title=f"✅ Цели ({len(goals)})",
+                description="Задачи с дедлайнами",
+                input_message_content=InputTextMessageContent(goals_text, parse_mode="HTML"),
+                thumb_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/checkcircle/default/48px.svg",
+            )
+        )
+    
+    # 3. Привычки
+    if show_habits and habits:
+        habits_text = _build_task_list([], [], habits, is_premium)
+        results.append(
+            InlineQueryResultArticle(
+                id="habits",
+                title=f"🔄 Привычки ({len(habits)})",
+                description="Ежедневные активности",
+                input_message_content=InputTextMessageContent(habits_text, parse_mode="HTML"),
+                thumb_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/refresh/default/48px.svg",
+            )
+        )
+    
+    # Если ничего не найдено
+    if not results:
+        results.append(
+            InlineQueryResultArticle(
+                id="empty",
+                title="📋 Задачи не найдены",
+                description="Добавьте миссии, цели или привычки в приложении",
+                input_message_content=InputTextMessageContent(
+                    "📋 Мои задачи (пусто)\n\nДобавьте миссии, цели и привычки в @shaolen_bot"
+                ),
+            )
+        )
+    
+    await query.answer(results, cache_time=60)
 
 
 async def main() -> None:
