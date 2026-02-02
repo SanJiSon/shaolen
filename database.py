@@ -1399,10 +1399,11 @@ class Database:
                 return int(row[0] or 0)
 
     async def get_habit_total_completions(self, habit_id: int) -> int:
-        """Сумма всех повторений (count) по привычке — для прогресс-бара и достижения 21."""
+        """Количество календарных дней с хотя бы одним выполнением привычки (для счётчика X/21 и достижения 21 день)."""
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute(
-                """SELECT COALESCE(SUM(COALESCE(NULLIF(count, 0), 1)), 0) FROM habit_records WHERE habit_id = ?""",
+                """SELECT COUNT(DISTINCT date) FROM habit_records
+                   WHERE habit_id = ? AND (completed = 1 OR COALESCE(count, 0) > 0)""",
                 (habit_id,),
             ) as c:
                 row = await c.fetchone()
