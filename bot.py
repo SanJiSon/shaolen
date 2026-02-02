@@ -150,6 +150,9 @@ async def inline_query_handler(
     # Без thumbnail_url — иначе слева от названий в списке inline отображаются пустые квадраты.
     # Нативный Todo/checklist в inline недоступен: API отдаёт только текст (InputTextMessageContent).
 
+    # Inline отдаёт только текст; нативный Todo — только по команде /todo в чате.
+    _todo_hint = " Нативный чеклист: /todo в чате с ботом."
+
     # 1. Миссии
     if show_missions and missions:
         missions_text = _build_task_list(missions, [], [], is_premium)
@@ -157,7 +160,7 @@ async def inline_query_handler(
             InlineQueryResultArticle(
                 id="missions",
                 title=f"Миссии ({len(missions)})",
-                description="Долгосрочные цели с подцелями",
+                description="Долгосрочные цели с подцелями." + _todo_hint,
                 input_message_content=InputTextMessageContent(missions_text, parse_mode="HTML"),
             )
         )
@@ -169,7 +172,7 @@ async def inline_query_handler(
             InlineQueryResultArticle(
                 id="goals",
                 title=f"Цели ({len(goals)})",
-                description="Задачи с дедлайнами",
+                description="Задачи с дедлайнами." + _todo_hint,
                 input_message_content=InputTextMessageContent(goals_text, parse_mode="HTML"),
             )
         )
@@ -181,7 +184,7 @@ async def inline_query_handler(
             InlineQueryResultArticle(
                 id="habits",
                 title=f"Привычки ({len(habits)})",
-                description="Ежедневные активности",
+                description="Ежедневные активности." + _todo_hint,
                 input_message_content=InputTextMessageContent(habits_text, parse_mode="HTML"),
             )
         )
@@ -249,7 +252,8 @@ async def main() -> None:
     logger.info("Бот запущен")
     if TELEGRAM_API_ID.strip() and TELEGRAM_API_HASH.strip():
         try:
-            import telethon  # noqa: F401
+            import telethon  # type: ignore[import-untyped]
+            _ = telethon.__version__  # использование импорта для проверки доступности
         except ImportError:
             logger.warning(
                 "Команда /todo недоступна: Telethon не установлен. "
