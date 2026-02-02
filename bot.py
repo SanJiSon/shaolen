@@ -119,21 +119,35 @@ async def inline_query_handler(
     )
 
 
-def main() -> None:
+async def main() -> None:
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN не задан. Добавьте в .env")
         return
 
     try:
-        asyncio.run(db.init_db())
+        await db.init_db()
     except Exception as e:
         logger.warning("init_db: %s", e)
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(InlineQueryHandler(inline_query_handler))
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Бот запущен")
+
+    # Держим бота запущенным
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
