@@ -127,8 +127,20 @@ async def send_native_todo(
     except Exception as e:
         logger.exception("send_native_todo: %s", e)
         err = str(e).lower()
-        if "todo" in err or "media" in err or "not supported" in err:
-            return False, "Нативные списки Todo пока недоступны для этого бота или чата."
+        if "api_id" in err or "api_hash" in err or "apiidinvalid" in err:
+            return (
+                False,
+                "Неверные TELEGRAM_API_ID или TELEGRAM_API_HASH. "
+                "Возьмите их на https://my.telegram.org → API development tools. "
+                "Без кавычек и пробелов в .env, api_id — число, api_hash — строка из 32 символов.",
+            )
+        if "todo" in err or "media" in err or "not supported" in err or "premium" in err or "forbidden" in err:
+            short = str(e).split("(")[0].strip() or str(e)[:80]
+            return (
+                False,
+                "Нативные списки Todo недоступны: Telegram может ограничивать их для ботов или чатов. "
+                f"Ответ API: {short}"
+            )
         return False, f"Ошибка отправки: {e}"
     finally:
         try:
