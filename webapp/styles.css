@@ -1123,9 +1123,12 @@ body.reorder-mode .swipe-row-actions {
   gap: 12px;
 }
 
-.habit-card .habit-name {
+.habit-card .habit-name-wrap {
   flex: 1;
   min-width: 0;
+}
+
+.habit-card .habit-name {
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -1136,6 +1139,13 @@ body.reorder-mode .swipe-row-actions {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.habit-card .habit-reminder-time {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted, #666);
+  margin-top: 2px;
 }
 
 .habit-count-wrap {

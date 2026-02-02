@@ -407,12 +407,14 @@ function renderMissions(missions) {
     var createdAt = m.created_at ? String(m.created_at).slice(0, 10) : "";
     var deadline = m.deadline ? String(m.deadline).slice(0, 10) : "";
     var subs = subgoalsByMission[m.id] || [];
-    var completedSubs = subs.filter(function(s) { return s.is_completed; }).length;
+    function subgoalCompleted(s) { return s.is_completed === 1 || s.is_completed === "1" || s.is_completed === true; }
+    var completedSubs = subs.filter(function(s) { return subgoalCompleted(s); }).length;
     var totalSubs = subs.length;
     var subProgressPct = totalSubs > 0 ? Math.round((completedSubs / totalSubs) * 100) : 0;
     var subsHtml = subs.map(function(s) {
-      var doneClass = s.is_completed ? " subgoal-done" : "";
-      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (s.is_completed ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
+      var done = subgoalCompleted(s);
+      var doneClass = done ? " subgoal-done" : "";
+      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (done ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var progressBarHtml = totalSubs > 0 ? "<div class=\"mission-progress\"><div class=\"mission-progress-bar\"><div class=\"mission-progress-fill\" style=\"width:" + subProgressPct + "%\"></div></div><span class=\"mission-progress-label\">" + completedSubs + "/" + totalSubs + " подцелей</span></div>" : "";
@@ -607,11 +609,13 @@ function renderHabits(habits) {
     var filledSegments = pct >= 100 ? 10 : Math.round((barPct / 100) * barSegments);
     var barHtml = "";
     for (var i = 0; i < barSegments; i++) barHtml += "<span class=\"habit-progress-seg " + (i < filledSegments ? "filled" : "") + "\"></span>";
+    var reminderTime = (h.reminder_time || "").toString().trim();
+    var reminderTimeHtml = reminderTime ? "<div class=\"habit-reminder-time\">Время: " + escapeHtml(reminderTime.slice(0, 5)) + "</div>" : "";
     var progressHtml = "<div class=\"habit-progress\"><div class=\"habit-progress-bar\">" + barHtml + "</div><span class=\"habit-progress-text\">" + pct + "% (" + totalCompletions + "/" + HABIT_TARGET_DAYS + ")</span></div>";
     card.innerHTML = `
       <div class="habit-card-content">
         <button type="button" class="habit-btn habit-btn-plus" data-habit-id="${habitId}" data-action="increment">+</button>
-        <div class="habit-name">${title}${exampleBadge}${waterCalcBadge}</div>
+        <div class="habit-name-wrap"><div class="habit-name">${title}${exampleBadge}${waterCalcBadge}</div>${reminderTimeHtml}</div>
         <button type="button" class="habit-reminder-toggle icon-btn" data-habit-id="${habitId}" data-enabled="${remindersOn ? "1" : "0"}" aria-label="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}" title="${remindersOn ? "Напоминания вкл" : "Напоминания выкл"}"><span class="material-symbols-outlined">${remindersOn ? "notifications" : "notifications_off"}</span></button>
         <div class="habit-count-wrap ${count ? '' : 'hide'}">
           <span class="habit-count-number">${count}</span>
@@ -2554,7 +2558,7 @@ function renderSettings() {
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row\">" +
-      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет уведомлений при синхронизации с Google Calendar</div></div>" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для привычек, целей и подцелей при выгрузке в Google Calendar</div></div>" +
       colorSelectHtml +
     "</div>" +
     "<div class=\"settings-row settings-cal-sync-row\" style=\"margin-top:12px;\">" +
@@ -2969,6 +2973,7 @@ function bindEvents() {
     }
     if (cb.classList && cb.classList.contains("subgoal-done-cb")) {
       e.preventDefault();
+      e.stopPropagation();
       var sid = cb.dataset.id;
       var subgoalsByMission = state.cache.subgoalsByMission || {};
       var found = null, prevVal;
@@ -2992,7 +2997,7 @@ function bindEvents() {
           } else {
             await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/uncomplete", { method: "POST" });
           }
-          loadAll();
+          await loadAll();
         } catch (err) {
           found.is_completed = prevVal;
           renderMissions(state.cache.missions);
