@@ -26,66 +26,45 @@ db = Database(DB_PATH)
 MAX_MESSAGE_LENGTH = 4096
 
 
+def _escape_html(s: str) -> str:
+    """Экранирует < и > для безопасного вывода в HTML."""
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _build_task_list(
     missions: list, goals: list, habits: list, is_premium: bool
 ) -> str:
-    """Собирает текст списка задач в HTML. Premium — checklist (☐/☑), иначе — список (•). Зачеркивает выполненные."""
+    """Текст в формате чеклиста (как sendChecklist): заголовок + строки ☐/☑ с зачеркиванием выполненных."""
     lines = []
-    
+
     # Миссии
     if missions:
-        lines.append("<b>🎯 Миссии</b>\n")
+        lines.append("<b>🎯 Миссии</b>")
         for m in missions or []:
-            title = (m.get("title") or "").strip() or "Миссия"
-            is_completed = m.get("is_completed")
-            if is_premium:
-                prefix = "☑ " if is_completed else "☐ "
-            else:
-                prefix = "• "
-            # Зачеркиваем выполненные через HTML
-            if is_completed:
-                title = f"<s>{title}</s>"
-            lines.append(f"{prefix}{title}")
-            
-            # Подцели
+            title = _escape_html((m.get("title") or "").strip() or "Миссия")
+            done = m.get("is_completed")
+            lines.append(("☑ " if done else "☐ ") + ("<s>" + title + "</s>" if done else title))
             for sg in m.get("_subgoals") or []:
-                sg_title = (sg.get("title") or "").strip() or "Подцель"
-                sg_completed = sg.get("is_completed")
-                if is_premium:
-                    sub_pref = "  ☑ " if sg_completed else "  ☐ "
-                else:
-                    sub_pref = "  – "
-                if sg_completed:
-                    sg_title = f"<s>{sg_title}</s>"
-                lines.append(f"{sub_pref}{sg_title}")
-        lines.append("")  # Пустая строка между разделами
+                sg_title = _escape_html((sg.get("title") or "").strip() or "Подцель")
+                sg_done = sg.get("is_completed")
+                lines.append("  " + ("☑ " if sg_done else "☐ ") + ("<s>" + sg_title + "</s>" if sg_done else sg_title))
+        lines.append("")
 
     # Цели
     if goals:
-        lines.append("<b>✅ Цели</b>\n")
+        lines.append("<b>✅ Цели</b>")
         for g in goals or []:
-            title = (g.get("title") or "").strip() or "Цель"
-            is_completed = g.get("is_completed")
-            if is_premium:
-                prefix = "☑ " if is_completed else "☐ "
-            else:
-                prefix = "• "
-            if is_completed:
-                title = f"<s>{title}</s>"
-            lines.append(f"{prefix}{title}")
+            title = _escape_html((g.get("title") or "").strip() or "Цель")
+            done = g.get("is_completed")
+            lines.append(("☑ " if done else "☐ ") + ("<s>" + title + "</s>" if done else title))
         lines.append("")
 
     # Привычки
     if habits:
-        lines.append("<b>🔄 Привычки</b>\n")
+        lines.append("<b>🔄 Привычки</b>")
         for h in habits or []:
-            title = (h.get("title") or "").strip() or "Привычка"
-            # У привычек нет is_completed, они активны/неактивны
-            if is_premium:
-                prefix = "☐ "
-            else:
-                prefix = "• "
-            lines.append(f"{prefix}{title}")
+            title = _escape_html((h.get("title") or "").strip() or "Привычка")
+            lines.append("☐ " + title)
 
     if not lines:
         return "📋 Мои задачи (пусто)\n\nДобавьте миссии, цели и привычки в @shaolen_bot"
@@ -163,6 +142,9 @@ async def inline_query_handler(
     show_goals = not query_text or "цел" in query_text or "goal" in query_text or "задач" in query_text
     show_habits = not query_text or "привыч" in query_text or "habit" in query_text
     
+    # Без thumbnail_url — иначе слева от названий в списке inline отображаются пустые квадраты.
+    # Нативный Todo/checklist в inline недоступен: API отдаёт только текст (InputTextMessageContent).
+
     # 1. Миссии
     if show_missions and missions:
         missions_text = _build_task_list(missions, [], [], is_premium)
@@ -172,7 +154,6 @@ async def inline_query_handler(
                 title=f"🎯 Миссии ({len(missions)})",
                 description="Долгосрочные цели с подцелями",
                 input_message_content=InputTextMessageContent(missions_text, parse_mode="HTML"),
-                thumbnail_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/flag/default/48px.svg",
             )
         )
     
@@ -185,7 +166,6 @@ async def inline_query_handler(
                 title=f"✅ Цели ({len(goals)})",
                 description="Задачи с дедлайнами",
                 input_message_content=InputTextMessageContent(goals_text, parse_mode="HTML"),
-                thumbnail_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/checkcircle/default/48px.svg",
             )
         )
     
@@ -198,7 +178,6 @@ async def inline_query_handler(
                 title=f"🔄 Привычки ({len(habits)})",
                 description="Ежедневные активности",
                 input_message_content=InputTextMessageContent(habits_text, parse_mode="HTML"),
-                thumbnail_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/refresh/default/48px.svg",
             )
         )
     
