@@ -12,10 +12,10 @@ from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Лимиты Telegram (консервативные значения)
+# Лимиты Telegram (консервативные значения; TODO_ITEMS_TOO_MUCH при превышении)
 TODO_TITLE_MAX = 128
 TODO_ITEM_TITLE_MAX = 128
-TODO_ITEMS_MAX = 100
+TODO_ITEMS_MAX = 30
 
 
 def _truncate(s: str, max_len: int) -> str:
