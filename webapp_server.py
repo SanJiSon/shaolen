@@ -149,6 +149,7 @@ class HabitCreate(BaseModel):
     user_id: int
     title: str
     description: Optional[str] = ""
+    reminder_time: Optional[str] = None
 
 
 class MissionUpdate(BaseModel):
@@ -167,6 +168,7 @@ class GoalUpdate(BaseModel):
 class HabitUpdate(BaseModel):
     title: str
     description: Optional[str] = ""
+    reminder_time: Optional[str] = None
 
 
 class TimeCapsuleCreate(BaseModel):
@@ -608,7 +610,12 @@ async def api_get_habits(user_id: int):
 async def api_add_habit(payload: HabitCreate):
     """Добавление привычки"""
     await db.add_user(payload.user_id, None)
-    habit_id = await db.add_habit(payload.user_id, payload.title, payload.description or "")
+    habit_id = await db.add_habit(
+        payload.user_id,
+        payload.title,
+        payload.description or "",
+        reminder_time=payload.reminder_time,
+    )
     habits = await db.get_habits(payload.user_id, active_only=False)
     for h in habits:
         if h["id"] == habit_id:
@@ -619,7 +626,7 @@ async def api_add_habit(payload: HabitCreate):
 @app.put("/api/habits/{habit_id}")
 async def api_update_habit(habit_id: int, payload: HabitUpdate):
     """Редактирование привычки"""
-    await db.update_habit(habit_id, payload.title, payload.description or "")
+    await db.update_habit(habit_id, payload.title, payload.description or "", reminder_time=payload.reminder_time)
     habit = await db.get_habit(habit_id)
     if not habit:
         raise HTTPException(status_code=404, detail="Habit not found")
@@ -1029,6 +1036,7 @@ class CalendarSyncSettingsBody(BaseModel):
     sync_subgoals: Optional[bool] = None
     sync_habits: Optional[bool] = None
     sync_goals: Optional[bool] = None
+    event_color_id: Optional[str] = None
 
 
 @app.put("/api/user/{user_id}/calendar-sync-settings", response_model=None)
@@ -1038,7 +1046,8 @@ async def api_update_calendar_sync_settings(user_id: int, payload: CalendarSyncS
     sync_subgoals = payload.sync_subgoals if payload.sync_subgoals is not None else cur["sync_subgoals"]
     sync_habits = payload.sync_habits if payload.sync_habits is not None else cur["sync_habits"]
     sync_goals = payload.sync_goals if payload.sync_goals is not None else cur["sync_goals"]
-    await db.set_calendar_sync_settings(user_id, sync_subgoals, sync_habits, sync_goals)
+    event_color_id = payload.event_color_id if payload.event_color_id is not None else cur.get("event_color_id")
+    await db.set_calendar_sync_settings(user_id, sync_subgoals, sync_habits, sync_goals, event_color_id)
     return JSONResponse(content={"ok": True})
 
 
@@ -1090,7 +1099,17 @@ async def api_calendar_sync(user_id: int):
             habits = await db.get_habits(user_id, active_only=True)
             for i, h in enumerate(habits):
                 title = (h.get("title") or "").strip() or "Привычка"
-                hour, minute = _habit_suggested_time(title, i, len(habits))
+                rt = (h.get("reminder_time") or "").strip()
+                if rt and ":" in rt:
+                    try:
+                        parts = rt.split(":")
+                        hour, minute = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+                        hour = max(0, min(23, hour))
+                        minute = max(0, min(59, minute))
+                    except (ValueError, IndexError):
+                        hour, minute = _habit_suggested_time(title, i, len(habits))
+                else:
+                    hour, minute = _habit_suggested_time(title, i, len(habits))
                 start_dt = f"{today}T{hour:02d}:{minute:02d}:00"
                 end_h = hour + 1 if minute == 30 else hour
                 end_m = 30 if minute == 0 else 0
@@ -1102,6 +1121,8 @@ async def api_calendar_sync(user_id: int):
                     "end": {"dateTime": end_dt, "timeZone": tz},
                     "recurrence": ["RRULE:FREQ=DAILY"],
                 }
+                if settings.get("event_color_id"):
+                    event["colorId"] = settings["event_color_id"]
                 try:
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
@@ -1137,6 +1158,8 @@ async def api_calendar_sync(user_id: int):
                     "start": {"dateTime": start_dt, "timeZone": tz},
                     "end": {"dateTime": end_dt, "timeZone": tz},
                 }
+                if settings.get("event_color_id"):
+                    event["colorId"] = settings["event_color_id"]
                 try:
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
@@ -1174,6 +1197,8 @@ async def api_calendar_sync(user_id: int):
                         "start": {"dateTime": f"{dl_str}T{hour:02d}:00:00", "timeZone": tz},
                         "end": {"dateTime": f"{dl_str}T{hour:02d}:30:00", "timeZone": tz},
                     }
+                    if settings.get("event_color_id"):
+                        event["colorId"] = settings["event_color_id"]
                     try:
                         async with httpx.AsyncClient() as client:
                             r = await client.post(

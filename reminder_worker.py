@@ -161,8 +161,12 @@ async def run_tick(db: Database) -> None:
             for habit in habits:
                 habit_id = habit["id"]
                 title = (habit.get("title") or "").strip() or "Привычка"
-                avg_str = await db.get_habit_avg_completion_time(habit_id, days=30)
-                parsed = _parse_avg_time(avg_str)
+                # Время из настроек привычки (напоминания и календарь) или среднее по истории
+                rt_str = (habit.get("reminder_time") or "").strip()
+                parsed = _parse_avg_time(rt_str) if rt_str else None
+                if parsed is None:
+                    avg_str = await db.get_habit_avg_completion_time(habit_id, days=30)
+                    parsed = _parse_avg_time(avg_str) if avg_str else None
                 if parsed is None:
                     no_history_habits.append(habit)
                     continue

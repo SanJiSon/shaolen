@@ -138,6 +138,10 @@ class Database:
                     await db.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} INTEGER")
                 except Exception:
                     pass
+            try:
+                await db.execute("ALTER TABLE habits ADD COLUMN reminder_time TEXT")
+            except Exception:
+                pass
 
             # Таблица записей привычек (трекинг выполнения)
             await db.execute("""
@@ -228,6 +232,10 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )
             """)
+            try:
+                await db.execute("ALTER TABLE calendar_sync_settings ADD COLUMN event_color_id TEXT")
+            except Exception:
+                pass
 
             # Google Fit OAuth токены для чтения шагов и календаря
             await db.execute("""
@@ -711,8 +719,19 @@ class Database:
             await db.commit()
 
     # === ПРИВЫЧКИ ===
-    async def add_habit(self, user_id: int, title: str, description: str = "", is_example: int = 0, is_water_calculated: int = 0) -> int:
-        """Добавление привычки. is_example=1 — пример; is_water_calculated=1 — рассчитана автоматически (вода)."""
+    async def add_habit(
+        self,
+        user_id: int,
+        title: str,
+        description: str = "",
+        is_example: int = 0,
+        is_water_calculated: int = 0,
+        reminder_time: Optional[str] = None,
+    ) -> int:
+        """Добавление привычки. reminder_time — HH:MM (время напоминания и выгрузки в календарь)."""
+        rt = (reminder_time or "").strip() or None
+        if rt and len(rt) > 5:
+            rt = rt[:5]
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute(
                 "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM habits WHERE user_id = ?",
@@ -721,18 +740,23 @@ class Database:
                 row = await c.fetchone()
                 sort_order = row[0] if row and row[0] is not None else 0
             cursor = await db.execute(
-                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
-                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0, sort_order)
+                "INSERT INTO habits (user_id, title, description, is_example, is_water_calculated, sort_order, reminder_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, title, description, 1 if is_example else 0, 1 if is_water_calculated else 0, sort_order, rt),
             )
             await db.commit()
             return cursor.lastrowid
 
-    async def update_habit(self, habit_id: int, title: str, description: str = "") -> bool:
-        """Обновление привычки. После сохранения пользователем снимается метка «пример» и «рассчитана автоматически»."""
+    async def update_habit(
+        self, habit_id: int, title: str, description: str = "", reminder_time: Optional[str] = None
+    ) -> bool:
+        """Обновление привычки. reminder_time — HH:MM или пусто."""
         async with aiosqlite.connect(self.db_path) as db:
+            rt = (reminder_time or "").strip() or None
+            if rt and len(rt) > 5:
+                rt = rt[:5]
             await db.execute(
-                "UPDATE habits SET title = ?, description = ?, is_example = 0, is_water_calculated = 0 WHERE id = ?",
-                (title, description or "", habit_id)
+                "UPDATE habits SET title = ?, description = ?, is_example = 0, is_water_calculated = 0, reminder_time = ? WHERE id = ?",
+                (title, description or "", rt, habit_id),
             )
             await db.commit()
             return True
@@ -1730,29 +1754,46 @@ class Database:
 
     # --- Синхронизация с Google Календарь ---
     async def get_calendar_sync_settings(self, user_id: int) -> Dict:
-        """Настройки выгрузки в календарь: sync_subgoals, sync_habits, sync_goals."""
+        """Настройки выгрузки в календарь: sync_subgoals, sync_habits, sync_goals, event_color_id."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT sync_subgoals, sync_habits, sync_goals FROM calendar_sync_settings WHERE user_id = ?",
+                "SELECT sync_subgoals, sync_habits, sync_goals, event_color_id FROM calendar_sync_settings WHERE user_id = ?",
                 (user_id,),
             ) as c:
                 row = await c.fetchone()
         if row:
-            return {"sync_subgoals": bool(row[0]), "sync_habits": bool(row[1]), "sync_goals": bool(row[2])}
-        return {"sync_subgoals": True, "sync_habits": True, "sync_goals": True}
+            return {
+                "sync_subgoals": bool(row[0]),
+                "sync_habits": bool(row[1]),
+                "sync_goals": bool(row[2]),
+                "event_color_id": (row[3] or "").strip() or None,
+            }
+        return {"sync_subgoals": True, "sync_habits": True, "sync_goals": True, "event_color_id": None}
 
     async def set_calendar_sync_settings(
-        self, user_id: int, sync_subgoals: bool = True, sync_habits: bool = True, sync_goals: bool = True
+        self,
+        user_id: int,
+        sync_subgoals: bool = True,
+        sync_habits: bool = True,
+        sync_goals: bool = True,
+        event_color_id: Optional[str] = None,
     ) -> None:
         """Сохранить настройки выгрузки в календарь."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                """INSERT INTO calendar_sync_settings (user_id, sync_subgoals, sync_habits, sync_goals)
-                   VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+                """INSERT INTO calendar_sync_settings (user_id, sync_subgoals, sync_habits, sync_goals, event_color_id)
+                   VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
                    sync_subgoals = excluded.sync_subgoals,
                    sync_habits = excluded.sync_habits,
-                   sync_goals = excluded.sync_goals""",
-                (user_id, 1 if sync_subgoals else 0, 1 if sync_habits else 0, 1 if sync_goals else 0),
+                   sync_goals = excluded.sync_goals,
+                   event_color_id = excluded.event_color_id""",
+                (
+                    user_id,
+                    1 if sync_subgoals else 0,
+                    1 if sync_habits else 0,
+                    1 if sync_goals else 0,
+                    (event_color_id or "").strip() or None,
+                ),
             )
             await db.commit()
