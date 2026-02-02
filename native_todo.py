@@ -27,35 +27,16 @@ def _flatten_tasks(
     missions: list, goals: list, habits: list
 ) -> Tuple[str, List[Tuple[str, bool]]]:
     """
-    Собирает плоский список (заголовок, [(title, is_completed), ...]) и заголовок списка.
+    Собирает плоский список только незавершённых целей/задач (без миссий и привычек).
     """
     items: List[Tuple[str, bool]] = []
-    if missions:
-        for m in missions:
-            title = _truncate(m.get("title") or "Миссия", TODO_ITEM_TITLE_MAX)
-            items.append((title, bool(m.get("is_completed"))))
-            for sg in m.get("_subgoals") or []:
-                sg_title = _truncate(sg.get("title") or "Подцель", TODO_ITEM_TITLE_MAX)
-                items.append((sg_title, bool(sg.get("is_completed"))))
-    if goals:
-        for g in goals:
-            title = _truncate(g.get("title") or "Цель", TODO_ITEM_TITLE_MAX)
-            items.append((title, bool(g.get("is_completed"))))
-    if habits:
-        for h in habits:
-            title = _truncate(h.get("title") or "Привычка", TODO_ITEM_TITLE_MAX)
-            items.append((title, False))
+    for g in goals or []:
+        if g.get("is_completed"):
+            continue
+        title = _truncate(g.get("title") or "Цель", TODO_ITEM_TITLE_MAX)
+        items.append((title, False))
     items = items[:TODO_ITEMS_MAX]
-
-    if missions and not goals and not habits:
-        head = "Миссии"
-    elif goals and not missions and not habits:
-        head = "Цели"
-    elif habits and not missions and not goals:
-        head = "Привычки"
-    else:
-        head = "Задачи"
-    list_title = _truncate(head, TODO_TITLE_MAX)
+    list_title = _truncate("Задачи", TODO_TITLE_MAX)
     return list_title, items
 
 
