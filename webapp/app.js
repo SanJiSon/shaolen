@@ -2929,6 +2929,57 @@ function bindEvents() {
     if (e.target === shaolenOverlay) closeShaolenChat();
   });
 
+  document.body.addEventListener("click", function(e) {
+    var wrap = e.target.closest(".subgoal-cb-wrap");
+    if (wrap) {
+      var cb = wrap.querySelector("input.subgoal-done-cb");
+      if (cb) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSubgoalToggle(cb);
+      }
+    }
+  }, true);
+
+  function subgoalCompleted(s) { return s.is_completed === 1 || s.is_completed === "1" || s.is_completed === true; }
+  async function handleSubgoalToggle(checkboxEl) {
+    var sid = checkboxEl.dataset.id;
+    var subgoalsByMission = state.cache.subgoalsByMission || {};
+    var found = null, prevVal;
+    for (var mid in subgoalsByMission) {
+      var list = subgoalsByMission[mid] || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) === String(sid)) {
+          found = list[i];
+          prevVal = found.is_completed;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) return;
+    var newChecked = !subgoalCompleted(found);
+    found.is_completed = newChecked ? 1 : 0;
+    checkboxEl.checked = newChecked;
+    var row = checkboxEl.closest(".subgoal-row");
+    if (row) row.classList.toggle("subgoal-done", newChecked);
+    renderMissions(state.cache.missions);
+    try {
+      if (newChecked) {
+        await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/complete", { method: "POST" });
+      } else {
+        await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/uncomplete", { method: "POST" });
+      }
+      await loadAll();
+    } catch (err) {
+      found.is_completed = prevVal;
+      checkboxEl.checked = !newChecked;
+      if (row) row.classList.toggle("subgoal-done", !newChecked);
+      renderMissions(state.cache.missions);
+      if (tg) tg.showAlert("Ошибка");
+    }
+  }
+
   document.body.addEventListener("change", async function(e) {
     var cb = e.target;
     if (cb.classList && cb.classList.contains("mission-done-cb") && cb.checked) {
@@ -2974,36 +3025,7 @@ function bindEvents() {
     if (cb.classList && cb.classList.contains("subgoal-done-cb")) {
       e.preventDefault();
       e.stopPropagation();
-      var sid = cb.dataset.id;
-      var subgoalsByMission = state.cache.subgoalsByMission || {};
-      var found = null, prevVal;
-      for (var mid in subgoalsByMission) {
-        var list = subgoalsByMission[mid] || [];
-        for (var i = 0; i < list.length; i++) {
-          if (String(list[i].id) === String(sid)) {
-            found = list[i];
-            prevVal = found.is_completed;
-            found.is_completed = cb.checked ? 1 : 0;
-            break;
-          }
-        }
-        if (found) break;
-      }
-      if (found) {
-        renderMissions(state.cache.missions);
-        try {
-          if (cb.checked) {
-            await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/complete", { method: "POST" });
-          } else {
-            await fetchJSON(state.baseUrl + "/api/subgoals/" + sid + "/uncomplete", { method: "POST" });
-          }
-          await loadAll();
-        } catch (err) {
-          found.is_completed = prevVal;
-          renderMissions(state.cache.missions);
-          if (tg) tg.showAlert("Ошибка");
-        }
-      }
+      handleSubgoalToggle(cb);
       return;
     }
   });
