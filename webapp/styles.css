@@ -456,33 +456,32 @@ body {
   font-size: 15px;
   color: var(--text);
 }
-.category-color-swatch-select {
+.category-colors-row-select-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
-.category-color-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+.category-color-current-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   border: 2px solid rgba(148, 163, 184, 0.3);
-  cursor: pointer;
   flex-shrink: 0;
 }
-.category-color-swatch:hover {
-  border-color: var(--accent);
-  transform: scale(1.1);
-}
-.category-color-swatch.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.category-color-swatch.default {
+.category-color-current-swatch.default {
   background: var(--bg-elevated);
-  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%);
-  background-size: 8px 8px;
-  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+  background-image: linear-gradient(45deg, #888 25%, transparent 25%), linear-gradient(-45deg, #888 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #888 75%), linear-gradient(-45deg, transparent 75%, #888 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0;
+}
+.category-colors-select {
+  min-width: 140px;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  color: var(--text);
 }
 
 .habit-calendar-overlay {

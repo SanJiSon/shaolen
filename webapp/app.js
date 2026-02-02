@@ -2590,7 +2590,7 @@ function renderSettings() {
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
     "</div>" +
     "<div class=\"settings-row\">" +
-      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет для целей и подцелей; для привычек используется цвет категории, если задан.</div></div>" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Применяется к целям и подцелям при выгрузке в календарь. Для привычек используется цвет их категории (кнопка «Настроить цвета» ниже); если у привычки нет категории или у категории не задан цвет — берётся этот.</div></div>" +
       colorSelectHtml +
     "</div>" +
     "<div class=\"settings-row\">" +
@@ -2829,52 +2829,72 @@ function closeHabitFilterOverlay() {
   if (ov) ov.classList.add("hidden");
 }
 
+var CATEGORY_COLOR_OPTIONS = [
+  { v: "", l: "По умолчанию" },
+  { v: "1", l: "Лавандовый" },
+  { v: "2", l: "Шалфей" },
+  { v: "3", l: "Виноград" },
+  { v: "4", l: "Фламинго" },
+  { v: "5", l: "Банан" },
+  { v: "6", l: "Мандарин" },
+  { v: "7", l: "Павлин" },
+  { v: "8", l: "Графит" },
+  { v: "9", l: "Черника" },
+  { v: "10", l: "Базилик" },
+  { v: "11", l: "Томат" }
+];
+
 function openCategoryColorsOverlay() {
   var ov = $("#category-colors-overlay");
   var listEl = $("#category-colors-list");
   if (!ov || !listEl) return;
   var cats = state.cache.habitCategories || [];
   var html = "";
-  var colorIds = ["", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
   cats.forEach(function(c) {
     var currentColor = (c.color_id || "").toString();
-    var swatches = colorIds.map(function(v) {
-      var isDefault = v === "";
-      var isSelected = currentColor === v;
-      var style = isDefault ? "" : " background-color:" + (CALENDAR_COLOR_HEX[v] || "#999") + ";";
-      var cls = "category-color-swatch" + (isDefault ? " default" : "") + (isSelected ? " selected" : "");
-      return "<span class=\"" + cls + "\" data-color-id=\"" + escapeHtml(v) + "\" title=\"" + (isDefault ? "По умолчанию" : v) + "\" style=\"" + (style || "") + "\"></span>";
+    var opts = CATEGORY_COLOR_OPTIONS.map(function(o) {
+      return "<option value=\"" + escapeHtml(o.v) + "\"" + (currentColor === o.v ? " selected" : "") + ">" + escapeHtml(o.l) + "</option>";
     }).join("");
+    var swatchStyle = currentColor ? " background-color:" + (CALENDAR_COLOR_HEX[currentColor] || "#999") + ";" : "";
+    var swatchClass = "category-color-current-swatch" + (currentColor ? "" : " default");
     html += "<div class=\"category-colors-row\" data-category-id=\"" + (c.id != null ? c.id : "") + "\">" +
       "<span class=\"category-colors-row-label\">" + escapeHtml(c.name || "") + "</span>" +
-      "<div class=\"category-color-swatch-select\">" + swatches + "</div></div>";
+      "<div class=\"category-colors-row-select-wrap\">" +
+      "<span class=\"" + swatchClass + "\" style=\"" + swatchStyle + "\" aria-hidden=\"true\"></span>" +
+      "<select class=\"category-colors-select\">" + opts + "</select></div></div>";
   });
   listEl.innerHTML = html || "<p class=\"category-colors-empty\">Нет категорий.</p>";
   listEl.querySelectorAll(".category-colors-row").forEach(function(row) {
-    var categoryId = row.dataset.categoryId ? parseInt(row.dataset.categoryId, 10) : null;
-    if (categoryId == null) return;
-    row.querySelectorAll(".category-color-swatch").forEach(function(sw) {
-      sw.addEventListener("click", async function() {
-        var colorId = (sw.dataset.colorId || "").trim() || null;
-        row.querySelectorAll(".category-color-swatch").forEach(function(s) { s.classList.remove("selected"); });
-        sw.classList.add("selected");
-        var cats2 = state.cache.habitCategories || [];
-        var payload = cats2.map(function(c) {
-          var el = document.querySelector(".category-colors-row[data-category-id=\"" + c.id + "\"] .category-color-swatch.selected");
-          var cid = (el && el.dataset.colorId) ? (el.dataset.colorId.trim() || null) : null;
-          return { category_id: c.id, color_id: cid };
-        });
-        try {
-          await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-categories/colors", {
-            method: "PUT",
-            body: JSON.stringify({ categories: payload })
-          });
-          var cat = cats2.find(function(x) { return x.id === categoryId; });
-          if (cat) cat.color_id = colorId;
-        } catch (e) {
-          if (tg) tg.showAlert("Не удалось сохранить цвет.");
-        }
+    var select = row.querySelector(".category-colors-select");
+    var swatch = row.querySelector(".category-color-current-swatch");
+    if (!select || !swatch) return;
+    select.addEventListener("change", async function() {
+      var colorId = (select.value || "").trim() || null;
+      if (colorId) {
+        swatch.style.backgroundColor = CALENDAR_COLOR_HEX[colorId] || "#999";
+        swatch.classList.remove("default");
+      } else {
+        swatch.style.backgroundColor = "";
+        swatch.classList.add("default");
+      }
+      var cats2 = state.cache.habitCategories || [];
+      var payload = cats2.map(function(c) {
+        var sel = listEl.querySelector(".category-colors-row[data-category-id=\"" + c.id + "\"] .category-colors-select");
+        var v = (sel && sel.value) ? sel.value.trim() || null : null;
+        return { category_id: c.id, color_id: v };
       });
+      try {
+        await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/habit-categories/colors", {
+          method: "PUT",
+          body: JSON.stringify({ categories: payload })
+        });
+        cats2.forEach(function(c) {
+          var sel = listEl.querySelector(".category-colors-row[data-category-id=\"" + c.id + "\"] .category-colors-select");
+          if (sel) c.color_id = (sel.value || "").trim() || null;
+        });
+      } catch (e) {
+        if (tg) tg.showAlert("Не удалось сохранить цвет.");
+      }
     });
   });
   ov.classList.remove("hidden");
