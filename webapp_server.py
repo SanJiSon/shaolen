@@ -1095,6 +1095,12 @@ async def api_calendar_sync(user_id: int):
     errors = []
     today = now.strftime("%Y-%m-%d")
     tz = "Europe/Moscow"
+    # Google Calendar API: colorId — строка из палитры событий (events), значения "1"—"11". Документация: https://developers.google.com/calendar/api/v3/reference/events
+    event_color_id = (settings.get("event_color_id") or "").strip() or None
+    if event_color_id and event_color_id not in (str(i) for i in range(1, 12)):
+        event_color_id = None
+    if event_color_id:
+        logger.info("calendar-sync: используем цвет событий colorId=%s", event_color_id)
 
     try:
         if settings.get("sync_habits", True):
@@ -1123,8 +1129,8 @@ async def api_calendar_sync(user_id: int):
                     "end": {"dateTime": end_dt, "timeZone": tz},
                     "recurrence": ["RRULE:FREQ=DAILY"],
                 }
-                if settings.get("event_color_id"):
-                    event["colorId"] = settings["event_color_id"]
+                if event_color_id:
+                    event["colorId"] = str(event_color_id)
                 try:
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
@@ -1160,8 +1166,8 @@ async def api_calendar_sync(user_id: int):
                     "start": {"dateTime": start_dt, "timeZone": tz},
                     "end": {"dateTime": end_dt, "timeZone": tz},
                 }
-                if settings.get("event_color_id"):
-                    event["colorId"] = settings["event_color_id"]
+                if event_color_id:
+                    event["colorId"] = str(event_color_id)
                 try:
                     async with httpx.AsyncClient() as client:
                         r = await client.post(
@@ -1199,8 +1205,8 @@ async def api_calendar_sync(user_id: int):
                         "start": {"dateTime": f"{dl_str}T{hour:02d}:00:00", "timeZone": tz},
                         "end": {"dateTime": f"{dl_str}T{hour:02d}:30:00", "timeZone": tz},
                     }
-                    if settings.get("event_color_id"):
-                        event["colorId"] = settings["event_color_id"]
+                    if event_color_id:
+                        event["colorId"] = str(event_color_id)
                     try:
                         async with httpx.AsyncClient() as client:
                             r = await client.post(
