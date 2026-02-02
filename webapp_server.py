@@ -1136,7 +1136,7 @@ async def api_calendar_sync(user_id: int):
         except Exception:
             expires_at = None
     if expires_at and (now - timedelta(minutes=5)) >= expires_at and refresh:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             rr = await client.post(
                 "https://oauth2.googleapis.com/token",
                 data={
@@ -1170,10 +1170,16 @@ async def api_calendar_sync(user_id: int):
     if event_color_id:
         logger.info("calendar-sync: цвет colorId=%s; отдельный календарь (iOS)=%s", event_color_id, use_dedicated)
 
+    # Таймаут для Google Calendar API (по умолчанию 5 с бывает мало — ReadTimeout)
+    calendar_timeout = 60.0
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=calendar_timeout) as client:
             if use_dedicated and event_color_id:
-                calendar_id = await _ensure_shaolen_calendar(client, headers, user_id, event_color_id, settings)
+                try:
+                    calendar_id = await _ensure_shaolen_calendar(client, headers, user_id, event_color_id, settings)
+                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ConnectError) as e:
+                    logger.warning("calendar-sync: таймаут/ошибка при получении календаря «Шаолень Привычки»: %s — используем основной календарь", e)
+                    calendar_id = "primary"
             else:
                 calendar_id = "primary"
             calendar_base = _calendar_base_url(calendar_id)
@@ -1210,7 +1216,7 @@ async def api_calendar_sync(user_id: int):
                 if event_color_id:
                     event["colorId"] = str(event_color_id)
                 try:
-                    async with httpx.AsyncClient() as client:
+                    async with httpx.AsyncClient(timeout=calendar_timeout) as client:
                         r = await client.post(
                             f"{calendar_base}/events",
                             json=event,
@@ -1222,7 +1228,7 @@ async def api_calendar_sync(user_id: int):
                         eid = resp_data.get("id")
                         if event_color_id and eid:
                             try:
-                                async with httpx.AsyncClient() as patch_client:
+                                async with httpx.AsyncClient(timeout=calendar_timeout) as patch_client:
                                     patch_r = await patch_client.patch(
                                         f"{calendar_base}/events/{eid}",
                                         json={"colorId": str(event_color_id)},
@@ -1261,9 +1267,9 @@ async def api_calendar_sync(user_id: int):
                 if event_color_id:
                     event["colorId"] = str(event_color_id)
                 try:
-                    async with httpx.AsyncClient() as client:
+                    async with httpx.AsyncClient(timeout=calendar_timeout) as client:
                         r = await client.post(
-                            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                            f"{calendar_base}/events",
                             json=event,
                             headers=headers,
                         )
@@ -1275,7 +1281,7 @@ async def api_calendar_sync(user_id: int):
                                 eid = resp_data.get("id")
                                 if eid:
                                     await client.patch(
-                                        f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{eid}",
+                                        f"{calendar_base}/events/{eid}",
                                         json={"colorId": str(event_color_id)},
                                         headers=headers,
                                     )
@@ -1312,9 +1318,9 @@ async def api_calendar_sync(user_id: int):
                     if event_color_id:
                         event["colorId"] = str(event_color_id)
                     try:
-                        async with httpx.AsyncClient() as client:
+                        async with httpx.AsyncClient(timeout=calendar_timeout) as client:
                             r = await client.post(
-                                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                                f"{calendar_base}/events",
                                 json=event,
                                 headers=headers,
                             )
@@ -1326,7 +1332,7 @@ async def api_calendar_sync(user_id: int):
                                     eid = resp_data.get("id")
                                     if eid:
                                         await client.patch(
-                                            f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{eid}",
+                                            f"{calendar_base}/events/{eid}",
                                             json={"colorId": str(event_color_id)},
                                             headers=headers,
                                         )
@@ -1347,6 +1353,12 @@ async def api_calendar_sync(user_id: int):
                 "отключите/подключите Google в настройках (чтобы получить доступ к календарю)."
             )
         return JSONResponse(content=resp)
+    except httpx.ReadTimeout:
+        logger.warning("calendar sync: ReadTimeout from Google API")
+        return JSONResponse(status_code=503, content={"detail": "Google Calendar ответил слишком долго. Попробуйте позже."})
+    except httpx.ConnectTimeout:
+        logger.warning("calendar sync: ConnectTimeout to Google API")
+        return JSONResponse(status_code=503, content={"detail": "Не удалось подключиться к Google. Попробуйте позже."})
     except Exception as e:
         logger.exception("calendar sync: %s", e)
         return JSONResponse(status_code=500, content={"detail": str(e)})
