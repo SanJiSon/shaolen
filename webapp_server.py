@@ -164,6 +164,7 @@ class GoalUpdate(BaseModel):
     description: Optional[str] = ""
     deadline: Optional[str] = None
     priority: int = 1
+    is_pinned: Optional[bool] = None
 
 
 class HabitUpdate(BaseModel):
@@ -560,7 +561,10 @@ async def api_add_goal(payload: GoalCreate):
 @app.put("/api/goals/{goal_id}")
 async def api_update_goal(goal_id: int, payload: GoalUpdate):
     """Редактирование цели"""
-    await db.update_goal(goal_id, payload.title, payload.description or "", payload.deadline, payload.priority)
+    await db.update_goal(
+        goal_id, payload.title, payload.description or "", payload.deadline, payload.priority,
+        is_pinned=payload.is_pinned
+    )
     goal = await db.get_goal(goal_id)
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")

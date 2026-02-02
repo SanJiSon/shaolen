@@ -139,6 +139,14 @@ class Database:
                 except Exception:
                     pass
             try:
+                await db.execute("ALTER TABLE goals ADD COLUMN is_pinned INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                await db.execute("ALTER TABLE goals ADD COLUMN pin_order INTEGER")
+            except Exception:
+                pass
+            try:
                 await db.execute("ALTER TABLE habits ADD COLUMN reminder_time TEXT")
             except Exception:
                 pass
@@ -693,13 +701,13 @@ class Database:
             return cursor.lastrowid
 
     async def get_goals(self, user_id: int, include_completed: bool = False) -> List[Dict]:
-        """Получение всех целей пользователя (по sort_order, затем priority, created_at)."""
+        """Получение всех целей пользователя (закреплённые сверху по pin_order, затем sort_order, priority, created_at)."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM goals WHERE user_id = ?"
             if not include_completed:
                 query += " AND is_completed = 0"
-            query += " ORDER BY COALESCE(sort_order, 999999), priority DESC, created_at DESC"
+            query += " ORDER BY (CASE WHEN COALESCE(is_pinned, 0) = 1 THEN 0 ELSE 1 END), COALESCE(pin_order, 999999), COALESCE(sort_order, 999999), priority DESC, created_at DESC"
             async with db.execute(query, (user_id,)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
@@ -743,14 +751,41 @@ class Database:
             await db.commit()
 
     async def update_goal(self, goal_id: int, title: str, description: str = "",
-                         deadline: Optional[str] = None, priority: int = 1) -> bool:
-        """Обновление цели. После сохранения пользователем снимается метка «пример»."""
+                         deadline: Optional[str] = None, priority: int = 1,
+                         is_pinned: Optional[bool] = None) -> bool:
+        """Обновление цели. После сохранения пользователем снимается метка «пример».
+        is_pinned=True: закрепить (pin_order = max+1). is_pinned=False: открепить (pin_order NULL)."""
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?, is_example = 0
-                   WHERE id = ?""",
-                (title, description or "", deadline, priority, goal_id)
-            )
+            if is_pinned is True:
+                async with db.execute("SELECT user_id FROM goals WHERE id = ?", (goal_id,)) as c:
+                    ur = await c.fetchone()
+                    user_id = ur[0] if ur else None
+                if user_id is None:
+                    await db.commit()
+                    return False
+                async with db.execute(
+                    "SELECT COALESCE(MAX(pin_order), -1) + 1 FROM goals WHERE user_id = ? AND is_pinned = 1",
+                    (user_id,)
+                ) as c:
+                    row = await c.fetchone()
+                    pin_order = row[0] if row and row[0] is not None else 0
+                await db.execute(
+                    """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?, is_example = 0,
+                       is_pinned = 1, pin_order = ? WHERE id = ?""",
+                    (title, description or "", deadline, priority, pin_order, goal_id)
+                )
+            elif is_pinned is False:
+                await db.execute(
+                    """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?, is_example = 0,
+                       is_pinned = 0, pin_order = NULL WHERE id = ?""",
+                    (title, description or "", deadline, priority, goal_id)
+                )
+            else:
+                await db.execute(
+                    """UPDATE goals SET title = ?, description = ?, deadline = ?, priority = ?, is_example = 0
+                       WHERE id = ?""",
+                    (title, description or "", deadline, priority, goal_id)
+                )
             await db.commit()
             return True
 
