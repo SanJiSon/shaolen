@@ -489,6 +489,8 @@ async def api_get_subgoals(mission_id: int):
             for key, value in subgoal.items():
                 if value is None:
                     clean_subgoal[key] = None
+                elif key == "is_completed":
+                    clean_subgoal[key] = 1 if (value and value != 0 and value != "0") else 0
                 elif isinstance(value, (int, float, bool, str)):
                     clean_subgoal[key] = value
                 else:
