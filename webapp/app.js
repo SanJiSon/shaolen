@@ -43,7 +43,7 @@ const state = {
   reminderSettings: null,
   googleFitConnected: false,
   googleFitSteps: null,
-  calendarSyncSettings: { sync_subgoals: true, sync_habits: true, sync_goals: true },
+  calendarSyncSettings: { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "" },
   habitCalendarYear: new Date().getFullYear(),
   habitCalendarMonth: new Date().getMonth() + 1
 };
@@ -231,6 +231,12 @@ function openDialog({ title, extraHtml = "", onSave, onDelete, initialValues }) 
     setTimeout(function() {
       var pe = document.getElementById("priority-input");
       if (pe) pe.value = String(iv.priority);
+    }, 0);
+  }
+  if (extraEl && iv.reminder_time != null) {
+    setTimeout(function() {
+      var re = document.getElementById("reminder-time-input");
+      if (re) re.value = (iv.reminder_time || "").slice(0, 5);
     }, 0);
   }
 
@@ -2500,10 +2506,28 @@ function renderSettings() {
   var s = state.reminderSettings || { notifications_enabled: true };
   var on = !!s.notifications_enabled;
   var gfConnected = !!state.googleFitConnected;
-  var cal = state.calendarSyncSettings || { sync_subgoals: true, sync_habits: true, sync_goals: true };
+  var cal = state.calendarSyncSettings || { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "" };
   var calSub = !!cal.sync_subgoals;
   var calHabits = !!cal.sync_habits;
   var calGoals = !!cal.sync_goals;
+  var calColor = cal.event_color_id || "";
+  var colorOptions = [
+    { v: "", l: "По умолчанию" },
+    { v: "1", l: "Лавандовый" },
+    { v: "2", l: "Шалфей" },
+    { v: "3", l: "Виноград" },
+    { v: "4", l: "Фламинго" },
+    { v: "5", l: "Банан" },
+    { v: "6", l: "Мандарин" },
+    { v: "7", l: "Павлин" },
+    { v: "8", l: "Графит" },
+    { v: "9", l: "Черника" },
+    { v: "10", l: "Базилик" },
+    { v: "11", l: "Томат" }
+  ];
+  var colorSelectHtml = "<select id=\"settings-cal-color\" class=\"settings-select\">" +
+    colorOptions.map(function(o) { return "<option value=\"" + o.v + "\"" + (calColor === o.v ? " selected" : "") + ">" + o.l + "</option>"; }).join("") +
+    "</select>";
   container.innerHTML =
     "<div class=\"settings-row\">" +
       "<div><div class=\"settings-row-label\">Уведомления</div>" +
@@ -2528,6 +2552,10 @@ function renderSettings() {
     "<div class=\"settings-row settings-row-toggle\">" +
       "<div><div class=\"settings-row-label\">Цели</div><div class=\"settings-row-hint\">Цели с дедлайнами</div></div>" +
       "<button type=\"button\" class=\"settings-toggle " + (calGoals ? "on" : "") + "\" id=\"settings-cal-goals\" aria-label=\"Цели " + (calGoals ? "вкл" : "выкл") + "\"></button>" +
+    "</div>" +
+    "<div class=\"settings-row\">" +
+      "<div><div class=\"settings-row-label\">Цвет событий в календаре</div><div class=\"settings-row-hint\">Цвет уведомлений при синхронизации с Google Calendar</div></div>" +
+      colorSelectHtml +
     "</div>" +
     "<div class=\"settings-row settings-cal-sync-row\" style=\"margin-top:12px;\">" +
       "<div class=\"settings-cal-sync-actions\">" +
@@ -2582,6 +2610,15 @@ function renderSettings() {
     } catch (e) {
       calGoalsBtn.classList.toggle("on", !v);
       if (tg) tg.showAlert("Не удалось сохранить.");
+    }
+  });
+  var calColorSelect = $("#settings-cal-color");
+  if (calColorSelect) calColorSelect.addEventListener("change", async function() {
+    var v = calColorSelect.value || "";
+    try {
+      await _saveCalendarSyncSettings({ event_color_id: v });
+    } catch (e) {
+      if (tg) tg.showAlert("Не удалось сохранить цвет.");
     }
   });
   var calSyncBtn = $("#settings-cal-sync-btn");
@@ -2651,9 +2688,9 @@ async function loadCalendarSyncSettings() {
   try {
     var r = await fetchJSON(state.baseUrl + "/api/user/" + state.userId + "/calendar-sync-settings");
     if (r && (r.sync_subgoals !== undefined || r.sync_habits !== undefined || r.sync_goals !== undefined)) {
-      state.calendarSyncSettings = { sync_subgoals: !!r.sync_subgoals, sync_habits: !!r.sync_habits, sync_goals: !!r.sync_goals };
+      state.calendarSyncSettings = { sync_subgoals: !!r.sync_subgoals, sync_habits: !!r.sync_habits, sync_goals: !!r.sync_goals, event_color_id: r.event_color_id || "" };
     }
-  } catch (e) { state.calendarSyncSettings = { sync_subgoals: true, sync_habits: true, sync_goals: true }; }
+  } catch (e) { state.calendarSyncSettings = { sync_subgoals: true, sync_habits: true, sync_goals: true, event_color_id: "" }; }
 }
 
 function openSettingsOverlay() {
@@ -3090,11 +3127,15 @@ function bindEvents() {
                 }
               });
             } else if (type === "habit") {
+              var habitTimeExtra = "<label>Время (напоминания и календарь)</label><input id=\"reminder-time-input\" class=\"input\" type=\"time\" />";
               openDialog({
                 title: "Редактировать привычку",
-                initialValues: { title: item.title || "", description: item.description || "" },
+                extraHtml: habitTimeExtra,
+                initialValues: { title: item.title || "", description: item.description || "", reminder_time: item.reminder_time || "" },
                 onSave: async function(p) {
-                  await fetchJSON(state.baseUrl + "/api/habits/" + id, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description }) });
+                  var timeEl = document.getElementById("reminder-time-input");
+                  var rt = (timeEl && timeEl.value) ? timeEl.value : "";
+                  await fetchJSON(state.baseUrl + "/api/habits/" + id, { method: "PUT", body: JSON.stringify({ title: p.title, description: p.description, reminder_time: rt || null }) });
                   await loadAll();
                 }
               });
@@ -3187,13 +3228,17 @@ function bindEvents() {
     if (tg && tg.MainButton) tg.MainButton.hide();
     if (!state.userId) await ensureUserId();
     if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
+    var habitTimeExtra = "<label>Время напоминания (и в календаре)</label><input id=\"reminder-time-input\" class=\"input\" type=\"time\" />";
     openDialog({
       title: "Новая привычка",
-      onSave: async function( data ) {
+      extraHtml: habitTimeExtra,
+      onSave: async function(data) {
+        var rtEl = document.getElementById("reminder-time-input");
+        var rt = (rtEl && rtEl.value) ? rtEl.value : null;
         await fetchJSON(state.baseUrl + "/api/habits", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: state.userId, title: data.title, description: data.description || "" }),
+          body: JSON.stringify({ user_id: state.userId, title: data.title, description: data.description || "", reminder_time: rt || null }),
         });
         await loadAll();
       },

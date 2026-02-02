@@ -522,6 +522,15 @@ body {
 }
 .settings-toggle.on::after { transform: translateX(24px); }
 .settings-section-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 18px 0 8px 0; }
+.settings-select {
+  padding: 8px 12px;
+  font-size: 14px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--muted-strong);
+  border-radius: var(--radius-sm);
+  min-width: 140px;
+}
 .settings-cal-sync-row { align-items: center; }
 .settings-cal-sync-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .settings-cal-sync-row .primary-btn { flex-shrink: 0; }
