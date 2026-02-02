@@ -201,6 +201,47 @@ async function fetchJSON(url, options = {}) {
   }
 }
 
+var GOAL_PRIORITY_BAR_HTML = "<label>Приоритет</label>" +
+  "<div class=\"priority-bar-wrap\">" +
+  "<div class=\"priority-bar\" role=\"group\" aria-label=\"Приоритет\">" +
+  "<button type=\"button\" class=\"priority-segment priority-low\" data-value=\"1\">LOW</button>" +
+  "<button type=\"button\" class=\"priority-segment priority-medium\" data-value=\"2\">MEDIUM</button>" +
+  "<button type=\"button\" class=\"priority-segment priority-high\" data-value=\"3\">HIGH</button>" +
+  "</div>" +
+  "<div class=\"priority-track\"><div class=\"priority-triangle\" aria-hidden=\"true\"></div></div>" +
+  "<input type=\"hidden\" id=\"priority-input\" value=\"1\" />" +
+  "</div>";
+
+function setupPriorityBar(container) {
+  if (!container) return;
+  var bar = container.querySelector(".priority-bar");
+  var track = container.querySelector(".priority-track");
+  var triangle = container.querySelector(".priority-triangle");
+  var input = container.querySelector("#priority-input") || document.getElementById("priority-input");
+  if (!bar || !input) return;
+  var segments = bar.querySelectorAll(".priority-segment");
+  var val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 1 || val > 3) val = 1;
+  input.value = String(val);
+  function setActive(v) {
+    var n = parseInt(v, 10);
+    if (isNaN(n) || n < 1 || n > 3) return;
+    input.value = String(n);
+    segments.forEach(function(s) { s.classList.toggle("active", parseInt(s.dataset.value, 10) === n); });
+    if (track && triangle) {
+      var pct = (n - 1) * 50;
+      triangle.style.left = pct + "%";
+      triangle.style.transform = "translateX(-50%)";
+    }
+  }
+  setActive(val);
+  segments.forEach(function(seg) {
+    seg.addEventListener("click", function() {
+      setActive(seg.dataset.value);
+    });
+  });
+}
+
 function openDialog({ title, extraHtml = "", onSave, onDelete, initialValues }) {
   if (tg && tg.MainButton) tg.MainButton.hide();
   var titleEl = $("#dialog-title");
@@ -252,6 +293,13 @@ function openDialog({ title, extraHtml = "", onSave, onDelete, initialValues }) 
     setTimeout(function() {
       var re = document.getElementById("reminder-time-input");
       if (re) re.value = (iv.reminder_time || "").slice(0, 5);
+    }, 0);
+  }
+  if (extraEl && extraEl.querySelector(".priority-bar")) {
+    setTimeout(function() {
+      var pe = document.getElementById("priority-input");
+      if (pe && iv.priority != null) pe.value = String(iv.priority);
+      setupPriorityBar(extraEl);
     }, 0);
   }
 
@@ -318,36 +366,48 @@ function openDialog({ title, extraHtml = "", onSave, onDelete, initialValues }) 
 
 // --- render ---
 
-function wrapSwipeDelete(node, type, id) {
+function wrapSwipeDelete(node, type, id, opts) {
   const wrap = document.createElement("div");
   wrap.className = "swipe-row";
   wrap.dataset.type = type;
   wrap.dataset.id = String(id);
-  wrap.innerHTML = `
-    <div class="swipe-row-drag-handle" aria-label="Перетащить"><span class="material-symbols-outlined">drag_indicator</span></div>
-    <div class="swipe-row-content">${node.outerHTML}</div>
-    <div class="swipe-row-actions"><button type="button" class="swipe-delete-btn">Удалить</button></div>
-  `;
+  var actionHtml;
+  if (opts && opts.swipeActions && opts.swipeActions.indexOf("archive") !== -1 && opts.swipeActions.indexOf("delete") !== -1) {
+    wrap.dataset.swipeActions = "archive,delete";
+    actionHtml = "<button type=\"button\" class=\"swipe-action-btn\" data-action=\"archive\"><span class=\"material-symbols-outlined\">archive</span> В архив</button>" +
+      "<button type=\"button\" class=\"swipe-action-btn swipe-delete-btn\" data-action=\"delete\">Удалить</button>";
+  } else if (opts && opts.swipeAction === "archive") {
+    wrap.dataset.swipeAction = "archive";
+    actionHtml = "<button type=\"button\" class=\"swipe-delete-btn swipe-archive-btn\" data-action=\"archive\"><span class=\"material-symbols-outlined\">archive</span> В архив</button>";
+  } else {
+    actionHtml = "<button type=\"button\" class=\"swipe-delete-btn\" data-action=\"delete\">Удалить</button>";
+  }
+  wrap.innerHTML =
+    "<div class=\"swipe-row-drag-handle\" aria-label=\"Перетащить\"><span class=\"material-symbols-outlined\">drag_indicator</span></div>" +
+    "<div class=\"swipe-row-content\">" + node.outerHTML + "</div>" +
+    "<div class=\"swipe-row-actions\">" + actionHtml + "</div>";
   return wrap;
 }
 
 function setupSwipeDelete(container) {
   if (!container) return;
   const rows = container.querySelectorAll(".swipe-row");
-  const w = 72;
   rows.forEach((row) => {
+    var w = 72;
+    if (row.dataset.swipeActions === "archive,delete") w = 172;
+    else if (row.dataset.swipeAction === "archive") w = 100;
     const type = row.dataset.type;
     const id = row.dataset.id;
     const content = row.querySelector(".swipe-row-content");
-    const btn = row.querySelector(".swipe-delete-btn");
+    const actionBtns = row.querySelectorAll(".swipe-row-actions [data-action]");
     let startX = 0, startY = 0, startLeft = 0, tracking = false;
     const apply = (x) => {
       const v = Math.max(-w, Math.min(0, x));
       if (content) content.style.transform = "translateX(" + v + "px)";
-      row.classList.toggle("swiped", v <= -w / 2);
+      row.classList.toggle("swiped", v <= -(w / 2));
     };
     const onStart = (e) => {
-      if (e.target.closest(".habit-btn, .swipe-delete-btn, .swipe-row-drag-handle")) return;
+      if (e.target.closest(".habit-btn, .swipe-action-btn, .swipe-delete-btn, .swipe-row-drag-handle, .goal-done-cb-wrap, .goal-archive-unarchive-btn")) return;
       if (window._sortableDragging) return;
       startX = e.touches ? e.touches[0].clientX : e.clientX;
       startY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -366,9 +426,10 @@ function setupSwipeDelete(container) {
     const onEnd = () => {
       tracking = false;
       var tx = content ? (parseFloat(String(content.style.transform).replace(/[^-\d.]/g, "")) || 0) : 0;
-      row.classList.toggle("swiped", tx <= -36);
-      if (tx > -36) apply(0);
-      else apply(-72);
+      var threshold = w / 2;
+      row.classList.toggle("swiped", tx <= -threshold);
+      if (tx > -threshold) apply(0);
+      else apply(-w);
     };
     row.addEventListener("touchstart", onStart, { passive: true });
     row.addEventListener("touchmove", onMove, { passive: false });
@@ -382,20 +443,30 @@ function setupSwipeDelete(container) {
       document.addEventListener("mousemove", mm);
       document.addEventListener("mouseup", mu);
     });
-    if (btn) {
+    actionBtns.forEach(function(btn) {
       btn.addEventListener("click", async function(e) {
         e.preventDefault();
         e.stopPropagation();
+        var action = (e.currentTarget && e.currentTarget.dataset.action) || (row.dataset.swipeAction || "");
         try {
-          var url = state.baseUrl + "/api/" + (type === "mission" ? "missions" : type === "goal" ? "goals" : "habits") + "/" + id;
-          await fetch(url, { method: "DELETE" });
-          await loadAll();
+          if (action === "archive") {
+            await fetch(state.baseUrl + "/api/goals/" + id + "/complete", { method: "POST" });
+            await loadAll();
+          } else {
+            var url = state.baseUrl + "/api/" + (type === "mission" ? "missions" : type === "goal" ? "goals" : "habits") + "/" + id;
+            await fetch(url, { method: "DELETE" });
+            await loadAll();
+            if (type === "goal" && row.closest("#goal-archive-list")) {
+              var listEl = document.getElementById("goal-archive-list");
+              if (listEl) renderGoalArchiveList(listEl);
+            }
+          }
         } catch (err) {
           console.error(err);
-          if (tg) tg.showAlert("Не удалось удалить");
+          if (tg) tg.showAlert(action === "archive" ? "Не удалось отправить в архив" : "Не удалось удалить");
         }
       });
-    }
+    });
   });
 }
 
@@ -539,30 +610,39 @@ function renderGoals(goals) {
   }
   root.innerHTML = "";
 
-  if (!goals || goals.length === 0) {
-    root.innerHTML = '<div class="empty-state">У вас пока нет целей.<br>Нажмите <strong>«+ Добавить»</strong></div>';
+  var activeGoals = (goals || []).filter(function(g) { return !g.is_completed; });
+  if (!activeGoals.length) {
+    root.innerHTML = '<div class="empty-state">У вас пока нет активных целей.<br>Нажмите <strong>«+ Добавить»</strong> или откройте <strong>Архив</strong> (выполненные цели).</div>';
     return;
   }
 
-  goals.forEach(function(g) {
-    var done = g.is_completed ? "Завершена" : "В процессе";
-    var priority = g.priority === 3 ? "🔥 Высокий" : g.priority === 2 ? "⭐ Средний" : "📌 Низкий";
+  activeGoals.forEach(function(g) {
+    var done = "В процессе";
+    var pr = g.priority === 3 ? 3 : g.priority === 2 ? 2 : 1;
+    var priorityBar = "<div class=\"goal-priority-bar\" role=\"img\" aria-label=\"Приоритет " + (pr === 3 ? "высокий" : pr === 2 ? "средний" : "низкий") + "\">" +
+      "<span class=\"goal-priority-seg goal-priority-low\" data-priority=\"1\"></span>" +
+      "<span class=\"goal-priority-seg goal-priority-medium\" data-priority=\"2\"></span>" +
+      "<span class=\"goal-priority-seg goal-priority-high\" data-priority=\"3\"></span>" +
+      "</div>";
+    var pinBadge = (g.is_pinned ? "<span class=\"goal-pinned-badge\" aria-label=\"Закреплено\"><span class=\"material-symbols-outlined\">keep</span></span>" : "");
     var card = document.createElement("div");
-    card.className = "card card-goal" + (g.is_completed ? " goal-done" : "");
+    card.className = "card card-goal";
     var title = escapeHtml(g.title || "");
     var description = escapeHtml(g.description || "Без описания");
     var dl = g.deadline ? "Дедлайн: " + String(g.deadline).slice(0, 10) : "";
     var exampleBadge = (g.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     card.innerHTML =
       "<div class=\"card-header card-header-with-cb\">" +
-      "<label class=\"goal-done-cb-wrap\"><input type=\"checkbox\" class=\"goal-done-cb\" data-id=\"" + g.id + "\" " + (g.is_completed ? "checked" : "") + " /></label>" +
+      "<label class=\"goal-done-cb-wrap\"><input type=\"checkbox\" class=\"goal-done-cb\" data-id=\"" + g.id + "\" /></label>" +
       "<div class=\"card-title\">" + title + "</div>" +
-      "<span class=\"badge\">" + priority + "</span>" + exampleBadge +
+      pinBadge +
+      "<div class=\"goal-priority-bar-wrap\" data-priority=\"" + pr + "\">" + priorityBar + "</div>" +
+      exampleBadge +
       "</div>" +
       "<div class=\"card-description\">" + description + "</div>" +
       "<div class=\"card-meta\"><span>" + done + "</span><span>" + dl + "</span></div>" +
       "";
-    root.appendChild(wrapSwipeDelete(card, "goal", g.id));
+    root.appendChild(wrapSwipeDelete(card, "goal", g.id, { swipeActions: ["archive", "delete"] }));
   });
   setupSwipeDelete(root);
   setupSortableGoals(root);
@@ -2829,6 +2909,54 @@ function closeHabitFilterOverlay() {
   if (ov) ov.classList.add("hidden");
 }
 
+function renderGoalArchiveList(listEl) {
+  if (!listEl) return;
+  var completed = (state.cache.goals || []).filter(function(g) { return g.is_completed; });
+  if (completed.length === 0) {
+    listEl.innerHTML = "<p class=\"goal-archive-empty\">Нет выполненных целей.</p>";
+    return;
+  }
+  listEl.innerHTML = "";
+  completed.forEach(function(g) {
+    var title = escapeHtml(g.title || "Цель");
+    var inner = document.createElement("div");
+    inner.className = "goal-archive-item";
+    inner.setAttribute("data-goal-id", String(g.id));
+    inner.innerHTML = "<span class=\"goal-archive-item-title\">" + title + "</span>" +
+      "<button type=\"button\" class=\"goal-archive-unarchive-btn\" data-goal-id=\"" + g.id + "\" aria-label=\"Вернуть из архива\"><span class=\"material-symbols-outlined\">unarchive</span> Вернуть</button>";
+    listEl.appendChild(wrapSwipeDelete(inner, "goal", g.id));
+  });
+  listEl.querySelectorAll(".goal-archive-unarchive-btn").forEach(function(btn) {
+    btn.addEventListener("click", async function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var gid = btn.dataset.goalId;
+      if (!gid) return;
+      try {
+        await fetchJSON(state.baseUrl + "/api/goals/" + gid + "/uncomplete", { method: "POST" });
+        await loadAll();
+        renderGoalArchiveList(listEl);
+      } catch (err) {
+        if (tg) tg.showAlert("Не удалось вернуть цель.");
+      }
+    });
+  });
+  setupSwipeDelete(listEl);
+}
+
+function openGoalArchiveOverlay() {
+  var ov = $("#goal-archive-overlay");
+  var listEl = $("#goal-archive-list");
+  if (!ov || !listEl) return;
+  renderGoalArchiveList(listEl);
+  ov.classList.remove("hidden");
+}
+
+function closeGoalArchiveOverlay() {
+  var ov = $("#goal-archive-overlay");
+  if (ov) ov.classList.add("hidden");
+}
+
 var CATEGORY_COLOR_OPTIONS = [
   { v: "", l: "По умолчанию" },
   { v: "1", l: "Лавандовый" },
@@ -2960,6 +3088,12 @@ function bindEvents() {
   if (habitFilterClose) habitFilterClose.addEventListener("click", closeHabitFilterOverlay);
   var habitFilterBackdrop = $(".habit-filter-backdrop");
   if (habitFilterBackdrop) habitFilterBackdrop.addEventListener("click", closeHabitFilterOverlay);
+  var goalArchiveBtn = document.getElementById("goal-archive-btn");
+  if (goalArchiveBtn) goalArchiveBtn.addEventListener("click", openGoalArchiveOverlay);
+  var goalArchiveClose = document.getElementById("goal-archive-close");
+  if (goalArchiveClose) goalArchiveClose.addEventListener("click", closeGoalArchiveOverlay);
+  var goalArchiveBackdrop = $(".goal-archive-backdrop");
+  if (goalArchiveBackdrop) goalArchiveBackdrop.addEventListener("click", closeGoalArchiveOverlay);
   var habitCalendarBtn = document.getElementById("habit-calendar-btn");
   if (habitCalendarBtn) habitCalendarBtn.addEventListener("click", openHabitCalendar);
   var habitCalendarClose = document.getElementById("habit-calendar-close");
@@ -3278,7 +3412,7 @@ function bindEvents() {
     }
 
     var content = e.target.closest(".swipe-row-content");
-    if (content && !e.target.closest(".habit-btn, .habit-reminder-toggle, .habit-water-help, .swipe-delete-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
+    if (content && !e.target.closest(".habit-btn, .habit-reminder-toggle, .habit-water-help, .swipe-delete-btn, .swipe-action-btn, .goal-archive-unarchive-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
       var row = e.target.closest(".swipe-row");
       if (row) {
         var type = row.dataset.type, id = row.dataset.id;
@@ -3305,7 +3439,10 @@ function bindEvents() {
                 }
               });
             } else if (type === "goal") {
-              var goalExtra = '<input id="deadline-input" class="input" type="date" /><select id="priority-input" class="input"><option value="1">Низкий</option><option value="2">Средний</option><option value="3">Высокий</option></select>';
+              var isPinned = !!(item.is_pinned);
+              var goalExtra = "<label>Дедлайн</label><input id=\"deadline-input\" class=\"input\" type=\"date\" />" + GOAL_PRIORITY_BAR_HTML +
+                "<div class=\"goal-edit-pin-row\"><button type=\"button\" id=\"goal-pin-btn\" class=\"goal-pin-btn\" data-goal-id=\"" + id + "\" data-is-pinned=\"" + (isPinned ? "1" : "0") + "\">" +
+                "<span class=\"material-symbols-outlined goal-pin-icon\">" + (isPinned ? "keep_off" : "keep") + "</span><span class=\"goal-pin-label\">" + (isPinned ? "Открепить" : "Закрепить") + "</span></button></div>";
               openDialog({
                 title: "Редактировать цель",
                 extraHtml: goalExtra,
@@ -3320,6 +3457,30 @@ function bindEvents() {
                   await loadAll();
                 }
               });
+              setTimeout(function() {
+                var pinBtn = document.getElementById("goal-pin-btn");
+                if (pinBtn) {
+                  pinBtn.addEventListener("click", async function() {
+                    var cur = pinBtn.dataset.isPinned === "1";
+                    var next = !cur;
+                    try {
+                      await fetchJSON(state.baseUrl + "/api/goals/" + id, {
+                        method: "PUT",
+                        body: JSON.stringify({ title: item.title || "", description: item.description || "", deadline: item.deadline || null, priority: item.priority != null ? item.priority : 1, is_pinned: next })
+                      });
+                      pinBtn.dataset.isPinned = next ? "1" : "0";
+                      var icon = pinBtn.querySelector(".goal-pin-icon");
+                      var label = pinBtn.querySelector(".goal-pin-label");
+                      if (icon) icon.textContent = next ? "keep_off" : "keep";
+                      if (label) label.textContent = next ? "Открепить" : "Закрепить";
+                      item.is_pinned = next ? 1 : 0;
+                      await loadAll();
+                    } catch (err) {
+                      if (tg) tg.showAlert("Не удалось изменить закрепление.");
+                    }
+                  });
+                }
+              }, 50);
             } else if (type === "habit") {
               var cats = state.cache.habitCategories || [];
               var catOpts = "<option value=\"\">Без категории</option>" + cats.map(function(c) {
@@ -3398,15 +3559,15 @@ function bindEvents() {
     if (tg && tg.MainButton) tg.MainButton.hide();
     if (!state.userId) await ensureUserId();
     if (!state.userId && tg) { tg.showAlert("Не удалось определить пользователя. Откройте приложение из Telegram."); return; }
-    const extra =
-      '<input id="deadline-input" class="input" type="date" /><select id="priority-input" class="input"><option value="1">📌 Низкий приоритет</option><option value="2">⭐ Средний приоритет</option><option value="3">🔥 Высокий приоритет</option></select>';
+    const extra = "<label>Дедлайн</label><input id=\"deadline-input\" class=\"input\" type=\"date\" />" + GOAL_PRIORITY_BAR_HTML;
     openDialog({
       title: "Новая цель",
       extraHtml: extra,
       onSave: async ({ title, description }) => {
         const deadline = document.getElementById("deadline-input").value || null;
-        const priority = parseInt(document.getElementById("priority-input").value, 10);
-        await fetchJSON(`${state.baseUrl}/api/goals`, {
+        const priorityEl = document.getElementById("priority-input");
+        const priority = priorityEl ? parseInt(priorityEl.value, 10) : 1;
+        await fetchJSON(state.baseUrl + "/api/goals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3414,7 +3575,7 @@ function bindEvents() {
             title,
             description,
             deadline,
-            priority,
+            priority: isNaN(priority) ? 1 : Math.max(1, Math.min(3, priority)),
           }),
         });
         await loadAll();

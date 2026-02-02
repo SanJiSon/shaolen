@@ -387,6 +387,104 @@ body {
   font-weight: 500;
 }
 
+/* Архив целей (выполненные) */
+.goal-archive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8995;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.goal-archive-overlay.hidden {
+  display: none;
+}
+.goal-archive-overlay:not(.hidden) {
+  pointer-events: auto;
+}
+.goal-archive-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.goal-archive-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border-radius: 20px 20px 0 0;
+  padding: 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+}
+.goal-archive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+.goal-archive-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+.goal-archive-hint {
+  margin: 0;
+  padding: 10px 16px 4px;
+  font-size: 13px;
+  color: var(--text-muted, #666);
+}
+.goal-archive-list {
+  padding: 8px 16px 24px;
+}
+.goal-archive-list .swipe-row-drag-handle {
+  display: none;
+}
+.goal-archive-list .swipe-row-content {
+  padding-left: 0;
+}
+.goal-archive-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+.goal-archive-item:last-child {
+  border-bottom: none;
+}
+.goal-archive-item-title {
+  font-size: 15px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  margin-right: 12px;
+}
+.goal-archive-unarchive-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.goal-archive-unarchive-btn:hover {
+  opacity: 0.9;
+}
+.goal-archive-unarchive-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
 /* Окно цветов категорий для календаря */
 .category-colors-overlay {
   position: fixed;
@@ -999,6 +1097,54 @@ body {
   color: var(--muted);
 }
 
+/* Плашка приоритета на карточке цели */
+.goal-priority-bar-wrap {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.goal-priority-bar {
+  display: flex;
+  width: 72px;
+  height: 20px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+.goal-priority-seg {
+  flex: 1;
+  transition: opacity 0.2s ease;
+}
+.goal-priority-seg.goal-priority-low {
+  background: #22c55e;
+}
+.goal-priority-seg.goal-priority-medium {
+  background: #f59e0b;
+}
+.goal-priority-seg.goal-priority-high {
+  background: #ef4444;
+}
+.goal-priority-bar-wrap[data-priority="1"] .goal-priority-low { opacity: 1; }
+.goal-priority-bar-wrap[data-priority="1"] .goal-priority-medium,
+.goal-priority-bar-wrap[data-priority="1"] .goal-priority-high { opacity: 0.35; }
+.goal-priority-bar-wrap[data-priority="2"] .goal-priority-medium { opacity: 1; }
+.goal-priority-bar-wrap[data-priority="2"] .goal-priority-low,
+.goal-priority-bar-wrap[data-priority="2"] .goal-priority-high { opacity: 0.35; }
+.goal-priority-bar-wrap[data-priority="3"] .goal-priority-high { opacity: 1; }
+.goal-priority-bar-wrap[data-priority="3"] .goal-priority-low,
+.goal-priority-bar-wrap[data-priority="3"] .goal-priority-medium { opacity: 0.35; }
+
+.goal-pinned-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.goal-pinned-badge .material-symbols-outlined {
+  font-size: 18px;
+}
+
 .card-header-with-cb {
   display: flex;
   align-items: center;
@@ -1248,6 +1394,39 @@ body.reorder-mode .swipe-row-drag-handle {
   z-index: 0;
 }
 
+.swipe-row[data-swipe-action="archive"] .swipe-row-actions {
+  width: 100px;
+  background: var(--accent, #7c3aed);
+}
+
+.swipe-row[data-swipe-actions="archive,delete"] .swipe-row-actions {
+  width: 172px;
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  justify-content: stretch;
+}
+
+.swipe-row[data-swipe-actions="archive,delete"] .swipe-action-btn:first-child {
+  flex: 1;
+  background: var(--accent, #7c3aed);
+  border-radius: 0;
+}
+
+.swipe-row[data-swipe-actions="archive,delete"] .swipe-action-btn:last-child {
+  width: 72px;
+  min-width: 72px;
+  background: var(--danger);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.swipe-row[data-swipe-action="archive"] .swipe-archive-btn,
+.swipe-row[data-swipe-actions="archive,delete"] .swipe-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .swipe-row-actions button {
   border: none;
   background: transparent;
@@ -1261,6 +1440,14 @@ body.reorder-mode .swipe-row-drag-handle {
 
 .swipe-row.swiped .swipe-row-content {
   transform: translateX(-72px);
+}
+
+.swipe-row[data-swipe-action="archive"].swiped .swipe-row-content {
+  transform: translateX(-100px);
+}
+
+.swipe-row[data-swipe-actions="archive,delete"].swiped .swipe-row-content {
+  transform: translateX(-172px);
 }
 
 /* Скрыть кнопку «Удалить» при перетаскивании подцелей внутри карточки */
@@ -2855,6 +3042,90 @@ body.reorder-mode .swipe-row-actions {
 
 .input::placeholder {
   color: var(--muted);
+}
+
+#dialog-extra label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 6px;
+  margin-top: 10px;
+}
+#dialog-extra label:first-child { margin-top: 0; }
+
+/* Плашка приоритета в диалоге (LOW / MEDIUM / HIGH + треугольник) */
+.priority-bar-wrap {
+  margin-bottom: 4px;
+}
+.priority-bar {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.priority-segment {
+  flex: 1;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  transition: opacity 0.2s, filter 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.priority-segment:hover { opacity: 0.9; }
+.priority-segment.active { filter: brightness(1.15); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4); }
+.priority-segment.priority-low { background: #22c55e; }
+.priority-segment.priority-medium { background: #f59e0b; }
+.priority-segment.priority-high { background: #ef4444; }
+.priority-track {
+  position: relative;
+  height: 10px;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  margin-top: -2px;
+}
+.priority-triangle {
+  position: absolute;
+  top: -6px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 10px solid var(--muted-strong);
+  transition: left 0.2s ease;
+  left: 0;
+}
+.goal-edit-pin-row {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+.goal-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.goal-pin-btn:hover {
+  background: rgba(124, 58, 237, 0.25);
+}
+.goal-pin-btn .goal-pin-icon {
+  font-size: 20px;
 }
 
 .dialog-actions {

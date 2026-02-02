@@ -72,6 +72,7 @@
           <div class="panel-header">
             <h2>Цели</h2>
             <div class="panel-header-actions">
+              <button type="button" id="goal-archive-btn" class="icon-btn" aria-label="Архив целей" title="Архив (выполненные цели)"><span class="material-symbols-outlined">inbox</span></button>
               <button type="button" class="panel-edit-btn icon-btn" data-panel="goals" aria-label="Режим перетаскивания" title="Режим перетаскивания"><span class="material-symbols-outlined panel-edit-btn-icon">edit</span></button>
               <button type="button" id="add-goal-btn" class="primary-btn add-btn icon-btn" aria-label="Добавить цель"><span class="material-symbols-outlined">add</span></button>
             </div>
@@ -130,6 +131,18 @@
           <button type="button" id="habit-filter-close" class="icon-btn" aria-label="Закрыть"><span class="material-symbols-outlined">close</span></button>
         </div>
         <div id="habit-filter-list" class="habit-filter-list"></div>
+      </div>
+    </div>
+
+    <div id="goal-archive-overlay" class="goal-archive-overlay hidden">
+      <div class="goal-archive-backdrop"></div>
+      <div class="goal-archive-panel">
+        <div class="goal-archive-header">
+          <h3>Архив целей</h3>
+          <button type="button" id="goal-archive-close" class="icon-btn" aria-label="Закрыть"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="goal-archive-hint">Выполненные цели. Нажмите «Вернуть», чтобы перенести цель обратно в список.</p>
+        <div id="goal-archive-list" class="goal-archive-list"></div>
       </div>
     </div>
 
