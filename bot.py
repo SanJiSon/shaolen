@@ -172,7 +172,7 @@ async def inline_query_handler(
                 title=f"🎯 Миссии ({len(missions)})",
                 description="Долгосрочные цели с подцелями",
                 input_message_content=InputTextMessageContent(missions_text, parse_mode="HTML"),
-                thumb_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/flag/default/48px.svg",
+                thumbnail_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/flag/default/48px.svg",
             )
         )
     
@@ -185,7 +185,7 @@ async def inline_query_handler(
                 title=f"✅ Цели ({len(goals)})",
                 description="Задачи с дедлайнами",
                 input_message_content=InputTextMessageContent(goals_text, parse_mode="HTML"),
-                thumb_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/checkcircle/default/48px.svg",
+                thumbnail_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/checkcircle/default/48px.svg",
             )
         )
     
@@ -198,7 +198,7 @@ async def inline_query_handler(
                 title=f"🔄 Привычки ({len(habits)})",
                 description="Ежедневные активности",
                 input_message_content=InputTextMessageContent(habits_text, parse_mode="HTML"),
-                thumb_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/refresh/default/48px.svg",
+                thumbnail_url="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/refresh/default/48px.svg",
             )
         )
     
