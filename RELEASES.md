@@ -44,38 +44,30 @@ crontab -e
 
 ## Автоматический запуск (systemd timer)
 
-Создайте два файла в `/etc/systemd/system/`:
+### Как это работает
 
-**goals-publish-release.service**
+- **Таймер** (`goals-publish-release.timer`) по расписанию (раз в час) **запускает** сервис.
+- **Сервис** (`goals-publish-release.service`) один раз выполняет скрипт: читает первую строку `VERSION` → если там **нет `+`**, отправляет пост в канал и дописывает `+`; если уже есть `+` — ничего не делает.
+- **Ручной запуск**: команда `sudo systemctl start goals-publish-release.service` **сразу** проверяет версию и постит, если нужно (без ожидания следующего часа).
 
-```ini
-[Unit]
-Description=Publish release to Telegram channel @shaolenai
-After=network.target
+То есть: при каждом запуске (по таймеру или вручную) скрипт **один раз проверяет** «есть ли версия без поста» и при наличии — постит.
 
-[Service]
-Type=oneshot
-User=root
-WorkingDirectory=/root/shaolen
-EnvironmentFile=/root/shaolen/.env
-ExecStart=/root/shaolen/venv/bin/python /root/shaolen/scripts/publish_release_to_telegram.py
+### Установка
+
+В проекте уже есть файлы в папке `systemd/`. Скопируйте их в systemd и подставьте свой путь к проекту (если не `/root/shaolen`):
+
+```bash
+# Подставьте свой путь к проекту вместо /root/shaolen
+PROJECT=/root/shaolen
+
+sudo cp systemd/goals-publish-release.service /etc/systemd/system/
+sudo cp systemd/goals-publish-release.timer   /etc/systemd/system/
+
+# Если проект не в /root/shaolen — отредактируйте пути в юните:
+sudo sed -i "s|/root/shaolen|$PROJECT|g" /etc/systemd/system/goals-publish-release.service
 ```
 
-**goals-publish-release.timer**
-
-```ini
-[Unit]
-Description=Run publish release every hour
-
-[Timer]
-OnCalendar=hourly
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-Включить и запустить таймер:
+Загрузить конфигурацию, включить и запустить таймер:
 
 ```bash
 sudo systemctl daemon-reload
@@ -83,7 +75,14 @@ sudo systemctl enable goals-publish-release.timer
 sudo systemctl start goals-publish-release.timer
 ```
 
-Проверка: `sudo systemctl list-timers goals-publish-release.timer`
+### Проверка
+
+- Таймер включён и когда следующий запуск:  
+  `sudo systemctl list-timers goals-publish-release.timer`
+- Запустить проверку и постинг **сразу** (не ждать часа):  
+  `sudo systemctl start goals-publish-release.service`
+- Лог последнего запуска сервиса:  
+  `sudo journalctl -u goals-publish-release.service -n 30 --no-pager`
 
 ## Добавление новой версии
 
