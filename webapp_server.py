@@ -1370,8 +1370,6 @@ async def api_calendar_sync(user_id: int):
                 gid = g.get("id")
                 title = (g.get("title") or "").strip() or "Цель"
                 dl = g.get("deadline")
-                if not dl:
-                    continue
                 try:
                     dl_str = str(dl)[:10] if dl else today
                 except Exception:
