@@ -3226,6 +3226,38 @@ function bindEvents() {
     if (e.target === shaolenOverlay) closeShaolenChat();
   });
 
+  function openSubgoalEditDialog(subgoalId) {
+    var subgoal = null;
+    var subgoalsByMission = state.cache.subgoalsByMission || {};
+    for (var mid in subgoalsByMission) {
+      var list = subgoalsByMission[mid] || [];
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) === String(subgoalId)) { subgoal = list[i]; break; }
+      }
+      if (subgoal) break;
+    }
+    if (!subgoal) return;
+    if (tg && tg.MainButton) tg.MainButton.hide();
+    openDialog({
+      title: "Редактировать подцель",
+      initialValues: { title: subgoal.title || "", description: subgoal.description || "" },
+      onSave: async function(p) {
+        var title = (p && p.title != null) ? String(p.title).trim() : "";
+        var description = (p && p.description != null) ? String(p.description) : "";
+        if (!title) { if (tg) tg.showAlert("Введите название"); throw new Error("validate"); }
+        await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId + "/update", {
+          method: "POST",
+          body: JSON.stringify({ title: title, description: description })
+        });
+        await loadAll();
+      },
+      onDelete: async function() {
+        await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "DELETE" });
+        await loadAll();
+      }
+    });
+  }
+
   document.body.addEventListener("click", function(e) {
     var wrap = e.target.closest(".subgoal-cb-wrap");
     if (wrap) {
@@ -3236,8 +3268,11 @@ function bindEvents() {
         e.stopPropagation();
         handleSubgoalToggle(cb);
       } else {
-        /* Клик по заголовку подцели (span/label) — не даём label переключить чекбокс, чтобы сработало открытие редактирования */
+        /* Клик по заголовку подцели (span/label): не даём label переключить чекбокс и не даём выделяться строке — сразу открываем редактирование */
         e.preventDefault();
+        e.stopPropagation();
+        var subgoalRow = wrap.closest(".subgoal-row");
+        if (subgoalRow && subgoalRow.dataset.id) openSubgoalEditDialog(subgoalRow.dataset.id);
       }
     }
   }, true);
