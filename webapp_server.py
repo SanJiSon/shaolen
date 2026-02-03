@@ -283,6 +283,26 @@ async def api_health():
     return JSONResponse(content={"status": "ok", "service": "goals-api"})
 
 
+@app.post("/api/debug/subgoal-tap", response_model=None)
+async def api_debug_subgoal_tap(request: Request):
+    """Лог тапа по подцели (редактирование на телефоне). Фронт шлёт сюда событие touchstart/touchend. Смотри logs/webapp.log."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    logger.info(
+        "[DEBUG subgoal] event=%s target_tag=%s target_class=%s on_zone=%s subgoal_id=%s action=%s user_id=%s",
+        body.get("event"),
+        body.get("target_tag"),
+        body.get("target_class"),
+        body.get("on_zone"),
+        body.get("subgoal_id"),
+        body.get("action"),
+        body.get("user_id"),
+    )
+    return JSONResponse(content={"ok": True})
+
+
 @app.get("/api/me", response_model=None)
 async def api_me(request: Request):
     """
