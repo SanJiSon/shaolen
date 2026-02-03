@@ -3230,10 +3230,14 @@ function bindEvents() {
     var wrap = e.target.closest(".subgoal-cb-wrap");
     if (wrap) {
       var cb = wrap.querySelector("input.subgoal-done-cb");
-      if (cb && e.target === cb) {
+      if (!cb) return;
+      if (e.target === cb) {
         e.preventDefault();
         e.stopPropagation();
         handleSubgoalToggle(cb);
+      } else {
+        /* Клик по заголовку подцели (span/label) — не даём label переключить чекбокс, чтобы сработало открытие редактирования */
+        e.preventDefault();
       }
     }
   }, true);
