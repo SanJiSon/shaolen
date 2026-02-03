@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv  # type: ignore[import-untyped]
 from telegram import Update, InlineQueryResultArticle, InputTextMessageContent  # type: ignore[import-untyped]
@@ -20,11 +21,22 @@ TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 PREMIUM_SESSION_PATH = (os.getenv("PREMIUM_SESSION_PATH", "") or "").strip().strip("'\"")
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+# Явная настройка логов: консоль всегда видна (python-telegram-bot/httpx могут переопределить root logger)
+_log_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+_basic_kw = {"format": _log_fmt, "level": logging.INFO, "stream": sys.stderr}
+if sys.version_info >= (3, 8):
+    _basic_kw["force"] = True
+logging.basicConfig(**_basic_kw)
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    _h = logging.StreamHandler(sys.stderr)
+    _h.setFormatter(logging.Formatter(_log_fmt))
+    logger.addHandler(_h)
+logger.setLevel(logging.INFO)
+# Меньше шума в journal: только предупреждения от httpx и telegram
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.WARNING)
 
 db = Database(DB_PATH)
 MAX_MESSAGE_LENGTH = 4096
@@ -270,6 +282,7 @@ async def main() -> None:
     await app.start()
     await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Бот запущен")
+    print("Бот запущен (goals-bot)", flush=True)  # всегда видно в systemd journal
     if TELEGRAM_API_ID.strip() and TELEGRAM_API_HASH.strip():
         try:
             import telethon  # type: ignore[import-untyped]

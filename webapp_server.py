@@ -291,13 +291,13 @@ async def api_debug_subgoal_tap(request: Request):
     except Exception:
         body = {}
     logger.info(
-        "[DEBUG subgoal] event=%s target_tag=%s target_class=%s on_zone=%s subgoal_id=%s action=%s user_id=%s",
+        "[DEBUG subgoal] event=%s subgoal_id=%s on_zone=%s rel_x=%s action=%s target=%s user_id=%s",
         body.get("event"),
-        body.get("target_tag"),
-        body.get("target_class"),
-        body.get("on_zone"),
         body.get("subgoal_id"),
+        body.get("on_zone"),
+        body.get("rel_x"),
         body.get("action"),
+        body.get("target"),
         body.get("user_id"),
     )
     return JSONResponse(content={"ok": True})
