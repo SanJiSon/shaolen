@@ -1227,6 +1227,13 @@ body {
   min-width: 0;
 }
 
+/* Заголовок подцели — клик открывает редактирование (без label, чтобы не переключать галочку) */
+.subgoal-title {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+}
+
 /* Ручка перетаскивания подцели видна только в режиме редактирования порядка */
 .subgoal-drag-handle {
   flex-shrink: 0;

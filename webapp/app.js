@@ -500,7 +500,7 @@ function renderMissions(missions) {
     var subsHtml = subs.map(function(s) {
       var done = subgoalCompleted(s);
       var doneClass = done ? " subgoal-done" : "";
-      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><label class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (done ? "checked" : "") + " /><span>" + escapeHtml(s.title || "") + "</span></label><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
+      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><div class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (done ? "checked" : "") + " /><span class=\"subgoal-title\">" + escapeHtml(s.title || "") + "</span></div><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var progressBarHtml = totalSubs > 0 ? "<div class=\"mission-progress\"><div class=\"mission-progress-bar\"><div class=\"mission-progress-fill\" style=\"width:" + subProgressPct + "%\"></div></div><span class=\"mission-progress-label\">" + completedSubs + "/" + totalSubs + " подцелей</span></div>" : "";
@@ -3258,22 +3258,15 @@ function bindEvents() {
     });
   }
 
+  /* Только клик по самому чекбоксу переключает галочку. Клик по тексту (.subgoal-title) не переключает — разметка без label. */
   document.body.addEventListener("click", function(e) {
-    var wrap = e.target.closest(".subgoal-cb-wrap");
-    if (wrap) {
-      var cb = wrap.querySelector("input.subgoal-done-cb");
-      if (!cb) return;
-      if (e.target === cb) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSubgoalToggle(cb);
-      } else {
-        /* Клик по заголовку подцели (span/label): не даём label переключить чекбокс и не даём выделяться строке — сразу открываем редактирование */
-        e.preventDefault();
-        e.stopPropagation();
-        var subgoalRow = wrap.closest(".subgoal-row");
-        if (subgoalRow && subgoalRow.dataset.id) openSubgoalEditDialog(subgoalRow.dataset.id);
-      }
+    var row = e.target.closest(".subgoal-row");
+    if (!row) return;
+    var cb = row.querySelector("input.subgoal-done-cb");
+    if (cb && e.target === cb) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSubgoalToggle(cb);
     }
   }, true);
 
@@ -3407,43 +3400,13 @@ function bindEvents() {
     }
 
     var subgoalRow = e.target.closest(".subgoal-row");
-    /* Открывать редактирование при клике по подцели (в т.ч. по тексту), кроме самого чекбокса и ручки перетаскивания */
+    /* Открывать редактирование при клике по подцели (текст или область строки), кроме чекбокса и ручки перетаскивания */
     if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest("input.subgoal-done-cb")) {
       e.preventDefault();
       e.stopPropagation();
       var subgoalId = subgoalRow.dataset.id;
-      if (!subgoalId) return;
-      var subgoal = null;
-      var subgoalsByMission = state.cache.subgoalsByMission || {};
-      for (var mid in subgoalsByMission) {
-        var list = subgoalsByMission[mid] || [];
-        for (var i = 0; i < list.length; i++) {
-          if (String(list[i].id) === String(subgoalId)) { subgoal = list[i]; break; }
-        }
-        if (subgoal) break;
-      }
-      if (subgoal) {
-        if (tg && tg.MainButton) tg.MainButton.hide();
-        openDialog({
-          title: "Редактировать подцель",
-          initialValues: { title: subgoal.title || "", description: subgoal.description || "" },
-          onSave: async function(p) {
-            var title = (p && p.title != null) ? String(p.title).trim() : "";
-            var description = (p && p.description != null) ? String(p.description) : "";
-            if (!title) { if (tg) tg.showAlert("Введите название"); throw new Error("validate"); }
-            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId + "/update", {
-              method: "POST",
-              body: JSON.stringify({ title: title, description: description })
-            });
-            await loadAll();
-          },
-          onDelete: async function() {
-            await fetchJSON(state.baseUrl + "/api/subgoals/" + subgoalId, { method: "DELETE" });
-            await loadAll();
-          }
-        });
-        return;
-      }
+      if (subgoalId) openSubgoalEditDialog(subgoalId);
+      return;
     }
 
     var content = e.target.closest(".swipe-row-content");
