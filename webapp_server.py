@@ -1423,13 +1423,10 @@ async def api_calendar_sync(user_id: int):
             missions = await db.get_missions(user_id, include_completed=False)
             subgoal_count = 0
             for m in missions or []:
-                if m.get("deadline"):
-                    subgoal_count += len(await db.get_subgoals(m.get("id") or 0))
+                subgoal_count += len(await db.get_subgoals(m.get("id") or 0))
             logger.info("calendar-sync: missions=%s, subgoals_to_sync=%s", len(missions or []), subgoal_count)
             for m in missions or []:
                 dl = m.get("deadline")
-                if not dl:
-                    continue
                 try:
                     dl_str = str(dl)[:10] if dl else today
                 except Exception:
