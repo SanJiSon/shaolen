@@ -1295,7 +1295,8 @@ async def api_calendar_sync(user_id: int):
 
         if settings.get("sync_habits", True):
             habits = await db.get_habits(user_id, active_only=True)
-            for i, h in enumerate(habits):
+            logger.info("calendar-sync: habits=%s", len(habits or []))
+            for i, h in enumerate(habits or []):
                 hid = h.get("id")
                 title = (h.get("title") or "").strip() or "Привычка"
                 habit_color = (h.get("category_color_id") or "").strip()
@@ -1363,7 +1364,9 @@ async def api_calendar_sync(user_id: int):
 
         if settings.get("sync_goals", True):
             goals = await db.get_goals(user_id, include_completed=False)
-            for g in goals:
+            goals_with_deadline = [g for g in (goals or []) if g.get("deadline")]
+            logger.info("calendar-sync: goals=%s, with_deadline=%s", len(goals or []), len(goals_with_deadline))
+            for g in goals or []:
                 gid = g.get("id")
                 title = (g.get("title") or "").strip() or "Цель"
                 dl = g.get("deadline")
@@ -1418,7 +1421,12 @@ async def api_calendar_sync(user_id: int):
 
         if settings.get("sync_subgoals", True):
             missions = await db.get_missions(user_id, include_completed=False)
-            for m in missions:
+            subgoal_count = 0
+            for m in missions or []:
+                if m.get("deadline"):
+                    subgoal_count += len(await db.get_subgoals(m.get("id") or 0))
+            logger.info("calendar-sync: missions=%s, subgoals_to_sync=%s", len(missions or []), subgoal_count)
+            for m in missions or []:
                 dl = m.get("deadline")
                 if not dl:
                     continue
@@ -1473,6 +1481,7 @@ async def api_calendar_sync(user_id: int):
                     except Exception as e:
                         errors.append(f"subgoal {sgtitle}: {str(e)}")
 
+        logger.info("calendar-sync: done created=%s errors=%s", created, len(errors))
         resp = {"ok": True, "created": created, "errors": errors[:10]}
         # Если все запросы завершились ошибкой — подсказка по 403
         if created == 0 and errors and any("403" in e for e in errors):
