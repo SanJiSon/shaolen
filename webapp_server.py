@@ -1293,6 +1293,32 @@ async def api_calendar_sync(user_id: int):
                 calendar_id = "primary"
             calendar_base = _calendar_base_url(calendar_id)
 
+        # Удалить из календаря события, чьи сущности уже удалены (цель/привычка/подцель)
+        all_ce = await db.get_all_calendar_events(user_id)
+        for ce in all_ce:
+            entity_type = ce.get("entity_type")
+            entity_id = ce.get("entity_id")
+            if not entity_type or entity_id is None:
+                continue
+            exists = False
+            if entity_type == "goal":
+                exists = await db.get_goal(entity_id) is not None
+            elif entity_type == "habit":
+                exists = await db.get_habit(entity_id) is not None
+            elif entity_type == "subgoal":
+                exists = await db.get_subgoal(entity_id) is not None
+            if not exists:
+                base = _calendar_base_url(ce.get("calendar_id") or "primary")
+                try:
+                    async with httpx.AsyncClient(timeout=calendar_timeout) as client:
+                        await client.delete(
+                            f"{base}/events/{ce.get('event_id')}",
+                            headers=headers,
+                        )
+                except Exception as ex:
+                    logger.warning("calendar-sync: удаление события %s %s: %s", entity_type, entity_id, ex)
+                await db.delete_calendar_event(user_id, entity_type, entity_id)
+
         if settings.get("sync_habits", True):
             habits = await db.get_habits(user_id, active_only=True)
             logger.info("calendar-sync: habits=%s", len(habits or []))

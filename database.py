@@ -1944,6 +1944,17 @@ class Database:
                 row = await c.fetchone()
                 return dict(row) if row else None
 
+    async def get_all_calendar_events(self, user_id: int) -> List[Dict]:
+        """Все связи календаря пользователя: {entity_type, entity_id, calendar_id, event_id}."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT entity_type, entity_id, calendar_id, event_id FROM calendar_events WHERE user_id = ?",
+                (user_id,),
+            ) as c:
+                rows = await c.fetchall()
+                return [dict(row) for row in rows]
+
     async def set_calendar_event(self, user_id: int, entity_type: str, entity_id: int, calendar_id: str, event_id: str) -> None:
         """Сохранить связь сущности с событием Google Calendar."""
         cid = (calendar_id or "").strip() or "primary"
