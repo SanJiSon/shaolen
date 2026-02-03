@@ -1,3 +1,6 @@
+/** SHAOLEN_APP_VERSION=2026-02-03-subgoal — по этой строке проверяй, какая версия app.js отдаётся */
+var SHAOLEN_APP_VERSION = "2026-02-03-subgoal";
+
 const tg = window.Telegram?.WebApp;
 
 // В браузере вне Telegram tg.showAlert/showConfirm кидают WebAppMethodUnsupported — подменяем на alert/confirm
