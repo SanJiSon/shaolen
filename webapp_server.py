@@ -470,6 +470,15 @@ async def api_update_subgoal(subgoal_id: int, payload: SubgoalCreate):
 @app.delete("/api/subgoals/{subgoal_id}")
 async def api_delete_subgoal(subgoal_id: int):
     """Удалить подцель"""
+    sg = await db.get_subgoal(subgoal_id)
+    if sg:
+        mission_id = sg.get("mission_id")
+        if mission_id is not None:
+            mission = await db.get_mission(mission_id)
+            if mission:
+                user_id = mission.get("user_id")
+                if user_id is not None:
+                    await _delete_calendar_event_for_entity(user_id, "subgoal", subgoal_id)
     await db.delete_subgoal(subgoal_id)
     return JSONResponse(content={"ok": True})
 
@@ -742,6 +751,15 @@ async def api_decrement_habit(habit_id: int):
 async def api_delete_mission(mission_id: int):
     """Удаление миссии и её подцелей"""
     try:
+        mission = await db.get_mission(mission_id)
+        if mission:
+            user_id = mission.get("user_id")
+            if user_id is not None:
+                subgoals = await db.get_subgoals(mission_id)
+                for sg in subgoals:
+                    sgid = sg.get("id")
+                    if sgid is not None:
+                        await _delete_calendar_event_for_entity(user_id, "subgoal", sgid)
         await db.delete_mission(mission_id)
         return JSONResponse(content={"ok": True})
     except Exception as e:
@@ -753,6 +771,11 @@ async def api_delete_mission(mission_id: int):
 async def api_delete_goal(goal_id: int):
     """Удаление цели"""
     try:
+        goal = await db.get_goal(goal_id)
+        if goal:
+            user_id = goal.get("user_id")
+            if user_id is not None:
+                await _delete_calendar_event_for_entity(user_id, "goal", goal_id)
         await db.delete_goal(goal_id)
         return JSONResponse(content={"ok": True})
     except Exception as e:
@@ -764,6 +787,11 @@ async def api_delete_goal(goal_id: int):
 async def api_delete_habit(habit_id: int):
     """Удаление привычки"""
     try:
+        habit = await db.get_habit(habit_id)
+        if habit:
+            user_id = habit.get("user_id")
+            if user_id is not None:
+                await _delete_calendar_event_for_entity(user_id, "habit", habit_id)
         await db.delete_habit(habit_id)
         return JSONResponse(content={"ok": True})
     except Exception as e:
@@ -1096,6 +1124,53 @@ def _calendar_base_url(calendar_id: str) -> str:
     return "https://www.googleapis.com/calendar/v3/calendars/" + quote(calendar_id, safe="")
 
 
+async def _delete_calendar_event_for_entity(user_id: int, entity_type: str, entity_id: int) -> None:
+    """Удалить событие календаря для сущности (привычка/цель/подцель): из БД и в Google."""
+    ce = await db.delete_calendar_event(user_id, entity_type, entity_id)
+    if not ce or not ce.get("event_id"):
+        return
+    tokens = await db.get_google_fit_tokens(user_id)
+    if not tokens:
+        return
+    access = tokens.get("access_token")
+    refresh = tokens.get("refresh_token")
+    expires_at = tokens.get("expires_at")
+    now = datetime.now(timezone.utc)
+    if expires_at and isinstance(expires_at, str):
+        try:
+            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except Exception:
+            expires_at = None
+    if expires_at and (now - timedelta(minutes=5)) >= expires_at and refresh:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            rr = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": GOOGLE_FIT_CLIENT_ID,
+                    "client_secret": GOOGLE_FIT_CLIENT_SECRET,
+                    "refresh_token": refresh,
+                    "grant_type": "refresh_token",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if rr.status_code == 200:
+                rdata = rr.json()
+                access = rdata.get("access_token")
+                exp = rdata.get("expires_in", 3600)
+                await db.save_google_fit_tokens(user_id, access, refresh, now + timedelta(seconds=exp))
+    if not access:
+        return
+    base = _calendar_base_url(ce.get("calendar_id") or "primary")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            await client.delete(
+                f"{base}/events/{ce['event_id']}",
+                headers={"Authorization": f"Bearer {access}"},
+            )
+    except Exception as e:
+        logger.warning("calendar delete event %s %s: %s", entity_type, entity_id, e)
+
+
 async def _ensure_shaolen_calendar(
     client: httpx.AsyncClient,
     headers: Dict[str, str],
@@ -1221,8 +1296,8 @@ async def api_calendar_sync(user_id: int):
         if settings.get("sync_habits", True):
             habits = await db.get_habits(user_id, active_only=True)
             for i, h in enumerate(habits):
+                hid = h.get("id")
                 title = (h.get("title") or "").strip() or "Привычка"
-                # Цвет события: сначала цвет категории привычки, иначе общий цвет из настроек
                 habit_color = (h.get("category_color_id") or "").strip()
                 if habit_color not in (str(x) for x in range(1, 12)):
                     habit_color = event_color_id
@@ -1254,38 +1329,41 @@ async def api_calendar_sync(user_id: int):
                 if habit_color:
                     event["colorId"] = str(habit_color)
                 try:
+                    existing = await db.get_calendar_event(user_id, "habit", hid) if hid else None
                     async with httpx.AsyncClient(timeout=calendar_timeout) as client:
-                        r = await client.post(
-                            f"{calendar_base}/events",
-                            json=event,
-                            headers=headers,
-                        )
-                    if r.status_code in (200, 201):
-                        created += 1
-                        resp_data = r.json() if r.content else {}
-                        eid = resp_data.get("id")
-                        if habit_color and eid:
-                            try:
-                                async with httpx.AsyncClient(timeout=calendar_timeout) as patch_client:
-                                    patch_r = await patch_client.patch(
-                                        f"{calendar_base}/events/{eid}",
-                                        json={"colorId": str(habit_color)},
-                                        headers=headers,
-                                    )
-                                if patch_r.status_code not in (200, 201):
-                                    logger.warning("Calendar API PATCH color habit %s: %s", title, patch_r.status_code)
-                            except Exception:
-                                pass
-                    else:
-                        err_body = (r.text or "")[:200]
-                        logger.warning("Calendar API 403 habit %s: %s %s", title, r.status_code, err_body)
-                        errors.append(f"habit {title}: {r.status_code}")
+                        if existing and existing.get("event_id"):
+                            base = _calendar_base_url(existing.get("calendar_id") or calendar_id)
+                            r = await client.put(
+                                f"{base}/events/{existing['event_id']}",
+                                json=event,
+                                headers=headers,
+                            )
+                            if r.status_code == 404:
+                                existing = None
+                        if not existing or not existing.get("event_id"):
+                            r = await client.post(
+                                f"{calendar_base}/events",
+                                json=event,
+                                headers=headers,
+                            )
+                            if r.status_code in (200, 201):
+                                resp_data = r.json() if r.content else {}
+                                eid = resp_data.get("id")
+                                if eid:
+                                    await db.set_calendar_event(user_id, "habit", hid, calendar_id, eid)
+                        if r.status_code in (200, 201):
+                            created += 1
+                        else:
+                            err_body = (r.text or "")[:200]
+                            logger.warning("Calendar API habit %s: %s %s", title, r.status_code, err_body)
+                            errors.append(f"habit {title}: {r.status_code}")
                 except Exception as e:
                     errors.append(f"habit {title}: {str(e)}")
 
         if settings.get("sync_goals", True):
             goals = await db.get_goals(user_id, include_completed=False)
             for g in goals:
+                gid = g.get("id")
                 title = (g.get("title") or "").strip() or "Цель"
                 dl = g.get("deadline")
                 if not dl:
@@ -1305,30 +1383,34 @@ async def api_calendar_sync(user_id: int):
                 if event_color_id:
                     event["colorId"] = str(event_color_id)
                 try:
+                    existing = await db.get_calendar_event(user_id, "goal", gid) if gid else None
                     async with httpx.AsyncClient(timeout=calendar_timeout) as client:
-                        r = await client.post(
-                            f"{calendar_base}/events",
-                            json=event,
-                            headers=headers,
-                        )
-                    if r.status_code in (200, 201):
-                        created += 1
-                        if event_color_id and r.content:
-                            try:
-                                resp_data = r.json()
+                        if existing and existing.get("event_id"):
+                            base = _calendar_base_url(existing.get("calendar_id") or calendar_id)
+                            r = await client.put(
+                                f"{base}/events/{existing['event_id']}",
+                                json=event,
+                                headers=headers,
+                            )
+                            if r.status_code == 404:
+                                existing = None
+                        if not existing or not existing.get("event_id"):
+                            r = await client.post(
+                                f"{calendar_base}/events",
+                                json=event,
+                                headers=headers,
+                            )
+                            if r.status_code in (200, 201):
+                                resp_data = r.json() if r.content else {}
                                 eid = resp_data.get("id")
                                 if eid:
-                                    await client.patch(
-                                        f"{calendar_base}/events/{eid}",
-                                        json={"colorId": str(event_color_id)},
-                                        headers=headers,
-                                    )
-                            except Exception:
-                                pass
-                    else:
-                        err_body = (r.text or "")[:200]
-                        logger.warning("Calendar API 403 goal %s: %s %s", title, r.status_code, err_body)
-                        errors.append(f"goal {title}: {r.status_code}")
+                                    await db.set_calendar_event(user_id, "goal", gid, calendar_id, eid)
+                        if r.status_code in (200, 201):
+                            created += 1
+                        else:
+                            err_body = (r.text or "")[:200]
+                            logger.warning("Calendar API goal %s: %s %s", title, r.status_code, err_body)
+                            errors.append(f"goal {title}: {r.status_code}")
                 except Exception as e:
                     errors.append(f"goal {title}: {str(e)}")
 
@@ -1345,6 +1427,7 @@ async def api_calendar_sync(user_id: int):
                 mtitle = (m.get("title") or "").strip() or "Миссия"
                 subgoals = await db.get_subgoals(m.get("id") or 0)
                 for j, sg in enumerate(subgoals):
+                    sgid = sg.get("id")
                     sgtitle = (sg.get("title") or "").strip() or "Подцель"
                     hour = 9 + (j % 8)
                     event = {
@@ -1356,30 +1439,34 @@ async def api_calendar_sync(user_id: int):
                     if event_color_id:
                         event["colorId"] = str(event_color_id)
                     try:
+                        existing = await db.get_calendar_event(user_id, "subgoal", sgid) if sgid else None
                         async with httpx.AsyncClient(timeout=calendar_timeout) as client:
-                            r = await client.post(
-                                f"{calendar_base}/events",
-                                json=event,
-                                headers=headers,
-                            )
-                        if r.status_code in (200, 201):
-                            created += 1
-                            if event_color_id and r.content:
-                                try:
-                                    resp_data = r.json()
+                            if existing and existing.get("event_id"):
+                                base = _calendar_base_url(existing.get("calendar_id") or calendar_id)
+                                r = await client.put(
+                                    f"{base}/events/{existing['event_id']}",
+                                    json=event,
+                                    headers=headers,
+                                )
+                                if r.status_code == 404:
+                                    existing = None
+                            if not existing or not existing.get("event_id"):
+                                r = await client.post(
+                                    f"{calendar_base}/events",
+                                    json=event,
+                                    headers=headers,
+                                )
+                                if r.status_code in (200, 201):
+                                    resp_data = r.json() if r.content else {}
                                     eid = resp_data.get("id")
                                     if eid:
-                                        await client.patch(
-                                            f"{calendar_base}/events/{eid}",
-                                            json={"colorId": str(event_color_id)},
-                                            headers=headers,
-                                        )
-                                except Exception:
-                                    pass
-                        else:
-                            err_body = (r.text or "")[:200]
-                            logger.warning("Calendar API 403 subgoal %s: %s %s", sgtitle, r.status_code, err_body)
-                            errors.append(f"subgoal {sgtitle}: {r.status_code}")
+                                        await db.set_calendar_event(user_id, "subgoal", sgid, calendar_id, eid)
+                            if r.status_code in (200, 201):
+                                created += 1
+                            else:
+                                err_body = (r.text or "")[:200]
+                                logger.warning("Calendar API subgoal %s: %s %s", sgtitle, r.status_code, err_body)
+                                errors.append(f"subgoal {sgtitle}: {r.status_code}")
                     except Exception as e:
                         errors.append(f"subgoal {sgtitle}: {str(e)}")
 

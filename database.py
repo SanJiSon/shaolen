@@ -287,6 +287,19 @@ class Database:
             except Exception:
                 pass
 
+            # Связь сущностей с событиями Google Calendar (обновление вместо дублирования)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS calendar_events (
+                    user_id INTEGER NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
+                    calendar_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    PRIMARY KEY (user_id, entity_type, entity_id),
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                )
+            """)
+
             # Google Fit OAuth токены для чтения шагов и календаря
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS google_fit_tokens (
@@ -1919,3 +1932,42 @@ class Database:
                 (user_id, cid),
             )
             await db.commit()
+
+    async def get_calendar_event(self, user_id: int, entity_type: str, entity_id: int) -> Optional[Dict]:
+        """Получить сохранённую связь с событием календаря (calendar_id, event_id) или None."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT calendar_id, event_id FROM calendar_events WHERE user_id = ? AND entity_type = ? AND entity_id = ?",
+                (user_id, entity_type, entity_id),
+            ) as c:
+                row = await c.fetchone()
+                return dict(row) if row else None
+
+    async def set_calendar_event(self, user_id: int, entity_type: str, entity_id: int, calendar_id: str, event_id: str) -> None:
+        """Сохранить связь сущности с событием Google Calendar."""
+        cid = (calendar_id or "").strip() or "primary"
+        eid = (event_id or "").strip()
+        if not eid:
+            return
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO calendar_events (user_id, entity_type, entity_id, calendar_id, event_id)
+                   VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, entity_type, entity_id) DO UPDATE SET
+                   calendar_id = excluded.calendar_id, event_id = excluded.event_id""",
+                (user_id, entity_type, entity_id, cid, eid),
+            )
+            await db.commit()
+
+    async def delete_calendar_event(self, user_id: int, entity_type: str, entity_id: int) -> Optional[Dict]:
+        """Удалить связь и вернуть {calendar_id, event_id} для удаления события в Google (или None)."""
+        row = await self.get_calendar_event(user_id, entity_type, entity_id)
+        if not row:
+            return None
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM calendar_events WHERE user_id = ? AND entity_type = ? AND entity_id = ?",
+                (user_id, entity_type, entity_id),
+            )
+            await db.commit()
+        return row
