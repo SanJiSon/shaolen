@@ -1330,9 +1330,10 @@ async def api_calendar_sync(user_id: int):
                     event["colorId"] = str(habit_color)
                 try:
                     existing = await db.get_calendar_event(user_id, "habit", hid) if hid else None
+                    r = None
                     async with httpx.AsyncClient(timeout=calendar_timeout) as client:
-                        if existing and existing.get("event_id"):
-                            base = _calendar_base_url(existing.get("calendar_id") or calendar_id)
+                        if existing and (existing.get("event_id") or "").strip():
+                            base = _calendar_base_url((existing.get("calendar_id") or calendar_id) or "primary")
                             r = await client.put(
                                 f"{base}/events/{existing['event_id']}",
                                 json=event,
@@ -1340,7 +1341,7 @@ async def api_calendar_sync(user_id: int):
                             )
                             if r.status_code == 404:
                                 existing = None
-                        if not existing or not existing.get("event_id"):
+                        if not existing or not (existing.get("event_id") or "").strip():
                             r = await client.post(
                                 f"{calendar_base}/events",
                                 json=event,
@@ -1348,12 +1349,12 @@ async def api_calendar_sync(user_id: int):
                             )
                             if r.status_code in (200, 201):
                                 resp_data = r.json() if r.content else {}
-                                eid = resp_data.get("id")
-                                if eid:
+                                eid = (resp_data.get("id") or "").strip()
+                                if eid and hid is not None:
                                     await db.set_calendar_event(user_id, "habit", hid, calendar_id, eid)
-                        if r.status_code in (200, 201):
+                        if r is not None and r.status_code in (200, 201):
                             created += 1
-                        else:
+                        elif r is not None:
                             err_body = (r.text or "")[:200]
                             logger.warning("Calendar API habit %s: %s %s", title, r.status_code, err_body)
                             errors.append(f"habit {title}: {r.status_code}")
@@ -1384,9 +1385,10 @@ async def api_calendar_sync(user_id: int):
                     event["colorId"] = str(event_color_id)
                 try:
                     existing = await db.get_calendar_event(user_id, "goal", gid) if gid else None
+                    r = None
                     async with httpx.AsyncClient(timeout=calendar_timeout) as client:
-                        if existing and existing.get("event_id"):
-                            base = _calendar_base_url(existing.get("calendar_id") or calendar_id)
+                        if existing and (existing.get("event_id") or "").strip():
+                            base = _calendar_base_url((existing.get("calendar_id") or calendar_id) or "primary")
                             r = await client.put(
                                 f"{base}/events/{existing['event_id']}",
                                 json=event,
@@ -1394,7 +1396,7 @@ async def api_calendar_sync(user_id: int):
                             )
                             if r.status_code == 404:
                                 existing = None
-                        if not existing or not existing.get("event_id"):
+                        if not existing or not (existing.get("event_id") or "").strip():
                             r = await client.post(
                                 f"{calendar_base}/events",
                                 json=event,
@@ -1402,12 +1404,12 @@ async def api_calendar_sync(user_id: int):
                             )
                             if r.status_code in (200, 201):
                                 resp_data = r.json() if r.content else {}
-                                eid = resp_data.get("id")
-                                if eid:
+                                eid = (resp_data.get("id") or "").strip()
+                                if eid and gid is not None:
                                     await db.set_calendar_event(user_id, "goal", gid, calendar_id, eid)
-                        if r.status_code in (200, 201):
+                        if r is not None and r.status_code in (200, 201):
                             created += 1
-                        else:
+                        elif r is not None:
                             err_body = (r.text or "")[:200]
                             logger.warning("Calendar API goal %s: %s %s", title, r.status_code, err_body)
                             errors.append(f"goal {title}: {r.status_code}")
@@ -1440,9 +1442,10 @@ async def api_calendar_sync(user_id: int):
                         event["colorId"] = str(event_color_id)
                     try:
                         existing = await db.get_calendar_event(user_id, "subgoal", sgid) if sgid else None
+                        r = None
                         async with httpx.AsyncClient(timeout=calendar_timeout) as client:
-                            if existing and existing.get("event_id"):
-                                base = _calendar_base_url(existing.get("calendar_id") or calendar_id)
+                            if existing and (existing.get("event_id") or "").strip():
+                                base = _calendar_base_url((existing.get("calendar_id") or calendar_id) or "primary")
                                 r = await client.put(
                                     f"{base}/events/{existing['event_id']}",
                                     json=event,
@@ -1450,7 +1453,7 @@ async def api_calendar_sync(user_id: int):
                                 )
                                 if r.status_code == 404:
                                     existing = None
-                            if not existing or not existing.get("event_id"):
+                            if not existing or not (existing.get("event_id") or "").strip():
                                 r = await client.post(
                                     f"{calendar_base}/events",
                                     json=event,
@@ -1458,12 +1461,12 @@ async def api_calendar_sync(user_id: int):
                                 )
                                 if r.status_code in (200, 201):
                                     resp_data = r.json() if r.content else {}
-                                    eid = resp_data.get("id")
-                                    if eid:
+                                    eid = (resp_data.get("id") or "").strip()
+                                    if eid and sgid is not None:
                                         await db.set_calendar_event(user_id, "subgoal", sgid, calendar_id, eid)
-                            if r.status_code in (200, 201):
+                            if r is not None and r.status_code in (200, 201):
                                 created += 1
-                            else:
+                            elif r is not None:
                                 err_body = (r.text or "")[:200]
                                 logger.warning("Calendar API subgoal %s: %s %s", sgtitle, r.status_code, err_body)
                                 errors.append(f"subgoal {sgtitle}: {r.status_code}")
