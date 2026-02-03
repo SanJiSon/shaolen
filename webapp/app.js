@@ -500,7 +500,7 @@ function renderMissions(missions) {
     var subsHtml = subs.map(function(s) {
       var done = subgoalCompleted(s);
       var doneClass = done ? " subgoal-done" : "";
-      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><div class=\"subgoal-cb-wrap\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" " + (done ? "checked" : "") + " /><span class=\"subgoal-title\">" + escapeHtml(s.title || "") + "</span></div><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
+      return "<div class=\"subgoal-row" + doneClass + "\" data-id=\"" + s.id + "\"><div class=\"subgoal-cb-zone\" data-id=\"" + s.id + "\" aria-label=\"Отметить выполнение\"><input type=\"checkbox\" class=\"subgoal-done-cb\" data-id=\"" + s.id + "\" tabindex=\"-1\" " + (done ? "checked" : "") + " /></div><span class=\"subgoal-title\">" + escapeHtml(s.title || "") + "</span><span class=\"subgoal-drag-handle\" aria-label=\"Удерживайте для перетаскивания\"><span class=\"material-symbols-outlined\">drag_indicator</span></span></div>";
     }).join("");
     var exampleBadge = (m.is_example ? "<span class=\"example-badge\">Пример</span>" : "");
     var progressBarHtml = totalSubs > 0 ? "<div class=\"mission-progress\"><div class=\"mission-progress-bar\"><div class=\"mission-progress-fill\" style=\"width:" + subProgressPct + "%\"></div></div><span class=\"mission-progress-label\">" + completedSubs + "/" + totalSubs + " подцелей</span></div>" : "";
@@ -3258,40 +3258,59 @@ function bindEvents() {
     });
   }
 
-  /* Только клик по самому чекбоксу переключает галочку. Клик по тексту (.subgoal-title) не переключает — разметка без label. */
+  /* Галочка: только клик/тап по зоне .subgoal-cb-zone переключает. Чекбокс имеет pointer-events: none. */
   document.body.addEventListener("click", function(e) {
-    var row = e.target.closest(".subgoal-row");
+    var zone = e.target.closest(".subgoal-cb-zone");
+    if (!zone) return;
+    var row = zone.closest(".subgoal-row");
     if (!row) return;
     var cb = row.querySelector("input.subgoal-done-cb");
-    if (cb && e.target === cb) {
+    if (cb) {
       e.preventDefault();
       e.stopPropagation();
       handleSubgoalToggle(cb);
     }
   }, true);
 
-  /* На телефоне в Telegram WebView tap по подцели не всегда порождает click — обрабатываем touchend. */
+  /* На телефоне: тап по зоне галочки — переключить, тап по тексту — открыть редактирование. */
   var subgoalTouchStart = null;
   document.body.addEventListener("touchstart", function(e) {
+    if (!e.touches || !e.touches[0]) return;
     var row = e.target.closest(".subgoal-row");
-    if (!row || e.target.closest(".subgoal-drag-handle") || e.target.closest("input.subgoal-done-cb")) {
+    if (!row || e.target.closest(".subgoal-drag-handle")) {
       subgoalTouchStart = null;
       return;
     }
-    var t = e.touches && e.touches[0];
-    subgoalTouchStart = t ? { x: t.clientX, y: t.clientY, id: row.dataset.id } : null;
+    var t = e.touches[0];
+    var onZone = !!e.target.closest(".subgoal-cb-zone");
+    subgoalTouchStart = { x: t.clientX, y: t.clientY, id: row.dataset.id, onZone: onZone };
   }, { capture: true, passive: true });
   document.body.addEventListener("touchend", function(e) {
     if (!subgoalTouchStart || !e.changedTouches || !e.changedTouches[0]) return;
-    var row = e.target.closest(".subgoal-row");
-    if (!row || row.dataset.id !== subgoalTouchStart.id) return;
     var t = e.changedTouches[0];
     var dx = t.clientX - subgoalTouchStart.x, dy = t.clientY - subgoalTouchStart.y;
-    if (dx * dx + dy * dy > 100) return; /* движение > ~10px — считаем скроллом, не открываем */
-    e.preventDefault();
-    e.stopPropagation();
-    openSubgoalEditDialog(subgoalTouchStart.id);
+    if (dx * dx + dy * dy > 100) {
+      subgoalTouchStart = null;
+      return;
+    }
+    var id = subgoalTouchStart.id;
+    var onZone = subgoalTouchStart.onZone;
     subgoalTouchStart = null;
+    if (onZone) {
+      var row = document.querySelector(".subgoal-row[data-id=\"" + id + "\"]");
+      if (row) {
+        var cb = row.querySelector("input.subgoal-done-cb");
+        if (cb) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSubgoalToggle(cb);
+        }
+      }
+    } else {
+      e.preventDefault();
+      e.stopPropagation();
+      openSubgoalEditDialog(id);
+    }
   }, { capture: true, passive: false });
 
   function subgoalCompleted(s) { return s.is_completed === 1 || s.is_completed === "1" || s.is_completed === true; }
@@ -3424,8 +3443,8 @@ function bindEvents() {
     }
 
     var subgoalRow = e.target.closest(".subgoal-row");
-    /* Открывать редактирование при клике по подцели (текст или область строки), кроме чекбокса и ручки перетаскивания */
-    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest("input.subgoal-done-cb")) {
+    /* Открывать редактирование при клике по тексту/области подцели, кроме зоны галочки и ручки перетаскивания */
+    if (subgoalRow && !e.target.closest(".subgoal-drag-handle") && !e.target.closest(".subgoal-cb-zone")) {
       e.preventDefault();
       e.stopPropagation();
       var subgoalId = subgoalRow.dataset.id;
@@ -3434,7 +3453,7 @@ function bindEvents() {
     }
 
     var content = e.target.closest(".swipe-row-content");
-    if (content && !e.target.closest(".habit-btn, .habit-reminder-toggle, .habit-water-help, .swipe-delete-btn, .swipe-action-btn, .goal-archive-unarchive-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-row, .add-subgoal-btn")) {
+    if (content && !e.target.closest(".habit-btn, .habit-reminder-toggle, .habit-water-help, .swipe-delete-btn, .swipe-action-btn, .goal-archive-unarchive-btn, .mission-done-cb-wrap, .goal-done-cb-wrap, .subgoal-done-cb, .subgoal-cb-wrap, .subgoal-cb-zone, .subgoal-row, .subgoal-title, .add-subgoal-btn")) {
       var row = e.target.closest(".swipe-row");
       if (row) {
         var type = row.dataset.type, id = row.dataset.id;

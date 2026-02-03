@@ -1222,13 +1222,27 @@ body {
   text-decoration: line-through;
 }
 
-.subgoal-row .subgoal-cb-wrap {
-  flex: 1;
-  min-width: 0;
+/* Зона галочки: фиксированная ширина, на мобильном весь тап по строке не уходит в input */
+.subgoal-cb-zone {
+  flex-shrink: 0;
+  width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.subgoal-cb-zone input.subgoal-done-cb {
+  pointer-events: none;
+  margin: 0;
 }
 
-/* Заголовок подцели — клик открывает редактирование (без label, чтобы не переключать галочку) */
+/* Заголовок подцели — занимает остаток строки, клик/тап открывает редактирование */
 .subgoal-title {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 4px 10px 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   tap-highlight-color: transparent;
@@ -1290,13 +1304,7 @@ body.drag-active {
   cursor: grabbing;
 }
 
-.subgoal-cb-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
+.subgoal-cb-zone input.subgoal-done-cb,
 .subgoal-cb-wrap input {
   width: 18px;
   height: 18px;
