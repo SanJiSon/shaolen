@@ -3270,6 +3270,30 @@ function bindEvents() {
     }
   }, true);
 
+  /* На телефоне в Telegram WebView tap по подцели не всегда порождает click — обрабатываем touchend. */
+  var subgoalTouchStart = null;
+  document.body.addEventListener("touchstart", function(e) {
+    var row = e.target.closest(".subgoal-row");
+    if (!row || e.target.closest(".subgoal-drag-handle") || e.target.closest("input.subgoal-done-cb")) {
+      subgoalTouchStart = null;
+      return;
+    }
+    var t = e.touches && e.touches[0];
+    subgoalTouchStart = t ? { x: t.clientX, y: t.clientY, id: row.dataset.id } : null;
+  }, { capture: true, passive: true });
+  document.body.addEventListener("touchend", function(e) {
+    if (!subgoalTouchStart || !e.changedTouches || !e.changedTouches[0]) return;
+    var row = e.target.closest(".subgoal-row");
+    if (!row || row.dataset.id !== subgoalTouchStart.id) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - subgoalTouchStart.x, dy = t.clientY - subgoalTouchStart.y;
+    if (dx * dx + dy * dy > 100) return; /* движение > ~10px — считаем скроллом, не открываем */
+    e.preventDefault();
+    e.stopPropagation();
+    openSubgoalEditDialog(subgoalTouchStart.id);
+    subgoalTouchStart = null;
+  }, { capture: true, passive: false });
+
   function subgoalCompleted(s) { return s.is_completed === 1 || s.is_completed === "1" || s.is_completed === true; }
   async function handleSubgoalToggle(checkboxEl) {
     var sid = checkboxEl.dataset.id;
