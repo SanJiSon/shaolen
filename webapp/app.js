@@ -3272,6 +3272,15 @@ function bindEvents() {
     }
   }, true);
 
+  /* Отладка: отправить на сервер лог тапа по подцели (смотри logs/webapp.log). */
+  function debugSubgoalTap(payload) {
+    var url = state.baseUrl + "/api/debug/subgoal-tap";
+    try {
+      payload.user_id = state.userId;
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(function() {});
+    } catch (err) {}
+  }
+
   /* На телефоне: тап по зоне галочки — переключить, тап по тексту — открыть редактирование. */
   var subgoalTouchStart = null;
   document.body.addEventListener("touchstart", function(e) {
@@ -3284,12 +3293,25 @@ function bindEvents() {
     var t = e.touches[0];
     var onZone = !!e.target.closest(".subgoal-cb-zone");
     subgoalTouchStart = { x: t.clientX, y: t.clientY, id: row.dataset.id, onZone: onZone };
+    debugSubgoalTap({
+      event: "touchstart",
+      target_tag: (e.target && e.target.tagName) ? e.target.tagName : "",
+      target_class: (e.target && e.target.className) ? String(e.target.className) : "",
+      on_zone: onZone,
+      subgoal_id: row.dataset.id
+    });
   }, { capture: true, passive: true });
   document.body.addEventListener("touchend", function(e) {
-    if (!subgoalTouchStart || !e.changedTouches || !e.changedTouches[0]) return;
+    if (!subgoalTouchStart || !e.changedTouches || !e.changedTouches[0]) {
+      if (subgoalTouchStart) {
+        debugSubgoalTap({ event: "touchend", action: "skip_no_touch", subgoal_id: subgoalTouchStart.id });
+      }
+      return;
+    }
     var t = e.changedTouches[0];
     var dx = t.clientX - subgoalTouchStart.x, dy = t.clientY - subgoalTouchStart.y;
     if (dx * dx + dy * dy > 100) {
+      debugSubgoalTap({ event: "touchend", action: "skip_scroll", subgoal_id: subgoalTouchStart.id, dx: dx, dy: dy });
       subgoalTouchStart = null;
       return;
     }
@@ -3297,6 +3319,7 @@ function bindEvents() {
     var onZone = subgoalTouchStart.onZone;
     subgoalTouchStart = null;
     if (onZone) {
+      debugSubgoalTap({ event: "touchend", action: "toggle", subgoal_id: id, on_zone: true });
       var row = document.querySelector(".subgoal-row[data-id=\"" + id + "\"]");
       if (row) {
         var cb = row.querySelector("input.subgoal-done-cb");
@@ -3307,6 +3330,7 @@ function bindEvents() {
         }
       }
     } else {
+      debugSubgoalTap({ event: "touchend", action: "open_edit", subgoal_id: id, on_zone: false });
       e.preventDefault();
       e.stopPropagation();
       openSubgoalEditDialog(id);
