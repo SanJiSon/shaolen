@@ -3230,7 +3230,7 @@ function bindEvents() {
     var wrap = e.target.closest(".subgoal-cb-wrap");
     if (wrap) {
       var cb = wrap.querySelector("input.subgoal-done-cb");
-      if (cb) {
+      if (cb && e.target === cb) {
         e.preventDefault();
         e.stopPropagation();
         handleSubgoalToggle(cb);
