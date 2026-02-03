@@ -407,7 +407,7 @@ function setupSwipeDelete(container) {
       row.classList.toggle("swiped", v <= -(w / 2));
     };
     const onStart = (e) => {
-      if (e.target.closest(".habit-btn, .swipe-action-btn, .swipe-delete-btn, .swipe-row-drag-handle, .goal-done-cb-wrap, .goal-archive-unarchive-btn")) return;
+      if (e.target.closest(".habit-btn, .swipe-action-btn, .swipe-delete-btn, .swipe-row-drag-handle, .goal-done-cb-wrap, .goal-archive-unarchive-btn, .subgoal-row, .subgoal-title, .subgoal-cb-zone")) return;
       if (window._sortableDragging) return;
       startX = e.touches ? e.touches[0].clientX : e.clientX;
       startY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -3281,8 +3281,9 @@ function bindEvents() {
     } catch (err) {}
   }
 
-  /* На телефоне: тап по зоне галочки — переключить, тап по тексту — открыть редактирование. */
+  /* На телефоне: зону определяем по координатам (левые 44px = галочка), т.к. e.target на мобильном часто неверный. */
   var subgoalTouchStart = null;
+  var ZONE_WIDTH_PX = 44;
   document.body.addEventListener("touchstart", function(e) {
     if (!e.touches || !e.touches[0]) return;
     var row = e.target.closest(".subgoal-row");
@@ -3291,14 +3292,16 @@ function bindEvents() {
       return;
     }
     var t = e.touches[0];
-    var onZone = !!e.target.closest(".subgoal-cb-zone");
+    var rect = row.getBoundingClientRect();
+    var relX = t.clientX - rect.left;
+    var onZone = relX >= 0 && relX <= ZONE_WIDTH_PX;
     subgoalTouchStart = { x: t.clientX, y: t.clientY, id: row.dataset.id, onZone: onZone };
     debugSubgoalTap({
       event: "touchstart",
-      target_tag: (e.target && e.target.tagName) ? e.target.tagName : "",
-      target_class: (e.target && e.target.className) ? String(e.target.className) : "",
+      subgoal_id: row.dataset.id,
       on_zone: onZone,
-      subgoal_id: row.dataset.id
+      rel_x: Math.round(relX),
+      target: (e.target && e.target.className) ? String(e.target.className).slice(0, 40) : ""
     });
   }, { capture: true, passive: true });
   document.body.addEventListener("touchend", function(e) {
@@ -3311,7 +3314,7 @@ function bindEvents() {
     var t = e.changedTouches[0];
     var dx = t.clientX - subgoalTouchStart.x, dy = t.clientY - subgoalTouchStart.y;
     if (dx * dx + dy * dy > 100) {
-      debugSubgoalTap({ event: "touchend", action: "skip_scroll", subgoal_id: subgoalTouchStart.id, dx: dx, dy: dy });
+      debugSubgoalTap({ event: "touchend", action: "skip_scroll", subgoal_id: subgoalTouchStart.id });
       subgoalTouchStart = null;
       return;
     }
@@ -3319,7 +3322,7 @@ function bindEvents() {
     var onZone = subgoalTouchStart.onZone;
     subgoalTouchStart = null;
     if (onZone) {
-      debugSubgoalTap({ event: "touchend", action: "toggle", subgoal_id: id, on_zone: true });
+      debugSubgoalTap({ event: "touchend", action: "toggle", subgoal_id: id });
       var row = document.querySelector(".subgoal-row[data-id=\"" + id + "\"]");
       if (row) {
         var cb = row.querySelector("input.subgoal-done-cb");
@@ -3330,7 +3333,7 @@ function bindEvents() {
         }
       }
     } else {
-      debugSubgoalTap({ event: "touchend", action: "open_edit", subgoal_id: id, on_zone: false });
+      debugSubgoalTap({ event: "touchend", action: "open_edit", subgoal_id: id });
       e.preventDefault();
       e.stopPropagation();
       openSubgoalEditDialog(id);
